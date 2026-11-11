@@ -12,9 +12,9 @@ namespace ClaudiaKerman.Core.Missions
     /// KSC), from its Game Snapshots and, with the player in another vessel, from <see cref="CraftLinkSeen"/>; CommNet off
     /// in the save counts as linked. With no link the Mission is in a Blackout, a flag over whatever stage it is in, never
     /// a Pause. The player's Approval of the Mission Plan stands for each sequence, so the mod runs her next Sequence Plan
-    /// and a revised Mission Plan without asking (a manual stretch or a Due Time still waits for the player, and the very
-    /// first Mission Plan was never approved). Her messages are queued and the player's words held; Alerts are recorded
-    /// without a Claude call; Abort is hidden; every request waits at the Spending Cap rather than Pausing (the waiting
+    /// and a revised Mission Plan without asking (a manual stretch or a Due Time still waits for the player, but for one
+    /// warped to under Auto Mode (#967), and the very first Mission Plan was never approved). Her messages are queued and
+    /// the player's words held; Alerts are recorded without a Claude call; Abort is hidden; every request waits at the Spending Cap rather than Pausing (the waiting
     /// call). A Failed Debrief makes the craft safe and waits for the link. When the link returns, her queued messages
     /// show, each revision is listed with her reasons, and the player's held words go to her.
     /// </summary>
@@ -90,6 +90,8 @@ namespace ClaudiaKerman.Core.Missions
         private void BlackoutEnds(Mission mission)
         {
             mission.Blackout = false;
+            // A plan Approval refused in the Blackout is tried once more, linked, with the room check (MissionControl.AutoMode.cs).
+            mission.AutoModeApprovedFor = null;
             var news = mission.Log.Count(e => e.Queued) > 0 || mission.BlackoutRevisions.Count > 0;
             foreach (var entry in mission.Log) entry.Queued = false;
             Note(LogKind.Notice, "The link to Kerbin is back: the Blackout is over.");

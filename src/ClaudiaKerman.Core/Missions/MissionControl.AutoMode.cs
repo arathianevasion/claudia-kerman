@@ -27,10 +27,13 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>The plan the Auto Mode room check last held for the player, so its blocked charge is logged once (not saved).</summary>
             public object AutoModeHeldFor;
             /// <summary>
-            /// The plan Auto Mode last approved: if <see cref="Approval"/> refused it (no processor to run it on, an unsafe
-            /// script), it waits for the player rather than being approved again on every input (not saved).
+            /// The plan last approved in advance: if <see cref="Approval"/> refused it (no processor to run it on, an unsafe
+            /// script), it waits for the player rather than being approved again on every input; in a Blackout it is tried
+            /// again once a processor is there, and once more when the link returns (not saved).
             /// </summary>
             public object AutoModeApprovedFor;
+            /// <summary>The plan whose run an Approval in advance last started: one kOS refused and that starts again is not logged or listed twice (not saved).</summary>
+            public object AutoModeStartedFor;
             /// <summary>
             /// Auto Mode re-planned an unsafe script, and no plan has passed the Script Check since: a second failure waits
             /// for the player (not saved).
@@ -61,7 +64,7 @@ namespace ClaudiaKerman.Core.Missions
             ManualStretch,
             /// <summary>
             /// A Due Time is a wait that needs the player (ADR 0004), even once it is reached; a coast checkpoint's only once they have left (#775),
-            /// and one they warped to with Auto Mode on only while they are away from the craft (#967).
+            /// and one they warped to with Auto Mode on, in a Blackout too, only while they are away from the craft (#967).
             /// </summary>
             DueTime,
             /// <summary>Auto Mode only: the Spending Cap has no room for the Debrief and next plan request that follow.</summary>
@@ -91,8 +94,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// After every input and each reply: whether the plan in hand already has the player's Approval, given in a Blackout
         /// or under Auto Mode. Either way the first Mission Plan, a manual stretch and a plan with a Due Time wait for the
-        /// player, and a stale plan is re-planned. Under Auto Mode (and no Blackout, whose own rules stand) an approval or
-        /// re-plan also needs room in the Spending Cap (<see cref="AutoModeRoom"/>). The Approval itself is
+        /// player (but for a Due Time warped to under Auto Mode, #967), and a stale plan is re-planned. Under Auto Mode (and
+        /// no Blackout, whose own rules stand) an approval or re-plan also needs room in the Spending Cap (<see cref="AutoModeRoom"/>). The Approval itself is
         /// <see cref="Approval"/>, so the Script Check, the late-window and the Due Time rules hold as for the player's button.
         /// Auto Mode also answers what Blackout leaves for the player (<see cref="AutoModeAnswers"/>): an Abort
         /// recommendation, a reduced goal and an unsafe script.
@@ -174,7 +177,7 @@ namespace ClaudiaKerman.Core.Missions
                 // The exceptions: Auto Mode may stand in at a coast checkpoint's Due Time, with the player still in the craft (#775), and at one they warped to (#967).
                 if (plan.DueTimeUt.HasValue && !(mission.AutoMode && !mission.Blackout && SoftDueTime(mission, plan)))
                 {
-                    // #967: the Due Time the player warped to with Auto Mode on, in the craft: Auto Mode approves once it is reached.
+                    // #967: the Due Time the player warped to with Auto Mode on, in the craft: Auto Mode approves once it is reached, in a Blackout too.
                     if (!AutoModeTakesDue(mission, plan))
                     {
                         WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
@@ -185,7 +188,19 @@ namespace ClaudiaKerman.Core.Missions
                 }
             }
             object inHand = missionPlan ? (object)mission.Plan : plan;
-            if (!mission.Blackout && mission.AutoModeApprovedFor == inHand) return;
+            if (mission.AutoModeApprovedFor == inHand)
+            {
+                // Approved in advance before and back in hand: Approval refused it (no processor to run it on), or kOS refused
+                // the script. Linked, it waits for the player, called at a Due Time Auto Mode took.
+                if (!mission.Blackout)
+                {
+                    if (atDue) WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
+                    return;
+                }
+                // In a Blackout it is tried again only once a processor is there to run it, so the refusal is logged once.
+                string refusal;
+                if (!missionPlan && !ProcessorOrRefusal(mission, plan, out refusal).HasValue) return;
+            }
             var stale = StaleBecause(mission);
             if (!mission.Blackout && !AutoModeRoom(mission, inHand, stale.Length > 0 ? ReplanTurn(stale, missionPlan) : null))
             {
@@ -198,27 +213,38 @@ namespace ClaudiaKerman.Core.Missions
                 Replanned(inAdvance: true);
                 return;
             }
+            mission.AutoModeApprovedFor = inHand;
+            if (!mission.Blackout) RetractPlanNews();
+            // Before Approval's own lines, and taken back if it didn't start the run. A Blackout says so only at a Due Time Auto Mode took.
+            var note = mission.Blackout && !atDue ? null : Note(LogKind.Notice, atDue ? AutoModeApprovedAtDueNote : AutoModeApprovedNote);
+            Approval();
+            var started = missionPlan ? mission.Stage != MissionStage.AwaitingPlanApproval : mission.Stage == MissionStage.Running;
+            // Started again after kOS refused the script: it was logged and listed the first time.
+            var again = started && mission.AutoModeStartedFor == inHand;
+            if (started) mission.AutoModeStartedFor = inHand;
+            if (!started || again)
+            {
+                if (note != null) mission.Log.Remove(note);
+                // Refused, and still in hand: nothing says it was approved or flown, and at a Due Time Auto Mode took the player is called.
+                if (!started && atDue && !mission.Blackout && mission.Stage == MissionStage.AwaitingSequenceApproval && mission.PendingSequence == plan)
+                    WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
+                return;
+            }
             if (mission.Blackout)
                 mission.BlackoutRevisions.Add(missionPlan
                     ? "Mission Plan revised: " + mission.Plan.Why
                     : "Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " flown without Approval: " + plan.Why);
-            else
-            {
-                mission.AutoModeApprovedFor = inHand;
-                RetractPlanNews();
-                Note(LogKind.Notice, atDue ? AutoModeApprovedAtDueNote : AutoModeApprovedNote);
-            }
-            Approval();
         }
 
         /// <summary>
         /// #967: Auto Mode stands in at this Due Time: the player pressed Warp to Due Time for this plan and this Due Time with Auto
-        /// Mode on, it is still on, there is no Blackout, and they are in the craft (away from it, Go to the vessel comes first).
-        /// A manual stretch has waited already, before this is asked.
+        /// Mode on, it is still on, and they are in the craft (away from it, Go to the vessel comes first). A Blackout doesn't stop it:
+        /// there every plan is approved, by the player's ruling, so it takes the Blackout's Approval path (no room check, the plan
+        /// listed for when the link returns). A manual stretch has waited already, before this is asked.
         /// </summary>
         private bool AutoModeTakesDue(Mission mission, SequencePlan plan)
         {
-            return mission.AutoMode && !mission.Blackout && plan == mission.PendingSequence && DueWarpOf(mission).HasValue && CraftActive;
+            return mission.AutoMode && plan == mission.PendingSequence && DueWarpOf(mission).HasValue && CraftActive;
         }
 
         /// <summary>
@@ -242,12 +268,11 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #967: Warp to Due Time pressed. With Auto Mode on it is the player's word that the plan may start there: Auto Mode
-        /// approves it on arrival (<see cref="ApproveOrWait"/>), and the log says so now.
+        /// approves it on arrival (<see cref="ApproveOrWait"/>), and the log says so now. Pressed in a Blackout it is kept as well.
         /// </summary>
         private void DueWarpPressed(Mission mission, SequencePlan plan)
         {
-            // In a Blackout the Due Time waits for the player (ADR 0004): a warp pressed then is no promise for Auto Mode, even once the link is back.
-            if (!mission.AutoMode || mission.Blackout || plan.Manual) return;
+            if (!mission.AutoMode || plan.Manual) return;
             mission.DueWarpFor = plan;
             mission.DueWarpUt = plan.DueTimeUt.Value;
             Note(LogKind.Notice, DueWarpNote);

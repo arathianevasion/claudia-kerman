@@ -15,10 +15,17 @@ You need a Mission whose Sequence Plan has a Due Time. A Duna Mission's launch i
 1. Repeat Check 1 up to the warp, then turn Auto Mode off while warping. On arrival the log has "Due Time reached: ... is ready for your Approval." and Approve is on. Turn Auto Mode on again: it says "Auto Mode is waiting for you: a Due Time." and doesn't approve.
 2. On a new plan with a Due Time and Auto Mode on, don't press Warp to Due Time. Warp there with the game's own warp buttons. On arrival it waits for the player the same way.
 3. Press Warp to Due Time with Auto Mode on, then use Change something before arrival. When the revised plan arrives, warp there yourself with the game's warp: it waits for the player. Pressing Warp to Due Time again for the revised plan makes it Auto Mode's again.
-5. Press Warp to Due Time with Auto Mode on during a Blackout (no link). There is no "Warping to the Due Time" line. Once the link is back, on arrival the plan waits for the player.
 4. Press Warp to Due Time with Auto Mode on, then switch to another vessel (or go to the Space Center) before arrival. On arrival the quick reply is Go to the vessel and Auto Mode waits for a Due Time. Press Go to the vessel: back in the craft, the plan is approved with "Approved by Auto Mode at the Due Time."
 
-## Check 3: save and load between warp and arrival
+## Check 3: a Due Time reached in a Blackout starts with no Approve
+
+1. On a Duna return whose Due Time falls while the craft is behind Duna (no link), with Auto Mode on, press Warp to Due Time before the link drops. The log has the "Warping to the Due Time" line.
+2. The link drops on the way: the log has "No link to Kerbin: Blackout." On arrival, inside the Blackout, warp drops to 1×, there is no "ready for your Approval" line or screen message and no Approve to press. The log has "Approved by Auto Mode at the Due Time." and the script runs.
+3. When the link is back, the "While there was no link" card lists the plan as flown without Approval.
+4. Repeat with the warp pressed during the Blackout instead: the log has the "Warping to the Due Time" line, and on arrival the plan starts the same way.
+5. Repeat step 1, then turn Auto Mode off during the Blackout before arrival: on arrival the plan waits for the player.
+
+## Check 4: save and load between warp and arrival
 
 1. Press Warp to Due Time with Auto Mode on, then stop the warp part-way with the game's warp buttons.
 2. Save, load and come back to the craft. Warp on to the Due Time with the game's warp. On arrival the plan is approved with "Approved by Auto Mode at the Due Time."

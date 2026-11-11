@@ -459,19 +459,29 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void AWarpedToDueTimeReachedInABlackoutWaitsForThePlayer()
+        public void AWarpedToDueTimeReachedInABlackoutIsApprovedByAutoModeWithTheLogSayingSo()
         {
             var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
             mission.Send(Snapshot(s => s.HasLink = false));
             Assert.True(mission.View.Blackout);
+            mission.TakeCommands();
             mission.Send(new UtAdvanced(1250));
-            // ADR 0004: in a Blackout a Due Time waits for the player, Auto Mode or not.
-            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
-            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text.Contains("flown without Approval"));
+            // The player's ruling: in a Blackout all plans are approved, and the warp was their word that this one may start.
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            var commands = mission.TakeCommands();
+            Assert.Single(commands.OfType<StartScript>());
+            Assert.DoesNotContain(commands.OfType<PostScreenMessage>(), m => m.Text.Contains("your Approval"));
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("ready for your Approval") || e.Text.Contains("waits for the link"));
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
+
+            // As for any plan flown in a Blackout, the player reads it in the list when the link is back.
+            mission.Send(OnPad());
+            Assert.False(mission.View.Blackout);
+            Assert.Contains(mission.View.Log, e => e.Text.Contains("flown without Approval"));
         }
 
         [Fact]
-        public void AWarpPressedInABlackoutIsNoPromiseOnceTheLinkIsBack()
+        public void AWarpPressedInABlackoutUnderAutoModeIsApprovedAtArrival()
         {
             var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()), AutoModeOn());
             ToSequencePlan(mission);
@@ -480,14 +490,127 @@ namespace ClaudiaKerman.Core.Tests
             mission.TakeCommands();
             mission.Send(new WarpToDueTime());
             Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
-            Assert.DoesNotContain(mission.View.Log, e => e.Text == DueWarpNote);
+            Assert.Single(mission.View.Log, e => e.Text == DueWarpNote);
 
-            mission.Send(OnPad());
+            mission.Send(new UtAdvanced(1250));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
+        }
+
+        [Fact]
+        public void AutoModeTurnedOffBeforeArrivalInABlackoutLeavesTheReachedDueTimeToThePlayer()
+        {
+            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
+            mission.Send(Snapshot(s => s.HasLink = false));
+            Assert.True(mission.View.Blackout);
+            mission.Send(new SetAutoMode(false));
+            mission.Send(new UtAdvanced(1250));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            mission.Send(new SetAutoMode(true));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text == Approved || e.Text.Contains("flown without Approval"));
+        }
+
+        private const string NoProcessor = "Can't run the script: the craft has no kOS processor.";
+
+        /// <summary>The kOS processor gone dark (its part kept, so the plan isn't stale): Approval is refused.</summary>
+        private static void NoKos(GameSnapshot s)
+        {
+            s.Craft.Parts.ForEach(p => p.HasKosProcessor = false);
+        }
+
+        [Fact]
+        public void AWarpedToDueTimeRefusedInABlackoutIsLoggedOnceAndRetriedOnceWhenTheLinkIsBackThenCallsThePlayer()
+        {
+            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
+            mission.Send(Snapshot(s => { s.HasLink = false; NoKos(s); }));
+            Assert.True(mission.View.Blackout);
+            mission.Send(new UtAdvanced(1250));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            // Three more inputs with nothing changed: the refusal is not tried again, so it is logged once and nothing is listed as flown.
+            mission.Send(new UtAdvanced(1260));
+            mission.Send(Snapshot(s => { s.HasLink = false; NoKos(s); }));
+            mission.Send(new UtAdvanced(1270));
+            Assert.Single(mission.View.Log, e => e.Text == NoProcessor);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue);
+
+            // The link is back and the craft still has no processor: Approval is tried once more, and then Auto Mode calls the player.
+            mission.Send(Snapshot(NoKos));
             Assert.False(mission.View.Blackout);
+            mission.Send(new UtAdvanced(1280));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Equal(2, mission.View.Log.Count(e => e.Text == NoProcessor));
+            Assert.Equal(AutoModeWaitsForDueTime, mission.View.AutoModeStop);
+            Assert.Contains(mission.View.Log, e => e.Text == AutoModeWaitsForDueTime);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text.Contains("flown without Approval"));
+            mission.Send(new UtAdvanced(1290));
+            Assert.Equal(2, mission.View.Log.Count(e => e.Text == NoProcessor));
+        }
+
+        [Fact]
+        public void AWarpedToDueTimeRefusedInABlackoutRunsWhenTheLinkIsBackWithTheCraftFixed()
+        {
+            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
+            mission.Send(Snapshot(s => { s.HasLink = false; NoKos(s); }));
+            mission.Send(new UtAdvanced(1250));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            mission.TakeCommands();
+            mission.Send(OnPad());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
+        }
+
+        [Fact]
+        public void APlanRefusedInABlackoutIsRetriedWhenTheProcessorIsBackAndOnlyThenListedAsFlown()
+        {
+            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
+            mission.Send(Snapshot(s => { s.HasLink = false; NoKos(s); }));
+            mission.Send(new UtAdvanced(1250));
+            mission.TakeCommands();
+            // Still dark, the processor back: the new snapshot could change the refusal, so it is tried again and runs.
+            mission.Send(Snapshot(s => s.HasLink = false));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Single(mission.View.Log, e => e.Text == NoProcessor);
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
+            mission.Send(OnPad());
+            var card = Assert.Single(mission.View.Log, e => e.Title == "While there was no link");
+            Assert.Single(card.Text.Split('\n'), l => l.Contains("flown without Approval"));
+        }
+
+        [Fact]
+        public void AScriptKosRefusedInABlackoutStartsAgainButIsLoggedAndListedOnce()
+        {
+            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
+            mission.Send(Snapshot(s => s.HasLink = false));
+            mission.Send(new UtAdvanced(1250));
+            var first = Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            // Back in hand, it is approved again as any plan in a Blackout is.
+            mission.Send(new KosRunRefused("busy", first.RunId));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
+            mission.Send(OnPad());
+            var card = Assert.Single(mission.View.Log, e => e.Title == "While there was no link");
+            Assert.Single(card.Text.Split('\n'), l => l.Contains("flown without Approval"));
+        }
+
+        [Fact]
+        public void AWarpedToDueTimeRefusedAtArrivalCallsThePlayerWithNoApprovedLine()
+        {
+            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
+            mission.Send(Snapshot(NoKos));
             mission.Send(new UtAdvanced(1250));
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
             Assert.Equal(AutoModeWaitsForDueTime, mission.View.AutoModeStop);
-            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text == DueWarpNote);
+            Assert.Contains(mission.View.Log, e => e.Text == AutoModeWaitsForDueTime);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue);
+            mission.Send(new UtAdvanced(1260));
+            mission.Send(new UtAdvanced(1270));
+            Assert.Single(mission.View.Log, e => e.Text == NoProcessor);
+            Assert.Equal(AutoModeWaitsForDueTime, mission.View.AutoModeStop);
         }
 
         [Fact]
