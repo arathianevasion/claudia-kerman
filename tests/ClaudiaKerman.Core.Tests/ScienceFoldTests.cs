@@ -139,6 +139,35 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(CrewReportIntoAscent, ScienceFold.Line(legs, 5));
         }
 
+        [Theory]
+        [InlineData("Crew report in Duna orbit", "Return to Kerbin")]
+        [InlineData("Science in Kerbin orbit", "Transfer to Duna")]
+        [InlineData("Crew report at Duna", "Plane change to Duna equator")]
+        public void ScienceBeforeAnythingButAnAscentIsNoFold(string science, string next)
+        {
+            // A script starting with science() hides an orbital departure's burn point from BurnPoints.First: no Due Time, no kept return window.
+            var legs = new List<PlannedSequence> { Leg(science, "Run the experiments and transmit.", 0, "Now."), Leg(next, "Depart in the soonest window.", 1000, "Soonest window.") };
+            Assert.Equal("", ScienceFold.Line(legs, 1));
+        }
+
+        [Fact]
+        public void AnAscentNamedOnlyInItsIntentStillTakesTheFold()
+        {
+            var legs = With(5, s => { s.Name = "To Duna orbit"; s.Intent = "Lift off from the Duna surface to a 60 km orbit."; });
+            Assert.StartsWith("Step 5 \"Crew report at Duna\" is science only", ScienceFold.Line(legs, 5));
+        }
+
+        [Theory]
+        [InlineData("EVA report at Duna")]
+        [InlineData("Surface sample at Duna")]
+        [InlineData("Crew report and EVA report at Duna")]
+        [InlineData("Crew report and samples at Duna")]
+        public void EvaReportsAndSamplesAreThePlayersJobAndNoFold(string name)
+        {
+            // science.ks: "EVA reports and samples are the player's job"; folded into the ascent they would be lost at lift-off.
+            Assert.Equal("", ScienceFold.Line(With(4, s => s.Name = name), 5));
+        }
+
         private static List<PlannedSequence> With(int index, System.Action<PlannedSequence> change)
         {
             var legs = RevisedLanded();

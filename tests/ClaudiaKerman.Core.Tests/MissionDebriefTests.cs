@@ -1329,6 +1329,15 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ARevisedPlanThatDoesNotMarkTheFlownStepFoldsTheStepAfterTheOneBegun()
+        {
+            // Step 1 was begun, but the revision doesn't say "flown": the next to fly is still step 2, the crew report.
+            var text = ApprovedRevision(this, DunaPlanReply(("Link check", "Prove the link.", 0), CrewReport, Ascent, Home));
+
+            Assert.Contains("\nStep 2 \"Crew report at Duna\" is science only, 0 m/s, where step 3 \"Ascend from Duna\" starts:", text);
+        }
+
+        [Fact]
         public void ARevisedPlanWithNoScienceOnlyStepIsApprovedWithoutIt()
         {
             var text = ApprovedRevision(this, DunaPlanReply(Landed, Ascent, Home));
