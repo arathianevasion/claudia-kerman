@@ -230,7 +230,7 @@ namespace ClaudiaKerman.Core.Tools
 
     /// <summary>
     /// The ascent sim behind <c>plan_ascent</c> (#367): a point mass in the plane of the climb, round a turning body, flown by
-    /// <c>launch.ks</c>'s own rules in the order its loop uses them (<c>launch_pitch</c>, the turn hold, the throttle and its
+    /// <c>launch.ks</c>'s own rules in the order its loop uses them (Core's <see cref="LaunchTurn"/>, the turn hold, the throttle and its
     /// thick-air floor, <c>max_aoa</c>, the thin-air prograde rule), staging as <c>claudia_autostage</c> does (on flameout,
     /// never below stage_limit), out of the air to the coast, then the circularization burn at apoapsis (as <c>circularize</c>
     /// and <c>exec_node</c> fly it: half before apoapsis, along the horizon there). Each tick mirrors a kOS tick. The nose
@@ -577,7 +577,7 @@ namespace ClaudiaKerman.Core.Tools
                     // launch's turn law is Core's (#978): the thrust now and gravity less what the orbital speed along the horizon holds up.
                     var r = R;
                     var orbital = horizontal + _o.Spin * r / _o.Radius;
-                    pitch = LaunchTurn.Pitch(LaunchTurn.Program(h, turnStartAlt, turnEnd, _o.TurnShape), prograde, spd, q,
+                    pitch = LaunchTurn.Pitch(LaunchTurn.Program(h, turnStartAlt, turnEnd, _o.TurnShape), prograde, spd, q, ratio,
                         thrust * throttle / _mass, _o.Gm / (r * r) - orbital * orbital / r, out thin);
                 }
                 else if (spd > 30)

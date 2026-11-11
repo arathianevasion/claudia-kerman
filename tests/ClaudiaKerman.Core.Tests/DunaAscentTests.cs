@@ -128,7 +128,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(left.Max() - left.Min() > 150, "spread " + (left.Max() - left.Min()));
         }
 
-        // The flight cut off 73 degrees above the horizon at 16 km (this sim before #978: 68 at 20 km). Now the nose is 15 degrees above it at the
+        // The flight cut off 73 degrees above the horizon at 16 km (this sim before #978: 68 at 20 km). Now the nose is 16 degrees above it at the
         // burn's last 1000 m row, at 31 km.
         [Fact]
         public void The_launch_phase_cuts_off_well_under_20_degrees_above_the_horizon()

@@ -34,6 +34,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
                 "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
+            AddSuffix("LAUNCHPITCH", new OneArgsSuffix<Lexicon, Lexicon>(LaunchPitch,
+                "Core Library only (launch, each tick of the climb): the turn's pitch from alt, start_alt, end_alt, shape, speed, prograde, q, accel and g_net; lexicon error, pitch (degrees above the horizon), thin"));
             AddSuffix("BURNTHROUGH", new OneArgsSuffix<Lexicon, Lexicon>(BurnThrough,
                 "Core Library only (launch, at its first cutoff and each tick of a burn-through): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, altitude, target_ap, atm_height, angle, stages, turn and burning; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap, climb, time_left"));
             AddSuffix("BURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(BurnTimeCall,
@@ -805,6 +807,19 @@ namespace ClaudiaKerman.KOS
             }, () => heading["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "heading {0:0.00}", heading["heading"])
                 : (string)heading["error"], 2);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:LAUNCHPITCH</c> (#978, ADR 0014): launch's turn law (<see cref="LaunchTurn.Call"/>), pure, every tick of the climb; its log line every 2 s, with the slowest call's time.</summary>
+        private Lexicon LaunchPitch(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> turn = null;
+            return (Lexicon)Guarded("LAUNCHPITCH", () =>
+            {
+                turn = LaunchTurn.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(turn);
+            }, () => turn["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "pitch {0:0.00}{1}", turn["pitch"], (bool)turn["thin"] ? " (thin air)" : "")
+                : (string)turn["error"], 2);
         }
 
         /// <summary>

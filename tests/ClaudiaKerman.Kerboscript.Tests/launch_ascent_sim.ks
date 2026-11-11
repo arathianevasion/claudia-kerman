@@ -88,13 +88,9 @@ function sim_ascent {
     if opt:hold and turn_start_alt >= 0 and launch_turn_held(q, opt:max_q, ratio) {
       set turn_start_alt to h.
     }
-    local pitch is 90.
-    if turn_start_alt >= 0 {
-      set pitch to launch_pitch(h, turn_start_alt, turn_end, opt:turn_shape).
-    }
-    if opt:thin and spd > 30 {
-      set pitch to launch_thin_pitch(pitch, prograde, q, launch_thin_lead()).
-    }
+    // launch's turn law, Core's as ADDONS:CLAUDIA:LAUNCHPITCH gives it (#978); a huge q leaves the thin-air rule out.
+    local pitch is test_launch_pitch(lexicon("alt", h, "start_alt", turn_start_alt, "end_alt", turn_end, "shape", opt:turn_shape, "speed", spd,
+      "prograde", prograde, "q", choose q if opt:thin else 1e12, "ratio", ratio, "accel", thrust * tset / m, "g_net", mu / r ^ 2 - vt ^ 2 / r)):pitch.
     if q > launch_aero_q() and spd > 30 {
       local allowed is launch_allowed_aoa(opt:max_aoa, q, launch_aoa_q_ref()).
       set pitch to max(prograde - allowed, min(prograde + allowed, pitch)).

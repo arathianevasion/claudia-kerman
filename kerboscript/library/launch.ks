@@ -28,8 +28,8 @@
 //|   max_aoa [5]: most degrees the nose may be off the airflow while the air is thick enough to matter
 //|     (over 500 Pa dynamic pressure), all the way up and through the coast; above 8000 Pa the angle
 //|     allowed falls in proportion to q (a tenth of max_aoa at the least).
-//|     In thin air (under 500 Pa) the nose is held no more than 3 degrees below the prograde, so the
-//|     upper turn follows the trajectory instead of the pitch program.
+//|     In thin air (under 500 Pa) the nose is held no more than 3 degrees below the prograde, but a
+//|     strong craft low down may go lower, as long as it still climbs.
 //|   throttle_max_q ["none"]: Pa of dynamic pressure to throttle back at (to 5% at most; in thick
 //|     air never below the craft's weight). While it holds the throttle back in thick air the turn
 //|     waits: too slow to turn over without falling, the craft climbs as steeply as max_aoa lets it.
@@ -89,17 +89,6 @@ function launch_unreadable {
   return "".
 }
 
-// The pitch (degrees above the horizon) at altitude h (m) of a turn that starts at start_alt and
-// ends flat at end_alt: 90 * (1 - fraction^shape); a smaller shape turns over sooner.
-function launch_pitch {
-  parameter h, start_alt, end_alt, shape.
-  if h <= start_alt or end_alt <= start_alt {
-    return 90.
-  }
-  local fraction is min(1, (h - start_alt) / (end_alt - start_alt)).
-  return 90 * (1 - fraction ^ shape).
-}
-
 // Whether the turn waits at dynamic pressure q_now (Pa) and pressure_ratio of surface pressure:
 // while max_q (Pa, -1 for no limit) has the throttle easing back (from 90% of it, as launch_throttle
 // eases) in thick air, the craft is too slow to turn over without its path falling with it (#235),
@@ -141,7 +130,7 @@ function launch_throttle {
 
 // The phase of the climb, for its trace (#531), named as plan_ascent's sim names it: "coast" with the throttle off; "vertical"
 // before the turn starts; "turn_held" while throttle_max_q holds the turn (see launch_turn_held); "thin_air" when the thin-air rule
-// raised the pitch (launch_thin_pitch); otherwise "turn". Pure.
+// raised the pitch (Core's LAUNCHPITCH says thin); otherwise "turn". Pure.
 function launch_phase {
   parameter coasting, turn_started, held, thin.
   if coasting {
@@ -212,22 +201,6 @@ function launch_allowed_aoa {
     return max_aoa.
   }
   return max(max_aoa * 0.1, max_aoa * q_ref / q_pa).
-}
-
-// Degrees the commanded pitch may be below the surface-prograde pitch in thin air (#236).
-function launch_thin_lead {
-  return 3.
-}
-
-// pitch (degrees above the horizon) raised, in thin air (q_pa under launch_aero_q, where max_aoa
-// does not apply), to no lower than lead degrees below prograde_pitch, so the upper turn follows
-// the trajectory; otherwise pitch as it was (#236).
-function launch_thin_pitch {
-  parameter pitch, prograde_pitch, q_pa, lead.
-  if q_pa > launch_aero_q() {
-    return pitch.
-  }
-  return max(pitch, prograde_pitch - lead).
 }
 
 // The body's values, each option's own or, for "body", the game's: lexicon("g", m/s^2,
@@ -529,16 +502,15 @@ function launch {
     local want is ship:up:vector.
     local pitch is 90.
     if not coasting and not burn_through {
-      if turn_start_alt >= 0 {
-        set pitch to launch_pitch(altitude, turn_start_alt, turn_end, opt:turn_shape).
-      }
+      // The turn law is Core's (#978): the pitch program, held near the prograde in thin air but for thrust to spare (g_net is gravity less what the orbit holds up).
+      local rad is body:radius + altitude.
+      local turn is addons:claudia:launchpitch(lexicon("alt", altitude, "start_alt", turn_start_alt, "end_alt", turn_end, "shape", opt:turn_shape, "speed", spd,
+        "prograde", 90 - vang(ship:srfprograde:vector, ship:up:vector), "q", q_pa, "ratio", ratio, "accel", ship:availablethrust * tset / ship:mass,
+        "g_net", body:mu / rad ^ 2 - vxcl(ship:up:vector, ship:velocity:orbit):sqrmagnitude / rad)).
+      set pitch to turn:pitch.
+      set thin to turn:thin.
       if into_plane {
         set hdg to launch_heading(go:inc, target_ap):heading.
-      }
-      if spd > 30 {
-        local lifted is launch_thin_pitch(pitch, 90 - vang(ship:srfprograde:vector, ship:up:vector), q_pa, launch_thin_lead()).
-        set thin to lifted > pitch.
-        set pitch to lifted.
       }
       set want to heading(hdg, pitch):vector.
     } else if spd > 30 {
