@@ -771,12 +771,9 @@ namespace ClaudiaKerman.KOS
         private ScalarValue FallEtaCall(Lexicon input)
         {
             var eta = -1.0;
-            Guarded("FALLETA", () =>
-            {
-                eta = BlockCalls.FallEta(KosValues.ToDictionary(input));
-                return new Lexicon();
-            }, () => eta < 0 ? "never" : string.Format(CultureInfo.InvariantCulture, "{0:0} s", eta));
-            return ScalarValue.Create(eta);
+            var answer = Guarded("FALLETA", () => ScalarValue.Create(eta = BlockCalls.FallEta(KosValues.ToDictionary(input))),
+                () => eta < 0 ? "never" : string.Format(CultureInfo.InvariantCulture, "{0:0} s", eta));
+            return answer as ScalarValue ?? ScalarValue.Create(-1);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:ENTRYTRIM</c> (#892): <see cref="BlockCalls.EntryTrim"/> with this planet's air and the craft reentry flies; the log line is the decision.</summary>

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using ClaudiaKerman.Core.Missions;
 
 namespace ClaudiaKerman.Core.Tools
 {
@@ -26,7 +27,7 @@ namespace ClaudiaKerman.Core.Tools
             if (!(mu > 0) || ecc < 0) return -1;
             var closed = ecc < 1;
             if (closed ? sma <= 0 : (ecc == 1 || sma >= 0)) return -1;
-            var nu = Wrap180(ta) * Math.PI / 180;
+            var nu = LandingSiteSearch.Wrap180(ta) * Math.PI / 180;
             var semiLatus = sma * (1 - ecc * ecc);
             // Past a hyperbola's asymptote is no point on the path.
             if (1 + ecc * Math.Cos(nu) <= 0) return -1;
@@ -39,34 +40,14 @@ namespace ClaudiaKerman.Core.Tools
             var nuFall = -Math.Acos(Math.Max(-1, cosFall));
             if (closed)
             {
-                var ahead = FallMean(ecc, nuFall) - FallMean(ecc, nu);
+                var ahead = ShipSystemsRule.MeanAnomaly(nuFall, ecc) - ShipSystemsRule.MeanAnomaly(nu, ecc);
                 ahead = ((ahead % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
                 return ahead * Math.Sqrt(sma * sma * sma / mu);
             }
             // A hyperbola comes down only before periapsis: outbound, it climbs away for good.
             if (nu >= 0) return -1;
-            var dt = (FallMean(ecc, nuFall) - FallMean(ecc, nu)) / Math.Sqrt(mu / Math.Pow(-sma, 3));
+            var dt = (ShipSystemsRule.MeanAnomaly(nuFall, ecc) - ShipSystemsRule.MeanAnomaly(nu, ecc)) / Math.Sqrt(mu / Math.Pow(-sma, 3));
             return dt >= 0 ? dt : -1;
-        }
-
-        /// <summary>The mean anomaly, radians, for a true anomaly <paramref name="nu"/> in radians: by Kepler's equation for a closed orbit, by the hyperbolic one past it.</summary>
-        private static double FallMean(double ecc, double nu)
-        {
-            if (ecc < 1)
-            {
-                var eccentric = 2 * Math.Atan2(Math.Sqrt(1 - ecc) * Math.Sin(nu / 2), Math.Sqrt(1 + ecc) * Math.Cos(nu / 2));
-                return eccentric - ecc * Math.Sin(eccentric);
-            }
-            var x = Math.Sqrt((ecc - 1) / (ecc + 1)) * Math.Tan(nu / 2);
-            var hyperbolic = Math.Log((1 + x) / (1 - x));
-            return ecc * Math.Sinh(hyperbolic) - hyperbolic;
-        }
-
-        /// <summary><paramref name="degrees"/> brought into (-180, 180].</summary>
-        private static double Wrap180(double degrees)
-        {
-            var d = ((degrees % 360) + 360) % 360;
-            return d > 180 ? d - 360 : d;
         }
     }
 }
