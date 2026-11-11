@@ -115,6 +115,23 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", ScienceFold.Line(RevisedLanded().Take(5).ToList(), 5));
         }
 
+        [Theory]
+        [InlineData("Crew report (landed)")]
+        [InlineData("Crew report after landing")]
+        [InlineData("Crew report after touchdown")]
+        public void ACrewReportNamedForWhereTheCraftAlreadyIsStillFolds(string name)
+        {
+            var legs = With(4, s => s.Name = name);
+            Assert.StartsWith("Step 5 \"" + name + "\" is science only", ScienceFold.Line(legs, 5));
+        }
+
+        [Fact]
+        public void AStepThatLandsAndReportsIsNoScienceOnlyStep()
+        {
+            // 0 m/s on chutes alone is still a landing.
+            Assert.Equal("", ScienceFold.Line(With(4, s => s.Name = "Land on chutes and send a crew report"), 5));
+        }
+
         [Fact]
         public void TheCraftIsTheSameVesselWhetherNamedOrLeftBlank()
         {

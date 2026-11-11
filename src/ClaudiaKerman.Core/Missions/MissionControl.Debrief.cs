@@ -607,9 +607,9 @@ namespace ClaudiaKerman.Core.Missions
                 });
                 return;
             }
-            var offNominal = debrief.Outcome == "Off-Nominal";
-            // #983: a corrective sequence retries the step begun, so only a Nominal one moves on to the next.
-            Begin(NextSequenceTurn(offNominal, offNominal ? "" : FoldLine(mission, StepsBegun(mission) + 1)));
+            // #983: a corrective sequence flies the step begun again; any other follow-up moves on to the next.
+            var fold = debrief.FollowUp == FollowUps.CorrectiveSequence ? "" : FoldLine(mission, StepsBegun(mission) + 1);
+            Begin(NextSequenceTurn(debrief.Outcome == "Off-Nominal", fold));
         }
 
         /// <summary>The Sequence Plan request after a Debrief; also the probe the Auto Mode room check prices (MissionControl.AutoMode.cs).</summary>

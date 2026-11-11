@@ -51,11 +51,14 @@ namespace ClaudiaKerman.Core.Missions
                 && !Acts(leg.Name);
         }
 
-        /// <summary>The name says the sequence flies somewhere (the intent may well say "landed pod").</summary>
+        /// <summary>Where the craft already is ("Crew report (landed)", "after touchdown"): no action of the step's own.</summary>
+        private static readonly Regex AlreadyThere = new Regex(@"\b(landed|after (the )?(landing|touch ?down))\b", RegexOptions.IgnoreCase);
+
+        /// <summary>The name says the sequence flies somewhere (the intent may well say "landed pod", so it isn't read).</summary>
         private static bool Acts(string name)
         {
-            return SequenceWords.Surface.IsMatch(name) || SequenceWords.Trip.IsMatch(name) || SequenceWords.Capture.IsMatch(name) || SequenceWords.Reentry.IsMatch(name)
-                || SequenceWords.Aero.IsMatch(name) || SequenceWords.Flyby.IsMatch(name) || SequenceWords.Docking.IsMatch(name) || SequenceWords.ReturnHome.IsMatch(name);
+            var words = AlreadyThere.Replace(name, "");
+            return SequenceWords.Acts(words) || SequenceWords.Docking.IsMatch(words);
         }
 
         private static string Vessel(PlannedSequence leg)

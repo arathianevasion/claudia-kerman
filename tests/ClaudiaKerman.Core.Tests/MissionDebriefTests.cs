@@ -1352,6 +1352,22 @@ namespace ClaudiaKerman.Core.Tests
             Assert.StartsWith("Continue the Mission.\nStep 2 \"Crew report at Duna\" is science only, 0 m/s, where step 3 \"Ascend from Duna\" starts: fly it as the first lines of step 3's script (plan_step 3), not as a sequence of its own.\n", text);
         }
 
+        [Theory]
+        [InlineData(",\"follow_up\":\"none\",\"follow_up_text\":\"\"", true)]
+        [InlineData(",\"follow_up\":\"corrective_sequence\",\"follow_up_text\":\"Fly it again.\"", false)]
+        public void AnOffNominalDebriefThatMovesOnCarriesTheFoldLineAndACorrectiveSequenceDoesNot(string followUp, bool folds)
+        {
+            // The flight's landing was Off-Nominal (809 m/s against 700); only a corrective sequence flies the step begun again.
+            var plan = DunaPlanReply(("Link check", "Prove the link.", 0), CrewReport, Ascent);
+            var rig = new Rig(this, DebriefJson("Off-Nominal", followUp), plan: plan);
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 4 && v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(folds, LastUserText(rig.Transport.Requests[3]).Contains("Step 2 \"Crew report at Duna\" is science only"));
+        }
+
         [Fact]
         public void TheNextSequenceRequestWithNoScienceStepNextHasNoFoldLine()
         {
