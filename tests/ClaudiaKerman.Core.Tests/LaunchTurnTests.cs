@@ -54,8 +54,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False(thin);
         }
 
-        // #978: Duna's craft (thrust-to-weight 3.5) turns at the start under 500 Pa, down to where its thrust still holds its vertical speed:
-        // asin(1 / 3.5), 16.6 degrees.
+        // #978: Duna's craft (thrust-to-weight 3.5) turns under 500 Pa, once the prograde has come down far enough, to where its thrust still
+        // holds its vertical speed: asin(1 / 3.5), 16.6 degrees.
         [Theory]
         [InlineData(80, 88, 80)]
         [InlineData(10, 25, 16.6)]

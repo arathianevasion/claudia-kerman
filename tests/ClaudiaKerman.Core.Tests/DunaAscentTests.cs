@@ -24,6 +24,7 @@ namespace ClaudiaKerman.Core.Tests
         private const double ThrustKn = 180;
         private const double Gm = 301363211975.0977;
         private const double Radius = 320000;
+        private const double Pad = 2941;
         private readonly ITestOutputHelper _out;
 
         public DunaAscentTests(ITestOutputHelper output)
@@ -88,7 +89,7 @@ namespace ClaudiaKerman.Core.Tests
             var options = new AscentOptions
             {
                 Gm = Gm, Radius = Radius, AtmosphereHeight = 50000, SeaLevelAtm = 0.0666666677961107, Spin = 2 * Math.PI * Radius / 65517.859375,
-                StartAltitude = 2941, TargetAp = 60000, TurnShape = shape, Track = true,
+                StartAltitude = Pad, TargetAp = 60000, TurnShape = shape, Track = true,
             };
             var flight = AscentSim.Fly(options, new BodyAir(Duna()), Drag(), Stages());
             var cut = Cutoff(flight);
@@ -144,7 +145,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_kilometre_above_the_pad_the_climb_is_still_steep()
         {
-            var row = Fly(0.05).Track.First(r => r[0] >= 2941 + 1000);
+            var row = Fly(0.05).Track.First(r => r[0] >= Pad + 1000);
             Assert.True(90 - row[2] > 60, "prograde " + (90 - row[2]) + " degrees above the horizon at " + row[0] + " m");
         }
     }

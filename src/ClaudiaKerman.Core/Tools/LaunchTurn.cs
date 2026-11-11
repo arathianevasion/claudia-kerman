@@ -12,7 +12,8 @@ namespace ClaudiaKerman.Core.Tools
     /// nose is held no more than 3 degrees below the surface prograde (#236), so the upper turn follows its trajectory. Low in the air (over
     /// a tenth of the surface pressure, where q is under 500 Pa only because the craft is still slow) a craft with thrust to spare may go
     /// lower, down to the pitch at which its thrust still holds its vertical speed against gravity but no more than <see cref="ThickLead"/>
-    /// degrees below the prograde (the sim turns the nose at once; the flight's steering doesn't): on Duna, where the turn starts under 500 Pa, that lets the turn's first kick happen at all, and the climb no longer goes up nearly straight. On Kerbin's pad the air is
+    /// degrees below the prograde (the sim turns the nose at once; the flight's steering doesn't): on Duna, where the turn starts under
+    /// 500 Pa, that lets the turn's first kick happen at all, and the climb no longer goes up nearly straight. On Kerbin's pad the air is
     /// over 500 Pa from 29 m/s, before the turn starts, so nothing there changes.
     /// </summary>
     public static class LaunchTurn
