@@ -107,6 +107,21 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void WithNoPartsToWeighALowerStaleStageStartsAtMostAtTheEndMassOfTheStageAbove()
+        {
+            var snapshot = AfterAscent();
+            snapshot.Craft.Parts.Clear();
+            var three = snapshot.Stages.Single(s => s.Number == 3);
+            three.StartMassT = 12.2;
+
+            StaleStageReading.Freshen(snapshot);
+
+            // Stage 4 burns first and is let go at 8.49 t: stage 3 can't start heavier than that.
+            Assert.Equal(8.4898147583007813, three.StartMassT, 6);
+            Assert.Equal(snapshot.Craft.MassTonnes, snapshot.Stages.Single(s => s.Number == 4).StartMassT, 6);
+        }
+
+        [Fact]
         public void PropellantThatDoesNotCoverTheGoodStagesFallsBackToTheCraftsMass()
         {
             var snapshot = AfterAscent();

@@ -29,8 +29,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// Gives each stale stage a fresh start mass and the delta-v that goes with it. The start mass is its end mass plus the
         /// propellant the craft's engines burn that the stages stock read right don't account for, given first to the stages that
-        /// burn last; it never goes above the stale figure or the craft's mass. With no parts to weigh, the craft's mass is the
-        /// start. The Isp is the stage's own, read back from its stale figures, so the vacuum and sea-level delta-v scale alike.
+        /// burn last; it never goes above the stale figure, the craft's mass or the end mass of the stage above. With no parts to
+        /// weigh, those bounds are the start. The Isp is the stage's own, read back from its stale figures, so the vacuum and sea-level delta-v scale alike.
         /// </summary>
         public static void Freshen(GameSnapshot snapshot)
         {
@@ -47,6 +47,9 @@ namespace ClaudiaKerman.Core.Missions
             foreach (var stage in stale.OrderBy(s => s.Number))
             {
                 var start = Math.Min(stage.StartMassT, craft);
+                // A stage can't start heavier than the stage that burns before it ends.
+                var above = snapshot.Stages.Where(s => s.Number > stage.Number && s.EndMassT > 0).OrderBy(s => s.Number).FirstOrDefault();
+                if (above != null) start = Math.Min(start, above.EndMassT);
                 if (left.HasValue)
                 {
                     var burn = Math.Max(0, Math.Min(left.Value, stage.StartMassT - stage.EndMassT));
