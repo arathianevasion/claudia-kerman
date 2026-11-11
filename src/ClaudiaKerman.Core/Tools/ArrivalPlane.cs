@@ -69,7 +69,7 @@ namespace ClaudiaKerman.Core.Tools
         public const string NoneSource = "none";
 
         public string Arrival = "";
-        /// <summary>Who picked it: "number", "body", "vessel", "target_vessel", "site" or "moon".</summary>
+        /// <summary>Who picked it: "number", "body", "vessel", "target_vessel", "site", "moon", or "home" for a trip home's far-out aim (#986).</summary>
         public string Source = "";
         /// <summary>The whole plane, a unit vector along the angular momentum wanted; null when only the inclination is asked.</summary>
         public Vec3? Normal;
@@ -200,6 +200,8 @@ namespace ClaudiaKerman.Core.Tools
         private static readonly Regex LatLng = new Regex(@"\(\s*(-?\d+(?:\.\d+)?)\s*°?\s*,\s*-?\d+(?:\.\d+)?\s*°?\s*\)");
         /// <summary>A pole in a leg's or goal's words (#806); "non-polar" and "pole-mounted" are not.</summary>
         private static readonly Regex PoleWord = new Regex(@"(?<!\w)(?<!non-)(poles?|polar)(?!\w)(?!-mounted)", RegexOptions.IgnoreCase);
+        /// <summary>The equator in a leg's words (#986): "equator", "equatorial"; "non-equatorial" is not.</summary>
+        private static readonly Regex EquatorWord = new Regex(@"(?<![\w-])equator(ial)?(?!\w)", RegexOptions.IgnoreCase);
         private static readonly char[] ClauseEnds = { ',', '.', ';' };
 
         /// <summary>
@@ -253,9 +255,29 @@ namespace ClaudiaKerman.Core.Tools
                 }
                 return OfBody(system, arrival, named, "body");
             }
-            // Only Claudia's own value applies to a trip that ends in reentry.
-            if (ArrivalRule.EndsInReentry(snapshot, arrival.Name, legs.Skip(1))) return null;
+            // Only Claudia's own value applies to a trip that ends in reentry. A leg in hand that names its capture ends in orbit, whatever lands after it (#986).
+            if (ArrivalRule.EndsInReentry(snapshot, arrival.Name) || !CapturesHere(legs) && ArrivalRule.EndsInReentry(snapshot, arrival.Name, legs.Skip(1))) return null;
             return OfTargetVessel(snapshot, arrival) ?? OfLegs(snapshot, system, arrival, legs);
+        }
+
+        /// <summary>Whether the leg in hand's words name a capture into orbit, not an aerocapture: "coast to Duna, and capture into a 60 km orbit".</summary>
+        private static bool CapturesHere(IList<PlannedSequence> legs)
+        {
+            if (legs.Count == 0) return false;
+            var words = SequenceWords.Of(legs[0]);
+            return SequenceWords.Capture.IsMatch(words) && !SequenceWords.Aero.IsMatch(words);
+        }
+
+        /// <summary>
+        /// #986: the plane a trip home aims for far out, the landing's (KSC, at 0.1° S: the equator), prograde; null for none. It is not the arrival plane: inside the
+        /// sphere of influence the landing aim (#915) flies, and a trip that ends in reentry records none for <c>capture</c>.
+        /// </summary>
+        public static ArrivalPlane Home(GameSnapshot snapshot, SnapshotBody arrival, double targetPe)
+        {
+            var landing = HomeLanding.ArrivalLanding(snapshot, arrival.Name, targetPe);
+            if (landing == null) return null;
+            var latitude = Math.Abs(landing.Latitude);
+            return new ArrivalPlane { Arrival = arrival.Name, Source = "home", Inc = latitude < ArrivalPlane.SiteMargin ? 0 : Math.Min(90, latitude + ArrivalPlane.SiteMargin) };
         }
 
         private static ArrivalPlane OfBody(BodySystem system, SnapshotBody arrival, SnapshotBody body, string source)
@@ -394,11 +416,15 @@ namespace ClaudiaKerman.Core.Tools
             return body != null && system.Parent(body) == arrival ? OfBody(system, arrival, body, "moon") : null;
         }
 
-        /// <summary>The landing leg's site, or none: its inclination is |latitude| + <see cref="ArrivalPlane.SiteMargin"/>, prograde; an equatorial site sets no target.</summary>
+        /// <summary>
+        /// The landing leg's site, or none: its inclination is |latitude| + <see cref="ArrivalPlane.SiteMargin"/>, prograde. An equatorial site sets no target, unless the leg's
+        /// words say the equator (#986): then the equator itself, 0.
+        /// </summary>
         private static ArrivalPlane OfSite(GameSnapshot snapshot, SnapshotBody arrival, PlannedSequence leg)
         {
             var latitude = SiteLatitude(snapshot, arrival, leg);
-            return latitude.HasValue ? AtLatitude(arrival, latitude.Value) : null;
+            if (latitude.HasValue && Math.Abs(latitude.Value) >= ArrivalPlane.SiteMargin) return AtLatitude(arrival, latitude.Value);
+            return EquatorWord.IsMatch(SequenceWords.Of(leg)) ? new ArrivalPlane { Arrival = arrival.Name, Source = "site", Inc = 0 } : null;
         }
 
         private static double? SiteLatitude(GameSnapshot snapshot, SnapshotBody arrival, PlannedSequence leg)
@@ -413,7 +439,8 @@ namespace ClaudiaKerman.Core.Tools
             var pair = LatLng.Match(words);
             double latitude;
             if (pair.Success && double.TryParse(pair.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out latitude)) return latitude;
-            return WordsLatitude(snapshot, arrival, words) ?? GoalLatitude(snapshot, arrival);
+            // The leg's own equator comes before the Mission Goal's pole or biome (#986).
+            return WordsLatitude(snapshot, arrival, words) ?? (EquatorWord.IsMatch(words) ? 0 : GoalLatitude(snapshot, arrival));
         }
     }
 }

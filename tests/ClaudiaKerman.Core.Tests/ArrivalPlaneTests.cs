@@ -163,7 +163,8 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_moon_s_whole_plane_through_the_approach_is_reached_inclination_and_LAN()
         {
-            // Ike's plane, moved so it holds this approach: at Duna the trim then reaches it within half a degree.
+            // Ike's plane, moved so it holds this approach. #986: the Course Correction far out turns the approach into it about the asymptote, for 0.29 m/s; what is
+            // left is the asymptote's offset from the entry point (0.75 degrees here), whose trim inside, under 0.1 m/s, isn't flown: capture takes it up.
             var approach = EntryOf("Kerbin", 100000, "Duna", 60000).Normalized;
             var rig = TransferRig.Circular("Kerbin", 100000, 0);
             var normal = Vec3.Cross(approach, new Vec3(0.2, 0.1, 0.9)).Normalized;
@@ -171,8 +172,8 @@ namespace ClaudiaKerman.Core.Tests
             Elements(normal, out inc, out lan);
             var step = rig.Run(Ask("Duna", 60000, new Dictionary<string, object> { { "inc", inc }, { "lan", lan }, { "name", "Ike's stand-in" }, { "status", "ORBITING" } }), 30);
             Assert.True(step.Error == "", step.Error + " | " + Flown(rig));
-            Assert.True(ArrivalPlane.Angle(rig.Orbit.W, normal) <= 0.5, ArrivalPlane.Angle(rig.Orbit.W, normal) + " | " + Flown(rig));
-            Assert.True(rig.Burned("plane") < 25, Flown(rig));
+            Assert.True(ArrivalPlane.Angle(rig.Orbit.W, normal) <= 1, ArrivalPlane.Angle(rig.Orbit.W, normal) + " | " + Flown(rig));
+            Assert.True(AfterEjection(rig) < 25, Flown(rig));
         }
 
         [Fact]

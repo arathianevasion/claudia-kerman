@@ -733,9 +733,11 @@ namespace ClaudiaKerman.Core.Tools
             var enc = Encounter(setup);
             if (enc == null) return Recover(snapshot, setup, ask, Lost(setup.Target));
             var far = Far(setup, ask);
-            // To a moon the halfway burn sets the plane too: its sphere of influence is small, and a change of plane inside it costs twice as much (#788).
-            // A burn that size swings a moon's slow approach by some degrees, so a whole plane can come out of the trim that far off; capture takes that up.
-            var plane = !far && setup.Body != setup.Target && ask.Plane != null && ask.Plane.OffBy(enc.Normal) > PlaneClose;
+            // The halfway burn sets the plane too: to a moon, whose sphere of influence is small, a change of plane inside it costs twice as much (#788); to a planet far out it
+            // costs next to nothing, and the trim inside is then a trim (#986). A burn that size swings a moon's slow approach by some degrees, so a whole plane can come out of the
+            // trim that far off; capture takes that up. A trip home aims far out for its landing's plane (#986), and inside for the landing itself (#915).
+            var aim = ask.Plane ?? (far && (ask.PlaneOption ?? PlaneOption.Auto).IsAuto ? ArrivalPlanes.Home(snapshot, setup.Target, ask.TargetPe) : null);
+            var plane = setup.Body != setup.Target && aim != null && aim.OffBy(enc.Normal) > PlaneClose;
             if (!plane && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
             string late;
             var lead = ask.TurnTime + Lead;
@@ -744,10 +746,10 @@ namespace ClaudiaKerman.Core.Tools
             if (late != "") return ask.MidUt >= 0 || plane && Within(enc.Pe - ask.TargetPe, ask.PeTolerance) ? Go(ask, MidCheck) : Fail(late);
             var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk
             {
-                Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, TargetNormal = plane ? ask.Plane.Through(enc.Approach, enc.Normal).Normal : (Vec3?)null,
+                Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, TargetNormal = plane ? aim.Through(enc.Approach, enc.Normal).Normal : (Vec3?)null,
             });
-            // One the solver can't aim, or the craft can't pay for: the plane waits for the trim, and the plain correction flies.
-            if (plane && (!fix.HasBurn || fix.Error != null || PlaneOverDvLeft(ask, fix, enc, setup.Target)))
+            // One the solver can't aim, or the craft can't pay for: the plane waits for the trim, and the plain correction flies. A trip home pays for no capture.
+            if (plane && (!fix.HasBurn || fix.Error != null || (ask.Plane == null ? OverDvLeft(ask, fix) : PlaneOverDvLeft(ask, fix, enc, setup.Target))))
             {
                 if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
                 fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
