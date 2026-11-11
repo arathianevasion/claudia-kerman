@@ -581,6 +581,23 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AScriptKosRefusedInABlackoutStartsAgainButIsLoggedAndListedOnce()
+        {
+            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
+            mission.Send(Snapshot(s => s.HasLink = false));
+            mission.Send(new UtAdvanced(1250));
+            var first = Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            // Back in hand, it is approved again as any plan in a Blackout is.
+            mission.Send(new KosRunRefused("busy", first.RunId));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
+            mission.Send(OnPad());
+            var card = Assert.Single(mission.View.Log, e => e.Title == "While there was no link");
+            Assert.Single(card.Text.Split('\n'), l => l.Contains("flown without Approval"));
+        }
+
+        [Fact]
         public void AWarpedToDueTimeRefusedAtArrivalCallsThePlayerWithNoApprovedLine()
         {
             var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));

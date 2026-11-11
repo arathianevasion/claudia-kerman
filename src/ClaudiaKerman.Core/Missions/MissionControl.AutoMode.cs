@@ -32,6 +32,8 @@ namespace ClaudiaKerman.Core.Missions
             /// again once a processor is there, and once more when the link returns (not saved).
             /// </summary>
             public object AutoModeApprovedFor;
+            /// <summary>The plan whose run an Approval in advance last started: one kOS refused and that starts again is not logged or listed twice (not saved).</summary>
+            public object AutoModeStartedFor;
             /// <summary>
             /// Auto Mode re-planned an unsafe script, and no plan has passed the Script Check since: a second failure waits
             /// for the player (not saved).
@@ -188,7 +190,8 @@ namespace ClaudiaKerman.Core.Missions
             object inHand = missionPlan ? (object)mission.Plan : plan;
             if (mission.AutoModeApprovedFor == inHand)
             {
-                // Approval refused it (no processor to run it on). Linked, it waits for the player, called at a Due Time Auto Mode took.
+                // Approved in advance before and back in hand: Approval refused it (no processor to run it on), or kOS refused
+                // the script. Linked, it waits for the player, called at a Due Time Auto Mode took.
                 if (!mission.Blackout)
                 {
                     if (atDue) WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
@@ -196,7 +199,7 @@ namespace ClaudiaKerman.Core.Missions
                 }
                 // In a Blackout it is tried again only once a processor is there to run it, so the refusal is logged once.
                 string refusal;
-                if (!missionPlan && !SequenceProcessor(mission, plan, out refusal).HasValue) return;
+                if (!missionPlan && !ProcessorOrRefusal(mission, plan, out refusal).HasValue) return;
             }
             var stale = StaleBecause(mission);
             if (!mission.Blackout && !AutoModeRoom(mission, inHand, stale.Length > 0 ? ReplanTurn(stale, missionPlan) : null))
@@ -212,24 +215,25 @@ namespace ClaudiaKerman.Core.Missions
             }
             mission.AutoModeApprovedFor = inHand;
             if (!mission.Blackout) RetractPlanNews();
-            var at = mission.Log.Count;
+            // Before Approval's own lines, and taken back if it didn't start the run. A Blackout says so only at a Due Time Auto Mode took.
+            var note = mission.Blackout && !atDue ? null : Note(LogKind.Notice, atDue ? AutoModeApprovedAtDueNote : AutoModeApprovedNote);
             Approval();
             var started = missionPlan ? mission.Stage != MissionStage.AwaitingPlanApproval : mission.Stage == MissionStage.Running;
-            if (!started)
+            // Started again after kOS refused the script: it was logged and listed the first time.
+            var again = started && mission.AutoModeStartedFor == inHand;
+            if (started) mission.AutoModeStartedFor = inHand;
+            if (!started || again)
             {
-                // Refused, and still in hand: no "Approved" line and nothing listed as flown.
-                if (atDue && !mission.Blackout && mission.PendingSequence == plan) WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
+                if (note != null) mission.Log.Remove(note);
+                // Refused, and still in hand: nothing says it was approved or flown, and at a Due Time Auto Mode took the player is called.
+                if (!started && atDue && !mission.Blackout && mission.Stage == MissionStage.AwaitingSequenceApproval && mission.PendingSequence == plan)
+                    WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
                 return;
             }
             if (mission.Blackout)
                 mission.BlackoutRevisions.Add(missionPlan
                     ? "Mission Plan revised: " + mission.Plan.Why
                     : "Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " flown without Approval: " + plan.Why);
-            // A Blackout says so only at a Due Time Auto Mode took; the line goes where it was before Approval's own lines.
-            if (mission.Blackout && !atDue) return;
-            var note = Note(LogKind.Notice, atDue ? AutoModeApprovedAtDueNote : AutoModeApprovedNote);
-            mission.Log.Remove(note);
-            mission.Log.Insert(System.Math.Min(at, mission.Log.Count), note);
         }
 
         /// <summary>
