@@ -35,13 +35,13 @@ namespace ClaudiaKerman.Core.Missions
         /// True when the Mission Plan (<paramref name="plan"/>, null: none) has no landing still to fly from the sequence in hand
         /// (<paramref name="step"/>, -1 before the first) on, that one included. A landing, read from the words as <see cref="SequenceWords"/>
         /// reads them: land or touch down, a deorbit, a reentry, or descend / descent, manual legs too. A landing on Kerbin is never one,
-        /// whatever its words (the player's ruling): a step that comes down at Kerbin or a place on it (KSC; <see cref="SequenceWords.KerbinDown"/>),
-        /// or returns home, is one only when it comes down on another stock body it names (<see cref="SequenceWords.IsLandingSite"/>). "Reentry at Kerbin", "Land at KSC" and
-        /// "Deorbit and splash down on Kerbin" aren't; "Deorbit to the Mun crater, then return to Kerbin and
-        /// land" and "Leave Mun orbit and land at the crater, then return to Kerbin" land on the Mun; "Return from the Mun to Kerbin and land"
-        /// and "Eject from Duna orbit at the soonest Duna-to-Kerbin window, ... then reenter and land" don't. A step that does neither
-        /// (no body, an away body it doesn't tie the landing to: "Duna entry", or Kerbin only in passing: "Land with Kerbin overhead") is one. Name and intent read as separate sentences,
-        /// line breaks as spaces.
+        /// whatever its words (the player's ruling): a step that comes down at Kerbin or a place on it (KSC;
+        /// <see cref="SequenceWords.KerbinDown"/>), or returns home, is one only when it comes down on another stock body it names
+        /// (<see cref="SequenceWords.IsLandingSite"/>). "Reentry at Kerbin", "Land at KSC" and "Deorbit and splash down on Kerbin" aren't;
+        /// "Deorbit to the Mun crater, then return to Kerbin and land" and "Leave Mun orbit and land at the crater, then return to Kerbin"
+        /// land on the Mun; "Return from the Mun to Kerbin and land" and "Eject from Duna orbit at the soonest Duna-to-Kerbin window, ...
+        /// then reenter and land" don't. A step that does neither (no body, an away body it doesn't tie the landing to: "Duna entry", or
+        /// Kerbin only in passing: "Land with Kerbin overhead") is one. Name and intent read as separate sentences, line breaks as spaces.
         /// </summary>
         public static bool LegsFree(IList<PlannedSequence> plan, int step)
         {
