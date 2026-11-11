@@ -80,7 +80,7 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private bool CoastCheckRunsNow(Mission mission, SequencePlan plan)
         {
-            return mission == _mission && mission.Stage == MissionStage.AwaitingSequenceApproval && plan == mission.PendingSequence
+            return mission == _mission && !MissionOver && mission.Stage == MissionStage.AwaitingSequenceApproval && plan == mission.PendingSequence
                 && mission.CheckPending && CoastPlanToken(plan) != null && CraftActive && !mission.SwitchingAway && !mission.InFlight && mission.Pending == null;
         }
 
@@ -216,7 +216,7 @@ namespace ClaudiaKerman.Core.Missions
                 if (ElsewhereInFlight || _scene != GameScene.Flight) mission.CheckPending = true;
                 return;
             }
-            if (!CraftActive || mission.SwitchingAway || mission.InFlight || mission.Pending != null) return;
+            if (!CoastCheckRunsNow(mission, mission.PendingSequence)) return;
             mission.CheckPending = false;
             var verdict = CoastCheckpoints.Judge(_snapshot, token, _ut);
             Event(mission, "coast_check", verdict.Kind + ": " + verdict.Line);

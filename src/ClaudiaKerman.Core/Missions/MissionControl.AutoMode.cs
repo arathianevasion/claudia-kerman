@@ -159,7 +159,7 @@ namespace ClaudiaKerman.Core.Missions
                     return;
                 }
                 if (CrossingAwaitsRead(mission, plan)) return;
-                // Back in the craft at a coast checkpoint: its check, later in this input, decides (#775).
+                // Back in the craft at a coast checkpoint: its check, later in this input, decides (#775, #967).
                 if (CoastCheckRunsNow(mission, plan)) return;
                 if (CrossingHeld(mission, plan))
                 {
@@ -219,7 +219,9 @@ namespace ClaudiaKerman.Core.Missions
             {
                 if (note != null) mission.Log.Remove(note);
                 // Not refused: Approval moved the Due Time to the next window, or sent a re-plan or an Alert. Auto Mode takes the plan again at its new Due Time.
-                if (!started && (mission.InFlight || plan != null && plan.DueTimeUt != dueBefore))
+                // (A Due Time cleared for a window under 6 h off let the Approval carry on, so a plan still here then was refused.)
+                var movedOn = plan != null && plan.DueTimeUt.HasValue && plan.DueTimeUt != dueBefore;
+                if (!started && (mission.InFlight || movedOn))
                 {
                     mission.AutoModeApprovedFor = null;
                     return;
