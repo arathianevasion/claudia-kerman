@@ -81,6 +81,55 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(100, MissionView.Stamp(new GameSnapshot(), mission.View).LaterLegsDv.Value, 3);
         }
 
+        /// <summary>#983: the plan in force before the crew report (steps 1 to 4 flown), so the crew report folds into the ascent.</summary>
+        private static ScriptedResponse DunaPlanBeforeTheCrewReport()
+        {
+            var sequences = string.Join(",", PlanStepMatchTests.BeforeAscent().Select(s => "{\"name\":\"" + s.Name + "\",\"intent\":\"" + s.Intent.Replace("\"", "") + "\",\"delta_v\":"
+                + s.DeltaV.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"timing\":\"soon\",\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"craft\"}"));
+            return Reply("{\"kind\":\"mission_plan\",\"say\":\"Mission Plan.\",\"reply_intent\":\"none\","
+                + "\"mission_plan\":{\"why\":\"Duna and home.\",\"sequences\":[" + sequences + "],"
+                + "\"total_delta_v\":9000,\"expected_duration\":\"two years\",\"mission_time_s\":-1},\"sequence_plan\":null,\"debrief\":null}");
+        }
+
+        private static ScriptedResponse FoldedPlan(string name, string script)
+        {
+            return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                + "\"sequence_plan\":{\"name\":\"" + name + "\",\"plan_step\":5,\"intent\":\"Report, then reach a 60 km Duna orbit.\",\"why\":\"Next.\",\"target\":\"60 km orbit\","
+                + "\"tolerances\":\"Ap within 5 km\",\"expected_delta_v\":803,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
+                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"" + script + "\","
+                + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
+        }
+
+        private const string ScienceScript = "local sci is science(lexicon()). addons:claudia:report(sci).\\n";
+
+        [Fact]
+        public void TheCrewReportFoldedIntoTheAscentAndSentAsItsOwnStepFliesTheAscentsStep()
+        {
+            // "Crew report and ascend from Duna" names both steps 5 and 6; the script holds the launch, so it is the ascent, step 6.
+            var transport = new StreamingFakeTransport(DunaPlanBeforeTheCrewReport(), FoldedPlan("Crew report and ascend from Duna", ScienceScript + LaunchScript), Answer());
+            var mission = Control(transport);
+            ToAscent(mission, "Duna", 1203.48, "Fly to Duna, land, send a crew report and come home.");
+
+            Assert.Equal(6, mission.View.CurrentSequence + 1);
+            Assert.True(mission.View.DueTime.HasDueTime);
+            // The ascent's own 1,336 is flown now: later legs are the Kerbin transfer and the return.
+            Assert.Equal(1977 + 100, MissionView.Stamp(new GameSnapshot(), mission.View).LaterLegsDv.Value, 3);
+
+            mission.Send(new Missions.Reply("which step?"));
+            DrainUntil(mission, v => !v.Busy && transport.Requests.Count == 3);
+            Assert.Contains("plan_step 5 is \\\"Crew report at Duna\\\"; this plan flies step 6, \\\"Ascend from Duna\\\".", Messages(transport.Requests.Last()));
+        }
+
+        [Fact]
+        public void TheCrewReportFlownAloneStaysOnItsOwnStep()
+        {
+            var transport = new StreamingFakeTransport(DunaPlanBeforeTheCrewReport(), FoldedPlan("Crew report at Duna", ScienceScript));
+            var mission = Control(transport);
+            ToAscent(mission, "Duna", 1203.48, "Fly to Duna, land, send a crew report and come home.");
+
+            Assert.Equal(5, mission.View.CurrentSequence + 1);
+        }
+
         [Fact]
         public void APlanStepNamingItsOwnSequenceIsNotRemarked()
         {
