@@ -145,6 +145,9 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Come down from Mun orbit and land at the crater, then return to Kerbin.")]
         [InlineData("Depart Mun orbit for a powered descent to the crater, then return to Kerbin.")]
         [InlineData("Leaving Mun orbit, descend to the crater; later return to Kerbin.")]
+        // An air body's own reentry, with the return after the landing.
+        [InlineData("Duna: reenter and land on the plains, then return to Kerbin.")]
+        [InlineData("Aerobrake at Laythe, reenter and land, refuel, then return to Kerbin.")]
         public void LeavingAMoonsOrbitToLandThereIsALanding(string intent)
         {
             Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg("Second stop", intent) }, 0));

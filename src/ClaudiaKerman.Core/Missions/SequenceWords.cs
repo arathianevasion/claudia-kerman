@@ -25,26 +25,29 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// True when <paramref name="body"/>, a body named in a return home's <paramref name="words"/>, is where it comes down (#979): land,
         /// touch down, deorbit or descend in the same clause before it ("Descend from Mun orbit to the crater"), or after it before the next
-        /// reentry word or Kerbin ("Leave Mun orbit and land at the crater, then return to Kerbin"). Otherwise it is where the return comes
-        /// from: "Leave Mun orbit, then reenter and land", "Return from the Mun to Kerbin and land".
+        /// reentry word or Kerbin ("Leave Mun orbit and land at the crater, then return to Kerbin"). A reentry word doesn't stop it when a
+        /// return follows the landing: "Duna: reenter and land on the plains, then return to Kerbin" lands on Duna. Otherwise the body is
+        /// where the return comes from: "Leave Mun orbit, then reenter and land", "Return from the Mun to Kerbin and land".
         /// </summary>
         public static bool IsLandingSite(string words, Match body)
         {
             var before = words.Substring(0, body.Index);
             var clause = before.Substring(before.LastIndexOfAny(new[] { '.', ',', ';' }) + 1);
-            if (ComesDown(clause)) return true;
+            if (ComesDown.IsMatch(clause)) return true;
             var after = words.Substring(body.Index + body.Length);
-            var stop = HomeStop.Match(after);
-            return ComesDown(stop.Success ? after.Substring(0, stop.Index) : after);
+            var kerbin = KerbinWord.Match(after);
+            var down = ComesDown.Match(kerbin.Success ? after.Substring(0, kerbin.Index) : after);
+            if (!down.Success) return false;
+            return !Reentry.IsMatch(after.Substring(0, down.Index)) || ReturnWord.IsMatch(after.Substring(down.Index + down.Length));
         }
 
-        private static bool ComesDown(string words)
-        {
-            return Landing.IsMatch(words) || Deorbit.IsMatch(words) || Descent.IsMatch(words);
-        }
+        /// <summary>Land, touch down, deorbit, descend or descent.</summary>
+        private static readonly Regex ComesDown = new Regex(Landing + "|" + Deorbit + "|" + Descent, RegexOptions.IgnoreCase);
 
-        /// <summary>Where a return's words turn to home: a reentry word or Kerbin.</summary>
-        private static readonly Regex HomeStop = new Regex(@"\b(?:re-?ent(?:er|ry|ers|ering)|splash ?down|Kerbin)\b", RegexOptions.IgnoreCase);
+        private static readonly Regex KerbinWord = new Regex(@"\bKerbin\b", RegexOptions.IgnoreCase);
+
+        /// <summary>A return still to come: "return", "home".</summary>
+        private static readonly Regex ReturnWord = new Regex(@"\b(?:return(?:s|ing|ed)?|home)\b", RegexOptions.IgnoreCase);
 
         /// <summary>
         /// The return to the home planet (#689): a return that names Kerbin, or "come/return/go/head home", "back home" and "fly home"
