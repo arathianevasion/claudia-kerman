@@ -736,8 +736,10 @@ namespace ClaudiaKerman.Core.Tools
             // The halfway burn sets the plane too: to a moon, whose sphere of influence is small, a change of plane inside it costs twice as much (#788); to a planet far out it
             // costs next to nothing, and the trim inside is then a trim (#986). A burn that size swings a moon's slow approach by some degrees, so a whole plane can come out of the
             // trim that far off; capture takes that up. A trip home aims far out for its landing's plane (#986), and inside for the landing itself (#915).
-            var aim = ask.Plane ?? (far && (ask.PlaneOption ?? PlaneOption.Auto).IsAuto ? ArrivalPlanes.Home(snapshot, setup.Target, ask.TargetPe) : null);
-            var plane = setup.Body != setup.Target && aim != null && aim.OffBy(enc.Normal) > PlaneClose;
+            // A planet's whole plane (a body's or vessel's) waits for the trim: far out it is aimed about the asymptote, which leaves the entry point's offset (0.75 degrees at Duna).
+            var home = ask.Plane == null;
+            var aim = !home ? ask.Plane : far && (ask.PlaneOption ?? PlaneOption.Auto).IsAuto ? ArrivalPlanes.Home(snapshot, setup.Target, ask.TargetPe) : null;
+            var plane = setup.Body != setup.Target && aim != null && !(far && aim.Normal.HasValue) && aim.OffBy(enc.Normal) > PlaneClose;
             if (!plane && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
             string late;
             var lead = ask.TurnTime + Lead;
@@ -749,7 +751,7 @@ namespace ClaudiaKerman.Core.Tools
                 Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, TargetNormal = plane ? aim.Through(enc.Approach, enc.Normal).Normal : (Vec3?)null,
             });
             // One the solver can't aim, or the craft can't pay for: the plane waits for the trim, and the plain correction flies. A trip home pays for no capture.
-            if (plane && (!fix.HasBurn || fix.Error != null || (ask.Plane == null ? OverDvLeft(ask, fix) : PlaneOverDvLeft(ask, fix, enc, setup.Target))))
+            if (plane && (!fix.HasBurn || fix.Error != null || (home ? OverDvLeft(ask, fix) : PlaneOverDvLeft(ask, fix, enc, setup.Target))))
             {
                 if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
                 fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });

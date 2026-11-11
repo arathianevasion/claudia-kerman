@@ -15,7 +15,7 @@ Install and the block test runner are as in `phase-3-gate.md` ("Install", "Where
 1. Start a Mission from the pad with the goal "Fly to Duna in the optimal window. Land on the equator and send a crew report. Then return to Kerbin in the soonest window." This is the flight's own goal.
 2. Approve a plan whose transfer leg names its capture ("... coast to Duna, and capture into a 60 km orbit") and whose next leg is a landing on the equator ("Land at Duna equator"). Leave `plane` out of `transfer_to`, or set it to "auto".
 3. After the Course Correction on the Sun's patch, the map view's Duna encounter should show an inclination under about 5°. The burn is the `correction` kind. In `KSP.log`, a `TRANSFERSTEP` line shows it round the Sun, and it should cost at most a few m/s more than a flight with no plane.
-4. In the result of `capture`: `inc` should be under about 5°. Report `inc` and the `correction_dv` and `plane_dv` from `transfer_to`'s result on the ticket.
+4. In the result of `capture`: `inc` should be under about 5°. Report `inc` and the `correction_dv` and `plane_dv` from `transfer_to`'s result on the ticket. The far-out aim is counted in `correction_dv`, so `plane_dv` may read 0 even though the plane was aimed.
 5. The plan that follows should have no plane-change sequence before the landing. If Claudia still adds one, note its `delta_v` on the ticket.
 
 ## Check 2: the trip home comes in near the equator
