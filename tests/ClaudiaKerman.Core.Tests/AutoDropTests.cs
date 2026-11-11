@@ -80,16 +80,29 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(AutoDrop.LegsFree(plan, 1));
         }
 
+        /// <summary>
+        /// Flight m20261111-033300-95d4: the Mission Plan in hand for the Duna ascent, after the Duna landing. The Kerbin return says it
+        /// lands, and the empty radials (legs on them) still rode to orbit.
+        /// </summary>
         [Fact]
-        public void AKerbinReturnThatSaysItLandsIsALanding()
+        public void AfterTheDunaLandingAKerbinReturnThatSaysItLandsLeavesTheLegsFree()
         {
-            var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg("Return to Kerbin", "Reenter and land on the KSC runway.") };
-            Assert.False(AutoDrop.LegsFree(plan, 0));
+            var plan = new List<PlannedSequence>
+            {
+                Leg("Launch from Duna to orbit", "Launch from the Duna surface to a 60 km orbit and circularize."),
+                Leg("Return to Kerbin and reentry", "Burn for Kerbin in the soonest window, capture, then reenter and land."),
+            };
+            Assert.True(AutoDrop.LegsFree(plan, 0));
+            Assert.Equal(new[] { "shield", "leg" }, AutoDrop.FreeKinds(plan, 0).ToArray());
         }
 
-        // The player's ruling (fix round): a Kerbin return under chutes is no landing, but a sequence that also comes down on another body is.
+        // The player's ruling (second fix round): a Kerbin return never counts as a landing on its own, whatever its words; only one that
+        // also comes down on another stock body is.
         [Theory]
+        [InlineData("Return to Kerbin", "Reenter and land on the KSC runway.")]
+        [InlineData("Return to Kerbin and touch down at KSC", "")]
         [InlineData("Return to KSC", "Deorbit from Kerbin orbit, reenter and descend under the Mk16 chute.")]
+        [InlineData("Return from the Mun to Kerbin and land", "")]
         [InlineData("Return from the Mun to Kerbin", "Deorbit and reenter over KSC under the chutes.")]
         [InlineData("Come home from Duna", "Reentry and descent under chutes.")]
         public void AKerbinReturnUnderChutesIsNoLanding(string name, string intent)
@@ -100,6 +113,7 @@ namespace ClaudiaKerman.Core.Tests
 
         [Theory]
         [InlineData("Mun and home", "Deorbit to the Mun crater, then return to Kerbin.")]
+        [InlineData("Deorbit to the Mun crater, then return to Kerbin and land", "")]
         [InlineData("Return to Kerbin via Minmus", "Descend to the Minmus flats for a sample, then come home.")]
         [InlineData("Second stop", "Deorbit from Mun orbit to the crater, then return to Kerbin.")]
         public void AReturnThatAlsoComesDownOnAnotherBodyIsALanding(string name, string intent)
