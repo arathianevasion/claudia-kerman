@@ -13,7 +13,7 @@ namespace ClaudiaKerman.Core.Missions
     /// in the save counts as linked. With no link the Mission is in a Blackout, a flag over whatever stage it is in, never
     /// a Pause. The player's Approval of the Mission Plan stands for each sequence, so the mod runs her next Sequence Plan
     /// and a revised Mission Plan without asking (a manual stretch or a Due Time still waits for the player, but for one
-    /// warped to under Auto Mode (#967), and the very first Mission Plan was never approved). Her messages are queued and
+    /// reached under Auto Mode with the player in the craft (#967), and the very first Mission Plan was never approved). Her messages are queued and
     /// the player's words held; Alerts are recorded without a Claude call; Abort is hidden; every request waits at the Spending Cap rather than Pausing (the waiting
     /// call). A Failed Debrief makes the craft safe and waits for the link. When the link returns, her queued messages
     /// show, each revision is listed with her reasons, and the player's held words go to her.
