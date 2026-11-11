@@ -163,16 +163,19 @@ namespace ClaudiaKerman.Core.Tools
             var stockDv = StockDv(snapshot);
             if (stockDv.HasValue) plan.DvLeft = stockDv.Value - ascent - trip.Departure - trip.PlaneChange;
             var need = plan.Need;
+            var covered = false;
             if (plan.DvLeft.HasValue)
             {
                 plan.SpareDv = DeorbitBurn.AutoMaxDv(plan.DvLeft.Value, PoweredLanding(snapshot, home), snapshot.LaterLegsDv ?? 0);
+                covered = need <= plan.SpareDv;
                 // #981: a craft that can enter comes in directly by default; plan_transfer's capture true still prices one.
-                plan.CaptureFirst = need <= plan.SpareDv && !plan.CanEnter;
+                plan.CaptureFirst = covered && !plan.CanEnter;
             }
             if (plan.CaptureFirst) plan.ArrivalPe = DeltaVMap.LowOrbit(home) - home.Radius;
+            // #981: when the shield, not the delta-v, turned the capture down, the note says so and names the Sequence Plan.
             plan.Note = plan.CaptureFirst
                 ? "arrival: " + Ms(need) + " of " + Ms(plan.SpareDv) + " m/s: target_pe " + Ms(plan.ArrivalPe) + ", capture(), deorbit(), reentry()"
-                : ArrivalRule.Note(snapshot, target, false) + (plan.CanEnter ? "; shielded: transfer_to, reentry()" : "");
+                : ArrivalRule.Note(snapshot, target, false) + (covered ? "; shielded: transfer_to, reentry()" : "");
             return plan;
         }
 
