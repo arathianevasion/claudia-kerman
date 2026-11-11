@@ -15,8 +15,8 @@ delta-v left less 50 m/s or 10%, plus a powered landing's need without chutes; g
 reports none left.
 separate ["none"]: what to drop once the burn is flown, so only the capsule re-enters: a stage
 number (its decouplers), or a list of part names or tags (or
-one), as drop_parts. The burn is chosen for the craft that stays (its mass and drag; the
-burn's propellant goes with the parts dropped); the landing is predicted again once they have gone. Give it for a transfer stage that would otherwise ride
+one), as drop_parts. The burn is chosen for the craft that stays (its mass and drag; it
+pays the burn if its own engine burns); the landing is predicted again once they have gone. Give it for a transfer stage that would otherwise ride
 down with the capsule.
 max_duration ["auto"]: the wait to the burn plus 900 s.
 plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.

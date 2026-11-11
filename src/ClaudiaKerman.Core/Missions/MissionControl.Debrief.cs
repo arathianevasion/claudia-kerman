@@ -129,6 +129,8 @@ namespace ClaudiaKerman.Core.Missions
             {
                 turn.Gate = new DebriefGate();
                 mission.Gate = turn.Gate;
+                // #867: the orbit the run left, if it crosses a moon, is one of the run's events, so the request and the card both say so.
+                CrossingFact(mission);
                 // RunFacts first: it finishes a drop being measured, which the run total rebases.
                 var facts = RunFacts(mission);
                 turn.UserText = turn.UserText.Replace(MissionPrompts.RunDeltaVSlot, RunDeltaV(mission, turn.Report)) + facts;
@@ -538,7 +540,7 @@ namespace ClaudiaKerman.Core.Missions
             if (mission == null || mission.Stage != MissionStage.AwaitingReducedGoal || mission.ReducedGoal.Length > 0) return false;
             note = (note ?? "").Trim();
             if (note.Length == 0 || mission.InFlight) return true;
-            Note(LogKind.Player, "Retry with a note: " + note);
+            Note(LogKind.Player, "Retry with a note: " + note, typed: true);
             mission.Stage = MissionStage.Debriefing;
             // The margin recheck and the run's facts went with the first Debrief: this one is not charged for them again.
             var turn = new Turn

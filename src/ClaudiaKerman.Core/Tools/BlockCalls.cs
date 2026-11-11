@@ -410,6 +410,9 @@ namespace ClaudiaKerman.Core.Tools
             bool chutes;
             var chutesProblem = ChutesOf(ask, out chutes);
             if (chutesProblem != null) return Error(chutesProblem);
+            DropBurn payer;
+            var craftProblem = EntryCraftOf(ask, out payer);
+            if (craftProblem != null) return Error(craftProblem);
             SnapshotBody at;
             Conic orbit;
             BodyFrame frame;
@@ -424,6 +427,7 @@ namespace ClaudiaKerman.Core.Tools
                 GroundAltitude = Number(ask, "ground_alt", 0),
                 AccuracyKm = Number(ask, "accuracy_km", 5),
                 Isp = Number(ask, "isp", 0),
+                Payer = payer,
                 Chutes = chutes,
                 MaxDv = Number(ask, "max_dv", 0),
                 DeltaVLeft = Number(ask, "dv_left", 0),
@@ -472,6 +476,9 @@ namespace ClaudiaKerman.Core.Tools
             bool chutes;
             var chutesProblem = ChutesOf(ask, out chutes);
             if (chutesProblem != null) return Error(chutesProblem);
+            DropBurn payer;
+            var craftProblem = EntryCraftOf(ask, out payer);
+            if (craftProblem != null) return Error(craftProblem);
             SnapshotBody at;
             Conic orbit;
             BodyFrame frame;
@@ -615,7 +622,7 @@ namespace ClaudiaKerman.Core.Tools
         /// asked again after each. Takes <c>target</c> (a body's name), <c>target_pe</c>, <c>window</c> ("next" or a UT),
         /// <c>correction</c>, <c>pe_tolerance</c>, <c>start_ut</c>, <c>max_duration</c> ("auto" or s), <c>auto</c> (whether it began
         /// "auto"), <c>turn_time</c>, <c>dv_left</c>, and what the last step carried: <c>phase</c> ("start" first), <c>arrival_ut</c>,
-        /// <c>plane_ut</c>, <c>why</c>, <c>sibling</c>, <c>recovered</c>, <c>restored</c>, <c>drops</c>, <c>mid_ut</c>, <c>watch_dropped</c>, <c>checkpoint</c> ("off", "on" or a resume token, #775) and <c>last_dv</c> (m/s the last burn used). Gives <c>error</c> ("" or why the block fails),
+        /// <c>plane_ut</c>, <c>why</c>, <c>sibling</c>, <c>recovered</c>, <c>restored</c>, <c>drops</c>, <c>mid_ut</c>, <c>watch_dropped</c>, <c>ejection</c> (the node a far ejection's watched wait carries, #867), <c>checkpoint</c> ("off", "on" or a resume token, #775) and <c>last_dv</c> (m/s the last burn used). Gives <c>error</c> ("" or why the block fails),
         /// <c>do</c> ("burn", "wait" or "done"), <c>kind</c>, <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c>,
         /// <c>max_residual</c>, <c>fail_prefix</c>, <c>keep_going</c>, <c>report</c> (Script Result keys), <c>max_duration</c> (-1:
         /// unchanged), <c>watch</c> (a wait's Encounter Watch, for <see cref="EncounterWatch"/>; empty for none) and <c>carry</c> (the keys to ask with next).
@@ -646,6 +653,7 @@ namespace ClaudiaKerman.Core.Tools
                 Target = (string)target,
                 TargetPe = Number(ask, "target_pe", 0),
                 Window = window as double?,
+                Ejection = ask.ContainsKey("ejection") ? ask["ejection"] as string ?? "" : "",
                 Correction = correction as bool? ?? true,
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 StartUt = Number(ask, "start_ut", snapshot != null ? snapshot.Ut : 0),
@@ -667,6 +675,7 @@ namespace ClaudiaKerman.Core.Tools
                 Checkpoints = mode != CoastCheckpoints.Off,
                 Resume = CoastToken.Parse(mode),
                 PlaneOption = PlaneOption.Read(ask.ContainsKey("plane") ? ask["plane"] : null),
+                WatchEjection = true,
             });
             var result = Step(step);
             result["aimed_plane"] = step.AimedPlane;
@@ -735,7 +744,7 @@ namespace ClaudiaKerman.Core.Tools
 
         private static IDictionary<string, object> Step(TransferFlightStep step)
         {
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 { "error", step.Error },
                 { "do", step.Do },
@@ -757,6 +766,9 @@ namespace ClaudiaKerman.Core.Tools
                     }
                 },
             };
+            // Only the far ejection's watched wait carries one (#867); every other step clears it.
+            ((IDictionary<string, object>)result["carry"])["ejection"] = step.Ejection ?? "";
+            return result;
         }
 
         /// <summary>
@@ -765,16 +777,43 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         public static IList<string> LeftOut(IDictionary<string, object> input)
         {
-            return Uids(input, "leave_out");
+            return Uids(input, "leave_out").Concat(Uids(CraftAsk(input), "leave_out")).ToList();
         }
 
         /// <summary>
         /// The parts the heat shield's drop takes (#462): <c>shield_drop</c>, kOS UIDs, as <see cref="LeftOut"/>. The adapter builds
         /// the craft after the drop from it; none (the default) keeps the heat shield to the ground in the prediction.
+        /// Both also read <c>craft</c>, <see cref="EntryCraftCall"/>'s answer (#814), which a block passes on as it is.
         /// </summary>
         public static IList<string> ShieldDrop(IDictionary<string, object> input)
         {
-            return Uids(input, "shield_drop");
+            return Uids(input, "shield_drop").Concat(Uids(CraftAsk(input), "shield_drop")).ToList();
+        }
+
+        /// <summary>The <c>craft</c> lexicon in <paramref name="input"/>; null when there is none.</summary>
+        private static IDictionary<string, object> CraftAsk(IDictionary<string, object> input)
+        {
+            object craft;
+            if (input == null || !new Dictionary<string, object>(input, StringComparer.OrdinalIgnoreCase).TryGetValue("craft", out craft)) return null;
+            var given = craft as IDictionary<string, object>;
+            return given == null ? null : new Dictionary<string, object>(given, StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Why the <c>craft</c> a reentry call was given can't be flown (its own <c>error</c>, or not <see cref="EntryCraftCall"/>'s answer), or null; with
+        /// <paramref name="payer"/> its masses for who pays a burn before the Entry (<see cref="DropGuard.MassAfterBurn"/>), null when no craft was given.
+        /// </summary>
+        private static string EntryCraftOf(IDictionary<string, object> ask, out DropBurn payer)
+        {
+            payer = null;
+            if (!ask.ContainsKey("craft")) return null;
+            var craft = CraftAsk(ask);
+            if (craft == null) return "craft must be ENTRYCRAFT's answer";
+            var error = craft.ContainsKey("error") ? craft["error"] as string : null;
+            if (!string.IsNullOrEmpty(error)) return "the Entry's craft: " + error;
+            if (!NumberOrNull(craft, "whole").HasValue) return "craft must be ENTRYCRAFT's answer";
+            payer = new DropBurn { Whole = Number(craft, "whole", 0), GonePropellant = Number(craft, "gone_prop", 0), BurnersKept = Number(craft, "burners_kept", 0) };
+            return null;
         }
 
         private static IList<string> Uids(IDictionary<string, object> input, string key)
@@ -970,13 +1009,16 @@ namespace ClaudiaKerman.Core.Tools
             if (!lat.HasValue || !lng.HasValue) return "lat and lng must both be numbers";
             var planet = new BodySystem(snapshot.Bodies).Find(into.Target);
             if (planet == null) return null;
+            DropBurn payer;
+            var craftProblem = EntryCraftOf(ask, out payer);
+            if (craftProblem != null) return craftProblem;
             if (body == null || air == null || craft == null) return "the landing needs the planet's air and the craft";
             string problem;
             var frame = BodyFrame.Read(planet, body, snapshot.Ut, out problem);
             if (problem != null) return problem;
             into.Landing = new ReturnLanding
             {
-                Latitude = lat.Value, Longitude = lng.Value, GroundAltitude = Number(ask, "ground_alt", 0), Isp = Number(ask, "isp", 0), Air = air, Craft = craft, Frame = frame,
+                Latitude = lat.Value, Longitude = lng.Value, GroundAltitude = Number(ask, "ground_alt", 0), Isp = Number(ask, "isp", 0), Payer = payer, Air = air, Craft = craft, Frame = frame,
             };
             return null;
         }
@@ -1100,12 +1142,14 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>finished_by</c> (what finished a solve the SQP stopped short, "" for none); a best
         /// burn outside the tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>,
         /// "found no return: &lt;why&gt;". Given <c>lat</c> and <c>lng</c> (#792), <see cref="ReturnAim"/> picks the window within
-        /// <c>max_wait</c> (s; "auto" or missing is one turn of the landing's longitude) and <c>max_duration</c> (s from <c>start_ut</c>, when a number) and times the
+        /// <c>max_wait</c> (s; "auto" or missing is <see cref="ReturnAim.AutoWait"/>) and <c>max_duration</c> (s from <c>start_ut</c>, when a number) and times the
         /// burn to come down there, by the reentry predictor with <paramref name="body"/>, <paramref name="air"/> (the planet's) and
         /// <paramref name="craft"/>; <c>ground_alt</c> (m) and <c>isp</c> (s; 0 or missing leaves the mass as it is) are as for
         /// <see cref="DeorbitBurn"/>. It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and <c>error_km</c> when the predictor can say,
-        /// else the window's least burn stands with <c>error_km</c> -1. <c>aim_dv</c> (m/s over the window's least burn) and
-        /// <c>spread_km</c> (what <see cref="ReturnAim.ResidualMs"/> of error in the burn moves the landing; -1 unknown) are always there.
+        /// else the window's least burn stands with <c>error_km</c> -1. <c>aim_dv</c> (m/s over the window's least burn; from an orbit
+        /// inclined to the moon's, over the cheapest window within max_wait, #816) and <c>spread_km</c> (what
+        /// <see cref="ReturnAim.ResidualMs"/> of error in the burn moves the landing; -1 unknown) are always there. Without a landing,
+        /// <c>cheap_window</c> true (the block was given no window) lets an inclined orbit wait out a dear next pass (<see cref="ReturnAim"/>).
         /// </summary>
         public static IDictionary<string, object> ReturnBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body = null,
             IReentryAir air = null, IReentryCraft craft = null)
@@ -1124,11 +1168,20 @@ namespace ClaudiaKerman.Core.Tools
                 LatestUt = NumberOrNull(ask, "latest_ut"),
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
+                CheapWindow = ask.ContainsKey("cheap_window") && Equals(ask["cheap_window"], true),
             };
             if (ask.ContainsKey("lat") || ask.ContainsKey("lng"))
             {
                 var problem = ReturnLandingOf(ask, snapshot, returnAsk, body, air, craft);
                 if (problem != null) return Error(Tools.ReturnBurn.Fail(problem).Error);
+            }
+            else if (returnAsk.CheapWindow)
+            {
+                // #816: the wait for the cheap window ends within max_wait and max_duration, else the next pass inside them goes.
+                var problem = WaitOf(ask, snapshot, returnAsk);
+                if (problem != null) return Error(Tools.ReturnBurn.Fail(problem).Error);
+                if (returnAsk.MaxWait.HasValue) returnAsk.LatestUt = Math.Min(returnAsk.LatestUt ?? double.PositiveInfinity, returnAsk.EarliestUt + returnAsk.MaxWait.Value);
+                returnAsk.MaxWait = null;
             }
             var plan = Tools.ReturnBurn.Find(snapshot, returnAsk);
             if (!plan.HasBurn) return Error(plan.Error);
@@ -1149,7 +1202,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "aim_dv", plan.AimDv },
                 { "spread_km", plan.SpreadKm },
                 { "error_km", plan.ErrorKm },
-                { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) },
+                { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) + plan.WindowNote },
             };
             if (plan.Landing != null)
                 foreach (var key in Landing(plan.Landing, plan.ErrorKm)) result[key.Key] = key.Value;
@@ -1162,6 +1215,21 @@ namespace ClaudiaKerman.Core.Tools
             var lat = NumberOrNull(ask, "lat");
             var lng = NumberOrNull(ask, "lng");
             if (!lat.HasValue || !lng.HasValue) return "lat and lng must both be numbers";
+            var waitProblem = WaitOf(ask, snapshot, into);
+            if (waitProblem != null) return waitProblem;
+            DropBurn payer;
+            var craftProblem = EntryCraftOf(ask, out payer);
+            if (craftProblem != null) return craftProblem;
+            if (body == null || air == null || craft == null) return "the landing needs the planet's air and the craft";
+            string problem;
+            into.Landing = ReturnAim.LandingOn(snapshot, lat.Value, lng.Value, Number(ask, "ground_alt", 0), Number(ask, "isp", 0), body, air, craft, out problem);
+            if (into.Landing != null) into.Landing.Payer = payer;
+            return problem;
+        }
+
+        /// <summary><c>max_wait</c> into <see cref="ReturnAsk.MaxWait"/> and a numeric <c>max_duration</c> into <see cref="ReturnAsk.LatestUt"/>: why max_wait can't be read, or null.</summary>
+        private static string WaitOf(IDictionary<string, object> ask, GameSnapshot snapshot, ReturnAsk into)
+        {
             object wait;
             ask.TryGetValue("max_wait", out wait);
             if (wait is double && (double)wait > 0) into.MaxWait = (double)wait;
@@ -1170,10 +1238,7 @@ namespace ClaudiaKerman.Core.Tools
             object limit;
             if (ask.TryGetValue("max_duration", out limit) && limit is double)
                 into.LatestUt = Number(ask, "start_ut", snapshot.Ut) + (double)limit - ReturnAim.AfterBurnS;
-            if (body == null || air == null || craft == null) return "the landing needs the planet's air and the craft";
-            string problem;
-            into.Landing = ReturnAim.LandingOn(snapshot, lat.Value, lng.Value, Number(ask, "ground_alt", 0), Number(ask, "isp", 0), body, air, craft, out problem);
-            return problem;
+            return null;
         }
 
         /// <summary>
@@ -1339,28 +1404,65 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// <c>ADDONS:CLAUDIA:ENTRYDROP</c>, for <c>reentry</c> and <c>deorbit</c> at block start (#823, ADR 0018): what this Entry drops, read
+        /// <c>ADDONS:CLAUDIA:ENTRYDROP</c>, for <c>reentry</c> at block start and at the drop point (#823, ADR 0018, #815): what this Entry drops, read
         /// fresh from the Mission Plan's <paramref name="legs"/> (null with no plan: the first shield's rule) from <paramref name="step"/>
-        /// (0 first) for the vessel flying (<paramref name="child"/>; "" for the craft). Takes <c>home</c> (the kOS UID of the crew's part).
-        /// Gives <c>error</c> "", <c>number</c> (n), <c>shield</c> (the Entry Shield's kOS UID; "" for none),
-        /// <c>decouplers</c> and <c>gone</c> (kOS UIDs), <c>names</c> (the stack's part names, each once) and <c>stuck</c> (those with no decoupler).
+        /// (0 first) for the vessel flying (<paramref name="child"/>; "" for the craft). Takes <c>home</c> (the kOS UID of the crew's part) and, from the block,
+        /// <c>separate</c>, <c>jettison_stage</c> (#869), <c>chutes</c> (as <see cref="EntryFinishCall"/>), <c>core</c> (the kOS UID of the part running the script) and, after its own
+        /// drop, <c>drop_error</c> (what that said): above the air, <c>error</c> is then <see cref="EntryStack.Refusal"/>'s refusal, unless at block start
+        /// the Entry lands on its engines and keeps its stack. Gives <c>error</c> "", <c>number</c> (n), <c>shield</c> (the Entry Shield's kOS UID; "" for none),
+        /// <c>jettison</c> (the same when this Entry jettisons it, <see cref="EntryCraft.Jettisons"/>; else ""),
+        /// <c>decouplers</c> and <c>gone</c> (kOS UIDs), <c>names</c> (the stack's part names, each once), <c>stuck</c> (those with no decoupler)
+        /// and <c>lead</c> (s before the atmosphere the block drops it, <see cref="EntryStack.DropLeadS"/>).
         /// </summary>
         public static IDictionary<string, object> EntryDropCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf)
         {
             if (snapshot == null) return Error("there is no Game Snapshot of the craft");
             var number = Entries.ShieldNumber(snapshot, legs, step, child);
             var stack = EntryStack.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), number);
+            var refusal = StackRefusal(ask, snapshot, stack, number, uidOf);
+            if (refusal != "") return Error(refusal);
             Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
             return new Dictionary<string, object>
             {
                 { "error", "" },
                 { "number", (double)number },
                 { "shield", stack.Shield == null ? "" : uidOf(stack.Shield.Id) ?? "" },
+                { "jettison", stack.Shield == null || !EntryCraft.Jettisons(JettisonStage(ask), IsWord(ask, "separate", "none"), stack.Parts.Count > 0) ? "" : uidOf(stack.Shield.Id) ?? "" },
                 { "decouplers", uids(stack.Decouplers) },
                 { "gone", uids(stack.Gone) },
                 { "names", EntryStack.Names(stack.Parts).Cast<object>().ToList() },
                 { "stuck", EntryStack.Names(stack.Stuck).Cast<object>().ToList() },
+                { "lead", EntryStack.DropLeadS },
             };
+        }
+
+        /// <summary>
+        /// <see cref="EntryDropCall"/>'s refusal for <c>reentry</c> (#815): "" unless <c>separate</c> is "auto" and the craft is above its body's air. At block
+        /// start a stack it can't drop, unless the Entry lands on its engines (<see cref="EntryFinish.Decide"/>, as <c>ENTRYFINISH</c> reads it); after
+        /// its drop (<c>drop_error</c> given) any stack still on.
+        /// </summary>
+        private static string StackRefusal(IDictionary<string, object> ask, GameSnapshot snapshot, EntryStack stack, int number, Func<uint, string> uidOf)
+        {
+            var body = snapshot.Bodies.FirstOrDefault(b => b.Name == Entries.At(snapshot));
+            if (!IsWord(ask, "separate", "auto") || snapshot.IsGrounded || body == null || snapshot.Altitude <= body.AtmosphereHeight) return "";
+            if (ask.ContainsKey("drop_error")) return stack.Refusal(ask["drop_error"] as string ?? "", false);
+            var core = ask.ContainsKey("core") ? ask["core"] as string : null;
+            var refusal = stack.Refusal(null, stack.Gone.Any(p => p.ParentId == null || (core != null && uidOf(p.Id) == core)));
+            bool chutes;
+            if (refusal == "" || ChutesOf(ask, out chutes) != null) return refusal;
+            return EntryFinish.Decide(snapshot, stack.Gone.Select(p => p.Id).ToList(), number == 1, chutes).Powered ? "" : refusal;
+        }
+
+        /// <summary>Whether <paramref name="key"/> in <paramref name="ask"/> is the string <paramref name="word"/>, whatever its case (kOS compares strings so).</summary>
+        private static bool IsWord(IDictionary<string, object> ask, string key, string word)
+        {
+            return ask.ContainsKey(key) && string.Equals(ask[key] as string, word, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>The block's <c>jettison_stage</c> in <paramref name="ask"/>; "auto" when not given.</summary>
+        private static string JettisonStage(IDictionary<string, object> ask)
+        {
+            return ask.ContainsKey("jettison_stage") ? ask["jettison_stage"] as string ?? "auto" : "auto";
         }
 
         /// <summary>The part whose kOS UID is <c>home</c> in <paramref name="ask"/>; null when none is.</summary>
@@ -1372,12 +1474,13 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c> (#824), for <c>reentry</c> at block start: <see cref="EntryFinish.Decide"/> for the Entry in hand, its drop
+        /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c> (#824), for <c>reentry</c> at the drop point (#815): <see cref="EntryFinish.Decide"/> for the Entry in hand, its drop
         /// and Last Entry as <see cref="EntryDropCall"/> and <see cref="ChuteGroupCall"/> have them. Takes <c>home</c>, <c>chutes</c> (false: none will open) and
-        /// <c>drop</c> (false: the block keeps its stack). Gives <c>error</c> "", <c>powered</c>, <c>speed</c> (m/s with that drop and those chutes; -1 unknown),
+        /// <c>drop</c> (false: the block keeps its stack) and <c>jettison_stage</c> (for the craft it compares). Gives <c>error</c> "", <c>powered</c>, <c>speed</c> (m/s with that drop and those chutes; -1 unknown),
         /// <c>kept_speed</c> (m/s for the craft as kept; -1 on chutes), <c>engines</c> and <c>spare</c> (kOS UIDs) and <c>why</c> for the log.
         /// </summary>
-        public static IDictionary<string, object> EntryFinishCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf)
+        public static IDictionary<string, object> EntryFinishCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf,
+            string aimedKey = "", string aimed = "")
         {
             if (snapshot == null) return Error("there is no Game Snapshot of the craft");
             bool chutes;
@@ -1385,13 +1488,52 @@ namespace ClaudiaKerman.Core.Tools
             if (unreadable != null) return Error(unreadable);
             var number = Entries.ShieldNumber(snapshot, legs, step, child);
             var drop = !ask.ContainsKey("drop") || Equals(ask["drop"], true);
-            var gone = drop ? EntryStack.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), number).Gone.Select(p => p.Id).ToList() : new List<uint>();
-            var finish = EntryFinish.Decide(snapshot, gone, number == 1, chutes);
+            var stack = EntryStack.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), number);
+            var finish = EntryFinish.Decide(snapshot, drop ? stack.Gone.Select(p => p.Id).ToList() : new List<uint>(), number == 1, chutes);
+            // The craft it flies, against the one a return or deorbit aimed with (#814): a changed plan or fuel can make them differ.
+            var flown = EntryCraft.From(snapshot, null, stack, finish, drop, JettisonStage(ask));
+            var why = finish.Why() + (string.IsNullOrEmpty(aimedKey) || EntryCraft.Same(aimedKey, flown.Key, snapshot) ? "" : "; the landing was aimed for the craft " + aimed + ", it flies " + flown.Describe());
             Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
             return new Dictionary<string, object>
             {
                 { "error", "" }, { "powered", finish.Powered }, { "speed", finish.Speed }, { "kept_speed", finish.KeptSpeed },
-                { "engines", uids(finish.Engines) }, { "spare", uids(finish.Spare) }, { "why", finish.Why() },
+                { "engines", uids(finish.Engines) }, { "spare", uids(finish.Spare) }, { "why", why },
+            };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:ENTRYCRAFT</c> (#814), for <c>return</c> and <c>deorbit</c> at block start: the craft the Entry ahead will fly
+        /// (<see cref="EntryCraft"/>), read once and passed on as it is in each landing prediction's <c>craft</c>. The Entry Shield and
+        /// Last Entry are as <see cref="EntryDropCall"/> has them; <c>reentry</c>'s <c>separate</c> is taken as "auto" and its chutes as opening.
+        /// Takes <c>home</c> (the kOS UID of the crew's part), <c>leave_out</c> (kOS UIDs the block drops itself first) and <c>body</c> (where the
+        /// Entry is, when not where the craft is: a return's planet). Gives <c>error</c> "", <c>leave_out</c> and <c>shield_drop</c> (kOS UIDs, as
+        /// <see cref="LeftOut"/> and <see cref="ShieldDrop"/>), <c>whole</c>, <c>kept</c> and <c>gone_prop</c> (t) and <c>burners_kept</c> (who pays a
+        /// burn, <see cref="DropGuard.MassAfterBurn"/>), <c>key</c> and <c>why</c> (the craft in words); <paramref name="aimed"/> receives the key and words.
+        /// </summary>
+        public static IDictionary<string, object> EntryCraftCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf,
+            Action<string, string> aimed = null)
+        {
+            if (snapshot == null) return Error("there is no Game Snapshot of the craft");
+            var input = new Dictionary<string, object>(ask ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            var at = input.ContainsKey("body") ? input["body"] as string : null;
+            if (!string.IsNullOrEmpty(at) && !string.Equals(at, Entries.At(snapshot), StringComparison.OrdinalIgnoreCase))
+            {
+                // A return reads it at the moon: the Entry, its shield number and its chutes are the planet's.
+                snapshot = snapshot.At(snapshot.Ut);
+                snapshot.Body = at;
+                snapshot.Orbit = new SnapshotOrbit { Body = at };
+            }
+            var dropped = new HashSet<string>(Uids(input, "leave_out"));
+            var own = snapshot.Craft.Parts.Where(p => dropped.Contains(uidOf(p.Id) ?? "")).Select(p => p.Id).ToList();
+            var craft = EntryCraft.Of(snapshot, own, Home(input, snapshot, uidOf), Entries.ShieldNumber(snapshot, legs, step, child), true, true, JettisonStage(input));
+            if (aimed != null) aimed(craft.Key, craft.Describe());
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "leave_out", craft.LeftOut.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList() },
+                { "shield_drop", craft.ShieldDropped == null || uidOf(craft.ShieldDropped.Id) == null ? new List<object>() : new List<object> { uidOf(craft.ShieldDropped.Id) } },
+                { "whole", craft.WholeT }, { "kept", craft.KeptT }, { "gone_prop", craft.GonePropellantT }, { "burners_kept", (double)craft.BurnersKept },
+                { "key", craft.Key }, { "why", craft.Describe() },
             };
         }
 

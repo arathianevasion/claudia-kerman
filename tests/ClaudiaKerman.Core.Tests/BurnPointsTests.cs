@@ -223,6 +223,68 @@ namespace ClaudiaKerman.Core.Tests
             return Convert.ToDouble(node["ut"], CultureInfo.InvariantCulture);
         }
 
+        /// <summary>
+        /// #816: with no target and no window given, from an inclined orbit whose next pass is dear (783 m/s here), the block waits for the
+        /// cheap window, 7.2 h off: the plan covers that wait, and past a Kerbin day's 6 h it is a Due Time. Claudia's own "next" is the next pass.
+        /// </summary>
+        [Fact]
+        public void AnInclinedReturnWithNoTargetAndNoWindowWaitsForTheCheapWindow()
+        {
+            var snapshot = AtTheMun(0.9);
+            snapshot.Orbit.Inclination = 66.43;
+            snapshot.Orbit.Lan = 30;
+            var wait = BurnPoints.First("local res is return(lexicon(\"target\", \"none\")).", snapshot, 1000, 300, new AimFrame());
+            Assert.NotNull(wait);
+            Assert.Equal("return", wait.Block);
+            Assert.InRange(wait.WaitSeconds, 6.5 * 3600, 7.5 * 3600);
+            Assert.Equal(1000 + wait.WaitSeconds, wait.DepartureUt.Value, 3);
+            Assert.NotNull(BurnPoints.DueTime(wait, 1000));
+            Assert.Null(BurnPoints.First("local res is return(lexicon(\"target\", \"none\", \"window\", \"next\")).", snapshot, 1000, 300, new AimFrame()));
+            // Within max_duration or max_wait, as the block reads them: an hour leaves on the next pass, with no wait to cover.
+            Assert.Null(BurnPoints.First("local res is return(lexicon(\"target\", \"none\", \"max_duration\", 3600)).", snapshot, 1000, 300, new AimFrame()));
+            Assert.Null(BurnPoints.First("local res is return(lexicon(\"target\", \"none\", \"max_wait\", 3600)).", snapshot, 1000, 300, new AimFrame()));
+        }
+
+        /// <summary>
+        /// #816 review: a return aimed from an inclined orbit at a window over a launch lead past its cheap alignment is due a lead before
+        /// the alignment, not the window, so the block asked again then searches to the same alignment as the plan; the run's wait covers
+        /// the rest of the way to the window.
+        /// </summary>
+        [Theory]
+        [InlineData(66.43, 300, 5.5)]
+        [InlineData(66.43, 120, 1.7)]
+        [InlineData(66.43, 300, 1.7)]
+        public void AnInclinedReturnPastItsAlignmentIsDueBeforeTheAlignment(double inc, double lan, double phase)
+        {
+            var snapshot = AtTheMun(phase);
+            snapshot.Orbit.Inclination = inc;
+            snapshot.Orbit.Lan = lan;
+            var wait = BurnPoints.First("local res is return(lexicon(\"target\", \"ksc\")).", snapshot, 1000, 300, new AimFrame());
+            Assert.NotNull(wait);
+            Assert.True(wait.DueByUt.HasValue && wait.DueByUt.Value < wait.DepartureUt.Value - WindowWaits.LaunchLeadS, "due by " + wait.DueByUt + " for " + wait.DepartureUt);
+            Assert.Equal(wait.DueByUt.Value - WindowWaits.LaunchLeadS, BurnPoints.DueTime(wait, 1000).Value, 3);
+            var shortOf = BurnPoints.ShortOf(new SequencePlan { Script = "local res is return(lexicon(\"target\", \"ksc\")).", ExpectedDurationSeconds = 100, ExpectedDeltaV = 300 }, snapshot, 1000, new AimFrame());
+            Assert.True(shortOf.WaitSeconds >= wait.DepartureUt.Value - wait.DueByUt.Value + WindowWaits.LaunchLeadS, "the run covers the wait from the Due Time to the window");
+        }
+
+        /// <summary>
+        /// #816 review: the window's own distance says whether there is a Due Time; the alignment only moves it sooner. A window 8 h off
+        /// whose alignment is 5 h off is due at 4 h, though 5 h less a lead is under the 6 h a Due Time needs; an alignment already within
+        /// a lead leaves the Due Time on the window.
+        /// </summary>
+        [Fact]
+        public void TheWindowSaysWhetherThereIsADueTimeAndTheAlignmentOnlyMovesItSooner()
+        {
+            const double now = 1000;
+            var wait = new BurnWait { DepartureUt = now + 8 * 3600, DueByUt = now + 5 * 3600 };
+            Assert.Equal(now + 4 * 3600, BurnPoints.DueTime(wait, now).Value, 3);
+            wait.DueByUt = now + 0.5 * 3600;
+            Assert.Equal(now + 7 * 3600, BurnPoints.DueTime(wait, now).Value, 3);
+            wait.DepartureUt = now + 6.5 * 3600;
+            wait.DueByUt = now + 3 * 3600;
+            Assert.Null(BurnPoints.DueTime(wait, now));
+        }
+
         [Theory]
         [InlineData("\"ksc\"")]
         [InlineData("latlng(-0.0972, -74.5577)")]

@@ -79,7 +79,7 @@ namespace ClaudiaKerman.Core.Missions
             if (spent <= 0) return left;
             if (burn.Whole <= 0 || burn.Kept <= 0) return Math.Max(0, left - spent);
             var massAtKeptTanks = burn.Whole;
-            var gone = burn.BurnersKept > 0 || burn.Isp <= 0 ? 0 : Math.Min(Math.Max(0, burn.GonePropellant), burn.Whole);
+            var gone = GonePays(burn);
             if (gone > 0)
             {
                 if (gone >= burn.Whole) return left;
@@ -95,6 +95,36 @@ namespace ClaudiaKerman.Core.Missions
             var fromKept = massAtKeptTanks * (1 - Math.Exp(-spent / burnExhaust));
             if (fromKept >= burn.KeptPropellant) return 0;
             return keptExhaust * Math.Log((burn.Kept - fromKept) / dry);
+        }
+
+        /// <summary>Tonnes of propellant the dropped tanks can give the burn, by <see cref="AfterBurn"/>'s rule for who pays: none while a burning engine stays.</summary>
+        private static double GonePays(DropBurn burn)
+        {
+            return burn.BurnersKept > 0 || burn.Isp <= 0 ? 0 : Math.Min(Math.Max(0, burn.GonePropellant), burn.Whole);
+        }
+
+        /// <summary>
+        /// Tonnes of propellant the kept craft gives <paramref name="burn"/> (#814, #854): the burn's propellant on the whole craft at its
+        /// <see cref="DropBurn.Isp"/>, less what the dropped tanks pay by <see cref="AfterBurn"/>'s rule. A landing prediction flies the kept
+        /// craft that much lighter. 0 without an isp, as nothing better is known.
+        /// </summary>
+        public static double KeptPays(DropBurn burn)
+        {
+            var spent = Math.Max(0, burn.Spent);
+            if (spent <= 0 || burn.Isp <= 0 || burn.Whole <= 0) return 0;
+            var used = burn.Whole * (1 - Math.Exp(-spent / (burn.Isp * StandardGravity)));
+            return Math.Max(0, used - GonePays(burn));
+        }
+
+        /// <summary>
+        /// The mass, kg, of a craft of <paramref name="keptKg"/> once a burn of <paramref name="spent"/> m/s at <paramref name="isp"/> s is flown: less
+        /// <see cref="KeptPays"/> by <paramref name="payer"/>'s masses (<see cref="EntryCraft"/>'s), or with no payer the rocket equation on it alone.
+        /// </summary>
+        public static double MassAfterBurn(double keptKg, double spent, double isp, DropBurn payer)
+        {
+            if (payer == null) return isp > 0 ? keptKg * Math.Exp(-Math.Max(0, spent) / (isp * StandardGravity)) : keptKg;
+            var pays = KeptPays(new DropBurn { Spent = spent, Whole = payer.Whole, Isp = isp, GonePropellant = payer.GonePropellant, BurnersKept = payer.BurnersKept });
+            return Math.Max(1, keptKg - 1000 * pays);
         }
 
         /// <summary>

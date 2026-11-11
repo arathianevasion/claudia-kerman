@@ -85,6 +85,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is SaveLoaded) Loaded(((SaveLoaded)input).SaveDirectory);
             else if (input is MissionsRestored) Restored((MissionsRestored)input);
             else if (input is SceneChanged) SceneChanging(((SceneChanged)input).Scene);
+            else if (input is SavedOrbitRead) SavedOrbitSeen(((SavedOrbitRead)input).Snapshot);
             else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; WarpSeen(((UtAdvanced)input).Warping); ContinueRunEnd(); }
             else if (input is StartMission) Start((StartMission)input);
             else if (input is RunCraftCheck) RunCraftCheck((RunCraftCheck)input);
@@ -104,7 +105,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is ChooseWindow) WindowChosen(((ChooseWindow)input).Kind);
             else if (input is ChooseModel) ModelChosen(((ChooseModel)input).Model);
             else if (input is Replan) Replanned();
-            else if (input is TakeManualControl) TakeManual("the Manual Control button");
+            else if (input is TakeManualControl) TakeManual("the Manual Control button", true);
             else if (input is ManualInputHeld) InputHeld(((ManualInputHeld)input).Seconds);
             else if (input is HandBack) HandedBack(((HandBack)input).Message);
             else if (input is CaptureSnapshot) Capture();
@@ -114,6 +115,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is WarpToDueTime) WarpRequested();
             else if (input is GoToVessel) GoToRequested();
             else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId, ((ClaudiaKilled)input).Traced);
+            else if (input is KerbalKilled) CrewDeathSeen(((KerbalKilled)input).Name);
             else if (input is KosRunBlocked) RunBlocked((KosRunBlocked)input);
             else if (input is ArrivalPlaneAimed) ArrivalPlaneRecorded((ArrivalPlaneAimed)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
@@ -122,6 +124,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is KosRcsSwitched) RcsSwitched((KosRcsSwitched)input);
             else if (input is ShipSystemsMoved) ShipSystemsLine((ShipSystemsMoved)input);
             else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
+            else if (input is NextPatchDropped) NextPatchDroppedSeen((NextPatchDropped)input);
             else if (input is ChuteWarning) ChuteWarningLine((ChuteWarning)input);
             else if (input is CoastArmed) CoastArmedSeen((CoastArmed)input);
             else if (input is AbortSequence) AbortPressed();
@@ -194,6 +197,10 @@ namespace ClaudiaKerman.Core.Missions
             public bool ScriptRewrite;
             /// <summary>A correction after a Mission Plan named a vessel that never left the craft: if it does so again, the Mission Pauses.</summary>
             public bool ChildVesselRetry;
+            /// <summary>A correction after a manual stretch with no grounds (#818): a second one Pauses the Mission. Memory only.</summary>
+            public bool ManualRetry;
+            /// <summary>A Failed Debrief was sent back once as only a landing miss (#818); a second Failed is accepted. Memory only.</summary>
+            public bool LandingMissSentBack;
             /// <summary>
             /// A revision the mod asked for while the Mission Goal stands (after an Off-Nominal Debrief or a Hand back's Debrief): a plan
             /// with no sequences is refused (#697). Set where the turn begins; false on the first Mission Plan, a typed one, and the
@@ -384,6 +391,7 @@ namespace ClaudiaKerman.Core.Missions
             if (goal.Length == 0 || start.SpendingCap <= 0 || !_config.Models.Contains(start.Model) || _saveDirectory == null) return;
             // Another Mission in play pauses at its next sequence boundary first, before the new craft is checked (MissionControl.Missions.cs).
             if (!MissionOver && !MakeRoom(new QueuedSwitch { Kind = SwitchKind.Start, Start = start })) return;
+            ForgetSavedOrbit();
 
             // A remote Mission needs a link (or the pad); a crewed one can't have Claudia while she is Missing. No request is spent on either.
             _startRefusal = StartRefusal(start);
@@ -422,6 +430,8 @@ namespace ClaudiaKerman.Core.Missions
             {
                 Id = id,
                 Goal = goal,
+                ManualAsk = ManualGrounds.Asked(goal),
+                PrecisionGoal = ManualGrounds.PrecisionGoal(goal),
                 SpendingCap = start.SpendingCap,
                 Model = start.Model,
                 Folder = MissionFolder.For(_saveDirectory, id),
@@ -583,6 +593,7 @@ namespace ClaudiaKerman.Core.Missions
             _saveDirectory = saveDirectory;
             _craftCheck.SaveDirectory = saveDirectory;
             _snapshot = null;
+            ForgetSavedOrbit();
             _active = null;
             _craftLink = null;
             _seen = new List<SeenVessel>();
@@ -617,6 +628,8 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.AwaitingApproval && mission.PlanBaseline == null && !mission.InFlight && _scene == GameScene.Flight) mission.PlanBaseline = snapshot;
             // An approved plan restored from a save has no Chute Groups yet: the first snapshot of the craft after the load gives it one.
             if (mission.Chutes == null && mission.Plan != null && mission.Stage != MissionStage.AwaitingPlanApproval && _scene == GameScene.Flight) GroupChutes(mission);
+            // #867: a plan offered with no snapshot of the craft is judged on the first.
+            CrossingFirstSnapshot(mission);
             CarryOnWhenSceneAllows();
         }
 
@@ -733,7 +746,7 @@ namespace ClaudiaKerman.Core.Missions
             text = (text ?? "").Trim();
             if (text.Length == 0 || !CanAnswerPlan) return;
             _mission.ConfirmPrompt = null;
-            Note(LogKind.Player, text);
+            Note(LogKind.Player, text, typed: true);
             Begin(new Turn
             {
                 Purpose = Purpose.Reply,
@@ -748,7 +761,7 @@ namespace ClaudiaKerman.Core.Missions
             text = (text ?? "").Trim();
             if (text.Length == 0 || !CanAnswerPlan) return;
             _mission.ConfirmPrompt = null;
-            Note(LogKind.Player, "Change: " + text);
+            Note(LogKind.Player, "Change: " + text, typed: true);
             Begin(new Turn
             {
                 Purpose = Purpose.Change,
@@ -766,7 +779,7 @@ namespace ClaudiaKerman.Core.Missions
             // While Running a question queues behind the request in hand; otherwise one at a time.
             var running = mission.Stage == MissionStage.Running;
             if (mission.InFlight && !running) return;
-            Note(LogKind.Player, text);
+            Note(LogKind.Player, text, typed: true);
             Begin(new Turn
             {
                 Purpose = Purpose.Question,
@@ -848,7 +861,16 @@ namespace ClaudiaKerman.Core.Missions
         private void WarpRequested()
         {
             var due = PendingDueTime;
-            if (due.HasValue && _ut < due.Value && !_mission.InFlight) _commands.Add(new WarpToUt(due.Value));
+            if (!due.HasValue || _ut >= due.Value || _mission.InFlight) return;
+            // #867: never a warp through an orbit that crosses a moon.
+            if (CrossingAwaitsRead(_mission, _mission.PendingSequence)) return;
+            var blocker = CrossingBlockerNow(_mission);
+            if (blocker.Length > 0)
+            {
+                Note(LogKind.Notice, blocker + " The mod won't warp to the Due Time: Re-plan, or fly the fix yourself first.");
+                return;
+            }
+            _commands.Add(new WarpToUt(due.Value));
         }
 
         /// <summary>Go to <i>vessel</i> is on offer: the Due Time has been reached and the player is not in the Mission's vessel.</summary>
@@ -1046,6 +1068,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var mission = _mission;
             if (MissionOver) return;
+            ForgetSavedOrbit();
             if (mission.InFlight) mission.Pending.Cancel.Cancel();
             CancelCompaction(mission);
             var running = mission.Stage == MissionStage.Running
@@ -1462,6 +1485,7 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             if (TakeSecondLook(mission, turn, reply)) return;
+            if (LandingMissSentBack(mission, turn, reply, message)) return;
 
             // Append-only: the turn and its reply join the conversation together, then the transcript is rewritten.
             var committed = message.ToMessage();
@@ -1592,6 +1616,8 @@ namespace ClaudiaKerman.Core.Missions
                     return;
                 }
                 checkWarnings = check.Warnings.Concat(findings.Warnings()).ToList();
+                // #867: a crossing the correction left (or had no room to send back) is the plan's Blocker.
+                CrossingOffered(mission, offered, findings);
             }
 
             // Only a vessel that left the craft may be a Child Vessel: the player never sees a plan that names another.
@@ -1599,6 +1625,14 @@ namespace ClaudiaKerman.Core.Missions
             if (unseparated.Count > 0)
             {
                 ChildVesselRefused(mission, turn, unseparated);
+                return;
+            }
+
+            // A manual stretch nothing asks for goes back once (#818), before the player sees it.
+            var manual = ManualOffered(turn.Purpose, reply, planPending);
+            if (manual != null && !ManualHasGrounds(mission, manual))
+            {
+                ManualRefused(mission, turn, manual);
                 return;
             }
 
@@ -1685,25 +1719,23 @@ namespace ClaudiaKerman.Core.Missions
         private void ChildVesselRefused(Mission mission, Turn turn, IList<string> ids)
         {
             var named = string.Join(", ", ids.ToArray());
-            if (turn.ChildVesselRetry)
-            {
-                Failed(mission, turn, "Claudia's Mission Plan still names a Child Vessel that has not left the craft (" + named + ").");
-                return;
-            }
-            Note(LogKind.Notice, "The Mission Plan names a vessel that hasn't left the craft (" + named + "); Claudia is revising it.");
+            var reason = MissionPrompts.ChildVesselNotLeft(ids);
             // The correction is the refused turn asked again: its own Purpose (so the reply is read, and the plan offered, as it
             // would have been) and its own wait at the Spending Cap, through the same Begin as any other turn.
             var typed = turn.Purpose == Purpose.Reply || turn.Purpose == Purpose.Change;
-            Begin(new Turn
-            {
-                Purpose = turn.Purpose,
-                ChildVesselRetry = true,
-                Waits = turn.Waits,
-                GoalStands = turn.GoalStands,
-                // The refused turn was never committed to the conversation, so what it asked (the player's words, the new settings) goes again.
-                UserText = turn.UserText + "\n" + MissionPrompts.ChildVesselNotLeft(ids),
-                Notice = MissionPrompts.ChildVesselNotice +(typed ? MissionPrompts.ChildVesselTypedNotice : ""),
-            });
+            RefusedAtApply(mission, turn, turn.ChildVesselRetry, reason,
+                "Claudia's Mission Plan still names a Child Vessel that has not left the craft (" + named + ").",
+                "The Mission Plan names a vessel that hasn't left the craft (" + named + "); Claudia is revising it.",
+                () => new Turn
+                {
+                    Purpose = turn.Purpose,
+                    ChildVesselRetry = true,
+                    Waits = turn.Waits,
+                    GoalStands = turn.GoalStands,
+                    // The refused turn is committed with her reply (the player's words, the new settings are in the conversation): only the reason goes.
+                    UserText = reason,
+                    Notice = MissionPrompts.ChildVesselNotice + (typed ? MissionPrompts.ChildVesselTypedNotice : ""),
+                });
         }
 
         /// <summary>Claudia's line; when she declines the goal with a Mission Plan of no sequences, her <c>why</c> follows it (there is no card to carry it).</summary>
@@ -1717,9 +1749,22 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The Sequence Plan this reply would offer for Approval, or null (the same cases as <see cref="Apply"/>).</summary>
         private static SequencePlan SequenceOffered(Purpose purpose, MissionReply reply, bool planPending)
         {
-            var plan = reply.SequencePlan;
+            var plan = OfferedPlan(purpose, reply, planPending);
             // A manual stretch has no script to check.
-            if (plan == null || plan.Manual || plan.Script.Trim().Length == 0) return null;
+            return plan == null || plan.Manual || plan.Script.Trim().Length == 0 ? null : plan;
+        }
+
+        /// <summary>The manual stretch this reply would offer for Approval (#818), or null.</summary>
+        private static SequencePlan ManualOffered(Purpose purpose, MissionReply reply, bool planPending)
+        {
+            var plan = OfferedPlan(purpose, reply, planPending);
+            return plan != null && plan.Manual ? plan : null;
+        }
+
+        private static SequencePlan OfferedPlan(Purpose purpose, MissionReply reply, bool planPending)
+        {
+            var plan = reply.SequencePlan;
+            if (plan == null) return null;
             switch (purpose)
             {
                 case Purpose.SequencePlan:
@@ -1772,6 +1817,7 @@ namespace ClaudiaKerman.Core.Missions
             if (findings.Crossings.Count > 0) wrong.Add("a Telemetry Check is certain to cross by the plan's own figures");
             if (findings.BiomeMiss != null) wrong.Add(MissionPrompts.GoalBiomeMissed(findings.BiomeMiss));
             if (findings.DeorbitNoTarget != null) wrong.Add(MissionPrompts.DeorbitNoTargetMissed(findings.DeorbitNoTarget));
+            if (findings.MoonCrossing != null) wrong.Add("the craft would wait in an orbit that crosses " + findings.MoonCrossing.Moon.Name + "'s sphere of influence");
             return string.Join(" and ", wrong.ToArray());
         }
 
@@ -1792,6 +1838,8 @@ namespace ClaudiaKerman.Core.Missions
             var start = LiveReadings.DeltaVLeftOf(snapshot);
             findings.StartDeltaV = start ?? 0;
             findings.DeorbitNoTarget = DeorbitTargets.Missing(plan.Script, snapshot);
+            // #867: the orbit the plan waits in for its Due Time, if it crosses a moon.
+            findings.MoonCrossing = WaitCrossing(mission, plan, CrossingSnapshot(mission));
             findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
             // #830: a duration short of the first burn (#696) is raised by the mod itself, on every path (the landing target default's wait, #790, was the first):
             // no request back to Claudia, no prompt text about it; plans.jsonl logs the raise.
@@ -1861,7 +1909,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 note = note.Trim();
                 if (note.Length == 0) return;
-                Note(LogKind.Player, "Retry with a note: " + note);
+                Note(LogKind.Player, "Retry with a note: " + note, typed: true);
             }
             mission.Stage = MissionStage.Sequencing;
             Begin(ScriptRetryTurn(mission, note, replan));
@@ -1993,6 +2041,8 @@ namespace ClaudiaKerman.Core.Missions
                     TransferWait(mission, plan);
                 }
             }
+            // #867: a Due Time the mod set just now (a window's) was not there for the plan's figures: its wait is judged here, a Blocker with no correction.
+            CrossingAtOffer(mission, plan);
             if (!mission.SequenceCounted)
             {
                 mission.SequencesProposed++;
@@ -2326,11 +2376,14 @@ namespace ClaudiaKerman.Core.Missions
 
         // ---- View ----
 
-        private LogEntry Note(LogKind kind, string text)
+        /// <param name="typed">The text is the player's own typed words (#873); only a Player line can be.</param>
+        private LogEntry Note(LogKind kind, string text, bool typed = false)
         {
-            var entry = new LogEntry { Kind = kind, Text = text ?? "" };
+            var entry = new LogEntry { Kind = kind, Text = text ?? "", Typed = typed && kind == LogKind.Player };
             QueueIfBlackout(_mission, entry);
             if (_mission != null) _mission.Log.Add(entry);
+            if (entry.Typed && _mission != null)
+                _mission.ManualAsk = ManualGrounds.Fold(_mission.ManualAsk, entry.Text);
             return entry;
         }
 
@@ -2442,6 +2495,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.FarSwitchLeavesAtCheckpoint = cannotLeave == "";
                 view.FarSwitchWarning = cannotLeave ?? "";
                 view.CraftVesselId = FollowsCraft(mission) ? mission.VesselId : "";
+                NextPatchWatchView(mission, view);
                 view.ChildVessels = ChildVesselViews(mission);
                 view.RunningChildVesselId = RunningChildVesselId(mission);
                 view.Settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));

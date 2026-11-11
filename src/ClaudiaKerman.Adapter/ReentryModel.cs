@@ -60,7 +60,9 @@ namespace ClaudiaKerman.Adapter
     /// with a lifting-surface module are left out of it, as stock does (their wing lift is not modelled). The parachutes are
     /// each ModuleParachute's own numbers, with the drag areas of its SEMIDEPLOYED and DEPLOYED cubes met as the part meets
     /// the air (held retrograde, or hanging under the canopy alike), at low Mach. Given the parts the heat shield drop takes
-    /// (<c>shieldDrop</c>, kOS UIDs), <see cref="AfterShield"/> is the craft without them.
+    /// (<c>shieldDrop</c>, kOS UIDs), <see cref="AfterShield"/> is the craft without them. A Ship System the entry will stow
+    /// (#868, <see cref="ShipSystemsKeeper.StowedForEntry"/>) is read by its RETRACTED cube, occluded as its live faces are:
+    /// the craft meets the air with its panels and dishes in, whatever they are when the block asks.
     /// Main thread; reads only (the drag cube data is a local copy; body lift is read from the live cubes, so a part beside a
     /// dropped one keeps that one's occlusion for its lift).
     /// </summary>
@@ -77,7 +79,15 @@ namespace ClaudiaKerman.Adapter
         private readonly double _mass;
         private readonly ReentryCraft _afterShield;
 
+        /// <summary>Ship Systems out now that this craft reads stowed (#868), for the block-call lines.</summary>
+        public int StowedCount { get; private set; }
+
         public ReentryCraft(Vessel vessel, ICollection<string> leaveOut = null, ICollection<string> shieldDrop = null)
+            : this(vessel, leaveOut, shieldDrop, ShipSystemsKeeper.StowedForEntry(vessel))
+        {
+        }
+
+        private ReentryCraft(Vessel vessel, ICollection<string> leaveOut, ICollection<string> shieldDrop, ICollection<uint> stowed)
         {
             var gone = new HashSet<string>(leaveOut ?? new string[0]);
             // The way the craft moves through the air when its forward axis points at surface retrograde.
@@ -96,10 +106,14 @@ namespace ClaudiaKerman.Adapter
                 // A chute already open has its canopy in its live cubes; the predictor adds that itself (Chutes), so its own
                 // drag here is its PACKED cube's.
                 var packed = chute != null && Open(chute) ? Cube(part, "PACKED") : null;
+                var retracted = packed == null ? Retracted(part, stowed) : null;
+                if (retracted != null) StowedCount++;
                 for (var i = 0; i < Machs.Length; i++)
                 {
                     _area[i] += packed != null
                         ? DragCubeDrag.Area(part.DragCubes, packed.Area, packed.Drag, local, (float)Machs[i])
+                        : retracted != null
+                        ? DragCubeDrag.Area(part.DragCubes, StowedFaces(part, retracted, bared), retracted.Drag, local, (float)Machs[i])
                         : bared != null
                             ? DragCubeDrag.Area(part.DragCubes, bared, local, (float)Machs[i])
                             : DragCubeDrag.Area(part, local, (float)Machs[i]);
@@ -122,8 +136,30 @@ namespace ClaudiaKerman.Adapter
             {
                 var without = new HashSet<string>(gone);
                 foreach (var uid in shieldDrop) without.Add(uid);
-                _afterShield = new ReentryCraft(vessel, without);
+                _afterShield = new ReentryCraft(vessel, without, null, stowed);
             }
+        }
+
+        /// <summary>The part's RETRACTED cube when the entry will stow it and it isn't in yet; null otherwise, or with no such cube.</summary>
+        private static DragCube Retracted(Part part, ICollection<uint> stowed)
+        {
+            if (stowed == null || !stowed.Contains(part.persistentId)) return null;
+            var deployable = part.FindModuleImplementing<ModuleDeployablePart>();
+            if (deployable == null || deployable.deployState == ModuleDeployablePart.DeployState.RETRACTED) return null;
+            return Cube(part, "RETRACTED");
+        }
+
+        /// <summary>The stowed cube's face areas, each occluded by the share its live face is (bared faces as <paramref name="bared"/> has them).</summary>
+        private static float[] StowedFaces(Part part, DragCube retracted, float[] bared)
+        {
+            var live = bared ?? part.DragCubes.AreaOccluded;
+            var areas = (float[])retracted.Area.Clone();
+            for (var f = 0; f < areas.Length; f++)
+            {
+                var whole = part.DragCubes.WeightedArea[f];
+                if (whole > 0) areas[f] *= Mathf.Clamp01(live[f] / whole);
+            }
+            return areas;
         }
 
         private void AddChute(Part part, ModuleParachute chute, Vector3 local)

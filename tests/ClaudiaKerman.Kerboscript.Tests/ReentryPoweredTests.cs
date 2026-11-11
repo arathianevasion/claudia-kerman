@@ -95,6 +95,21 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("if not reentry_touchdown_ok(last_speed) {", body);
         }
 
+        /// <summary>
+        /// #814: when the craft reentry flies isn't the one a return or deorbit aimed with, ENTRYFINISH's why names both (Core's EntryCraftTests), and the block
+        /// writes that why to its blocknote as soon as it is read, before anything drops: so the log names both crafts.
+        /// </summary>
+        [Fact]
+        public void The_block_notes_entryfinishs_why_which_names_both_crafts_when_they_differ()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
+            var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
+            var note = body.IndexOf("addons:claudia:blocknote(ctx:block, lexicon(\"phase\", \"finish\", \"why\", finish:why)).", StringComparison.Ordinal);
+            Assert.True(note > body.IndexOf("addons:claudia:entryfinish(", StringComparison.Ordinal));
+            Assert.True(note < body.IndexOf("reentry_separation(", StringComparison.Ordinal));
+            Assert.Equal(1, body.Split("addons:claudia:entryfinish(").Length - 1);
+        }
+
         [Fact]
         public void Chutes_with_a_list_all_or_a_tag_fails_saying_what_is_allowed()
         {
@@ -245,9 +260,11 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
             var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
             // powered is settled by lighting before the ask, and the "none" override and every widening reach the log through Core's why.
-            var ask = body.IndexOf("local ask is lexicon(\"none\", opt:chutes = \"none\", \"engine\", powered).", StringComparison.Ordinal);
+            // #815: the ask is made before the drop point (an abort there reads the group fresh, no engine lit) and takes engine from the lighting.
+            Assert.True(body.IndexOf("local ask is lexicon(\"none\", opt:chutes = \"none\", \"engine\", false).", StringComparison.Ordinal) > 0);
+            var ask = body.IndexOf("set ask:engine to powered.", StringComparison.Ordinal);
             Assert.True(ask > body.IndexOf("set powered to ship:availablethrust > 0.", StringComparison.Ordinal));
-            Assert.True(body.IndexOf("addons:claudia:chutegroup(ask)", StringComparison.Ordinal) > ask);
+            Assert.True(body.IndexOf("local group is reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", StringComparison.Ordinal) > ask);
             Assert.Contains("if group:why <> \"\" { addons:claudia:blocknote(ctx:block, lexicon(\"phase\", \"chutes_widened\", \"why\", group:why)). }", body);
             // Every later read of the group asks the same way, and chute_mode is untouched: today's timing.
             Assert.DoesNotContain("opt:chutes, extra:chutes_used", body);

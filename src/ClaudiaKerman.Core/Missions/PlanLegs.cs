@@ -172,6 +172,8 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>A trip came here with its capture still to pay, from <see cref="_origin"/>.</summary>
             private bool _captureOwed;
             private SnapshotBody _origin;
+            /// <summary>#866: the trip in to a planet whose next trip goes on to its moon, and that trip, by the planet's high orbit (<see cref="DeltaVMap.HighRoute"/>); null otherwise.</summary>
+            private DeltaVLeg[] _high;
             /// <summary>The delta-v the walk has spent, for the stages a leg will burn.</summary>
             private double _used;
             private JudgedLeg _leg;
@@ -260,10 +262,23 @@ namespace ClaudiaKerman.Core.Missions
                     _inTransit = false;
                     _at = target;
                     _orbiting = false;
+                    _high = HighRouteOn(target, index);
                     return;
                 }
                 var trip = _map.Trip(_at.Name, target.Name);
                 if (trip == null) return;
+                // #866: in to a planet with its moon next, the capture stops in the high orbit; on to the moon, the trip leaves from there.
+                if (_at.Name == _map.Home)
+                {
+                    _high = HighRouteOn(target, index);
+                    if (_high != null) trip = _high[0];
+                }
+                else
+                {
+                    if (_high != null && _at.Name == _high[0].Bodies[1] && target.Name == _high[1].Bodies[1]) trip = _high[1];
+                    // Used, or passed by: a later capture here or trip on is the low circle's.
+                    _high = null;
+                }
                 var id = _at.Name == _map.Home ? (_map.Leg("transfer:" + target.Name) != null ? "transfer:" + target.Name : "transfer:" + _at.Name + ">" + target.Name)
                     : target.Name == _map.Home ? "return:" + _at.Name : "transfer:" + _at.Name + ">" + target.Name;
                 var later = _rest.Skip(index + 1).ToList();
@@ -285,6 +300,19 @@ namespace ClaudiaKerman.Core.Missions
                 _at = target;
                 _grounded = false;
                 _orbiting = captured && !_captureOwed;
+            }
+
+            /// <summary>The high route (<see cref="DeltaVMap.HighRoute"/>) when the plan's next trip from <paramref name="planet"/>, from leg <paramref name="index"/> on, is to one of its moons (<see cref="KeptRoute.NextMoon"/>); else null.</summary>
+            private DeltaVLeg[] HighRouteOn(SnapshotBody planet, int index)
+            {
+                var ahead = _snapshot.At(_snapshot.Ut);
+                ahead.LegsAhead = _rest.Skip(index).ToList();
+                var system = new BodySystem(_snapshot.Bodies);
+                var at = system.Find(planet.Name);
+                double? deadline;
+                string why;
+                var moon = at == null ? null : KeptRoute.NextMoon(ahead, system, at, out deadline, out why);
+                return moon == null ? null : _map.HighRoute(moon.Name);
             }
 
             /// <summary>The next leg that does anything captures or lands, so the capture is in its budget; an ascent or another trip means it isn't.</summary>
@@ -321,7 +349,8 @@ namespace ClaudiaKerman.Core.Missions
                 _orbiting = true;
                 _at = body;
                 if (SequenceWords.Aero.IsMatch(words)) return;
-                var trip = owed && _origin != null ? _map.Trip(_origin.Name, body.Name) : null;
+                var high = _high != null && _high[0].Bodies[1] == body.Name ? _high[0] : null;
+                var trip = owed && _origin != null ? high ?? _map.Trip(_origin.Name, body.Name) : high;
                 var leg = _map.Leg("capture:" + body.Name);
                 var figure = trip != null ? trip.Arrival : leg != null ? leg.DeltaV : 0;
                 if (figure > 0) Add("capture:" + body.Name, figure);

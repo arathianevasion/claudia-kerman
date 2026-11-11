@@ -13,6 +13,8 @@ namespace ClaudiaKerman.Core.Tools
         public double Up;
         public double HRef;
         public double ToGo;
+        public double Vv;
+        public double H;
     }
 
     /// <summary>
@@ -153,7 +155,7 @@ namespace ClaudiaKerman.Core.Tools
                 var most = up * Math.Tan(tilt * Math.PI / 180);
                 if (Math.Abs(al) > most) al = al * most / Math.Abs(al);
             }
-            return new BrakeDemand { Along = al, Up = up, HRef = hRef, ToGo = toGo };
+            return new BrakeDemand { Along = al, Up = up, HRef = hRef, ToGo = toGo, Vv = vvWant, H = h };
         }
 
         /// <summary>land_climb_braking.</summary>
@@ -200,46 +202,20 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// land_steer in the track's plane: the unit direction (along, up) for the demand, the last direction under 5% of
-        /// <paramref name="aMax"/>, and within 45° of surface retrograde while over 50 m/s across the ground; and the m/s² to thrust
-        /// along it (<paramref name="mag"/>): where the cone turned it, the demand's part along the turned direction (none for a
-        /// demand ahead), or enough to keep the demand's upward part.
+        /// <see cref="LandSteer.Steer"/> in the track's plane: the unit direction (along, up) for the demand and the m/s² to
+        /// thrust along it (<paramref name="mag"/>).
         /// </summary>
-        public static void Steer(double wantAl, double wantUp, double lastAl, double lastUp, double vAl, double vUp, double aMax,
+        public static void Steer(BrakeDemand w, double lastAl, double lastUp, double vAl, double vUp, double aMax, double g,
             out double al, out double up, out double mag)
         {
-            mag = Math.Sqrt(wantAl * wantAl + wantUp * wantUp);
-            if (mag < 0.05 * aMax)
-            {
-                al = lastAl;
-                up = lastUp;
-                return;
-            }
-            al = wantAl / mag;
-            up = wantUp / mag;
-            var speed = Math.Sqrt(vAl * vAl + vUp * vUp);
-            if (Math.Abs(vAl) <= 50) return;
-            var rAl = -vAl / speed;
-            var rUp = -vUp / speed;
-            var c = al * rAl + up * rUp;
-            var cos45 = Math.Cos(Math.PI / 4);
-            if (c >= cos45) return;
-            var pAl = al - c * rAl;
-            var pUp = up - c * rUp;
-            var pMag = Math.Sqrt(pAl * pAl + pUp * pUp);
-            if (pMag < 1e-6)
-            {
-                al = rAl;
-                up = rUp;
-            }
-            else
-            {
-                var k = Math.Sin(Math.PI / 4) / pMag;
-                al = cos45 * rAl + k * pAl;
-                up = cos45 * rUp + k * pUp;
-            }
-            mag = Math.Max(0, wantAl * al + wantUp * up);
-            if (up > 0.01) mag = Math.Max(mag, wantUp / up);
+            // land's lean cap and want:vv-bound lift (#865, #886), the one rule LandSteer.Tick flies.
+            double wantAl = w.Along, cr = 0, wantUp = w.Up;
+            var capped = LandSteer.LeanCapApplies(w.HRef <= 0, w.H, Math.Abs(vAl));
+            LandSteer.Lean(ref wantAl, ref cr, ref wantUp, w.H, capped, aMax, g, vUp, w.Vv);
+            var dir = LandSteer.Steer(new[] { wantAl, 0, wantUp }, new[] { lastAl, 0, lastUp }, new[] { vAl, 0, vUp }, aMax, out mag);
+            if (capped) dir = LandSteer.LeanCapped(dir, LandSteer.MaxLean(w.H, true));
+            al = dir[0];
+            up = dir[2];
         }
     }
 }

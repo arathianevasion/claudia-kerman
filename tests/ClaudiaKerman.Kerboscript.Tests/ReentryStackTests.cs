@@ -70,7 +70,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             }
 
             /// <summary><c>local below</c>: what ENTRYDROP answers for this tree at <paramref name="at"/>.</summary>
-            public string Below(string at, IList<PlannedSequence> legs)
+            public string Below(string at, IList<PlannedSequence> legs, string separate = "auto", string jettisonStage = "auto")
             {
                 var snapshot = new GameSnapshot
                 {
@@ -83,11 +83,29 @@ namespace ClaudiaKerman.Kerboscript.Tests
                         new SnapshotBody { Name = "Duna", AtmosphereHeight = 50000, SeaLevelAtm = 0.07 },
                     },
                 };
-                var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" } },
+                var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" }, { "separate", separate }, { "jettison_stage", jettisonStage } },
                     snapshot, legs, 0, "", id => Parts[(int)id - 1].Uid);
                 Func<string, string> list = key => "list(" + string.Join(", ", ((IEnumerable<object>)answer[key]).Select(u => "\"" + u + "\"")) + ")";
-                return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
+                return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"jettison\", \"" + answer["jettison"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
                     + ", \"names\", " + list("names") + ", \"stuck\", " + list("stuck") + ").\n";
+            }
+
+            /// <summary>What ENTRYDROP refuses at block start (#815), above the air, for reentry's ask with <paramref name="separate"/>: its error, "" for none.</summary>
+            public string Refused(string at, IList<PlannedSequence> legs, string separate = "auto")
+            {
+                var snapshot = new GameSnapshot
+                {
+                    Body = at, Altitude = 100000,
+                    Orbit = new SnapshotOrbit { Body = at },
+                    Craft = new SnapshotCraft { Parts = Parts.Select(Part).ToList() },
+                    Bodies = new List<SnapshotBody>
+                    {
+                        new SnapshotBody { Name = "Kerbin", AtmosphereHeight = 70000, SeaLevelAtm = 1 },
+                        new SnapshotBody { Name = "Duna", AtmosphereHeight = 50000, SeaLevelAtm = 0.07 },
+                    },
+                };
+                return (string)BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" }, { "separate", separate }, { "chutes", true }, { "core", "pod" } },
+                    snapshot, legs, 0, "", id => Parts[(int)id - 1].Uid)["error"];
             }
         }
 
@@ -143,17 +161,18 @@ namespace ClaudiaKerman.Kerboscript.Tests
 
         private const string Options = "local opt is claudia_merge_options(lexicon(), reentry_defaults()).\n";
 
-        /// <summary>Prints what "auto" fires (decoupler uids), the refusal, and the shield's uid and modules.</summary>
+        /// <summary>Prints what "auto" fires (decoupler uids), its error, and the shield's uid and modules.</summary>
         private const string PrintFires = Options
             + "local plan is reentry_separation(\"auto\", below, parts).\n"
             + "local decs is list(). for d in plan:decouplers { decs:add(d:uid). }\n"
-            + "print decs:join(\",\"). print reentry_stack_refusal(\"auto\", below:stuck, plan:error).\n"
-            + "local jettison is reentry_jettison_uid(opt, below). print jettison. print reentry_shield_modules(jettison, parts):length.\n";
+            + "print decs:join(\",\"). print plan:error.\n"
+            + "local jettison is below:jettison. print jettison. print reentry_shield_modules(jettison, parts):length.\n";
 
         [Fact]
         public void On_the_flights_layout_a_non_last_entry_fires_nothing_with_chutes()
         {
             Assert.Equal(new[] { "", "", "", "0" }, Run(TheFlight(), TheFlight().Below("Duna", DunaThenKerbin) + PrintFires));
+            Assert.Equal("", TheFlight().Refused("Duna", DunaThenKerbin));
         }
 
         [Fact]
@@ -162,6 +181,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var printed = Run(TheFlight(), TheFlight().Below("Kerbin", Return) + PrintFires);
             // The shield's own decoupler and Decoupler.1 beside it; the block drops the stack first, which takes nothing else.
             Assert.Equal(new[] { "dec1", "", "shield", "2" }, printed);
+            Assert.Equal("", TheFlight().Refused("Kerbin", Return));
         }
 
         [Fact]
@@ -193,32 +213,32 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var shield = t.Add("HeatShield1", pod, Shield, "shield");
             t.Add("fuelTank", shield, None);
             const string print = "local plan is reentry_separation(\"auto\", below, parts).\n"
-                + "print plan:error. print plan:decouplers:length. print reentry_stack_refusal(\"auto\", below:names, plan:error).\n";
-            Assert.Equal(new[]
-            {
-                "fuelTank: no decoupler between it and the heat shield", "0",
-                "stack attached below the heat shield: fuelTank; drop it first or use separate (separate: fuelTank: no decoupler between it and the heat shield)",
-            }, Run(t, t.Below("Kerbin", Return) + print));
-            Assert.Equal(new[] { "", "0", "" }, Run(t, t.Below("Duna", DunaThenKerbin) + print));
+                + "print plan:error. print plan:decouplers:length.\n";
+            Assert.Equal(new[] { "fuelTank: no decoupler between it and the heat shield", "0" }, Run(t, t.Below("Kerbin", Return) + print));
+            // The refusal is ENTRYDROP's at block start (#815), still above the air.
+            Assert.Equal("stack attached below the heat shield: fuelTank; drop it first or use separate (separate: fuelTank: no decoupler between it and the heat shield)",
+                t.Refused("Kerbin", Return));
+            Assert.Equal(new[] { "", "0" }, Run(t, t.Below("Duna", DunaThenKerbin) + print));
+            Assert.Equal("", t.Refused("Duna", DunaThenKerbin));
         }
 
         [Fact]
         public void Separate_none_keeps_the_stack_with_no_refusal_and_keeps_the_shield_that_would_take_it()
         {
             var tree = MunShotV2();
-            var printed = Run(tree, tree.Below("Kerbin", Return) + "local opt is claudia_merge_options(lexicon(\"separate\", \"none\"), reentry_defaults()).\n"
+            var printed = Run(tree, tree.Below("Kerbin", Return, "none") + "local opt is claudia_merge_options(lexicon(\"separate\", \"none\"), reentry_defaults()).\n"
                 + "print reentry_separation(\"none\", below, parts):decouplers:length.\n"
-                + "print reentry_stack_refusal(\"none\", below:names, \"\").\n"
-                + "print reentry_jettison_uid(opt, below).\n");
-            Assert.Equal(new[] { "0", "", "" }, printed);
+                + "print below:jettison.\n");
+            Assert.Equal(new[] { "0", "" }, printed);
+            Assert.Equal("", tree.Refused("Kerbin", Return, "none"));
         }
 
         [Fact]
         public void Jettison_none_keeps_the_shield_and_the_stack_still_drops()
         {
             var tree = MunShotV2();
-            var printed = Run(tree, tree.Below("Kerbin", Return) + "local opt is claudia_merge_options(lexicon(\"jettison_stage\", \"none\"), reentry_defaults()).\n"
-                + "print reentry_separation(\"auto\", below, parts):decouplers:length. print reentry_jettison_uid(opt, below).\n");
+            var printed = Run(tree, tree.Below("Kerbin", Return, "auto", "none") + "local opt is claudia_merge_options(lexicon(\"jettison_stage\", \"none\"), reentry_defaults()).\n"
+                + "print reentry_separation(\"auto\", below, parts):decouplers:length. print below:jettison.\n");
             Assert.Equal(new[] { "1", "" }, printed);
         }
 
@@ -227,7 +247,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         /// <summary>Prints what a powered entry fires and jettisons, and that it refuses nothing.</summary>
         private const string PrintPowered = "local opt is claudia_merge_options(lexicon(), reentry_defaults()).\n"
             + "set opt:separate to \"none\".\n"
-            + "print reentry_separation(opt:separate, below, parts):decouplers:length. print reentry_stack_refusal(opt:separate, below:names, \"\"). print reentry_jettison_uid(opt, below).\n";
+            + "print reentry_separation(opt:separate, below, parts):decouplers:length. print below:jettison.\n";
 
         private static readonly IList<PlannedSequence> DunaLast = new[] { new PlannedSequence { Name = "Land on Duna", DeltaV = 100 } };
 
@@ -236,25 +256,35 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             // No Entry Shield at Duna before Kerbin; and the Last Entry, which would drop the stack and the radial tanks with their chutes.
             var tree = TheFlight();
-            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintPowered + "\n"));
-            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Duna", DunaLast) + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin, "none") + PrintPowered + "\n"));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaLast, "none") + PrintPowered));
             Assert.Contains("set opt:separate to \"none\".", CoreLibrary.Files.Single(f => f.Name == "reentry").Source);
+        }
+
+        [Fact]
+        public void A_powered_decision_sets_separate_none_before_the_drop_point_ask_jettison_is_read_from()
+        {
+            var body = Body();
+            var powered = At(body, "set opt:separate to \"none\".");
+            var reask = At(body, "\"jettison_stage\", opt:jettison_stage, \"drop_error\"");
+            Assert.True(powered < reask, "separate is set to none after the entrydrop re-ask");
+            Assert.True(reask < At(body, "local shield_uid is below:jettison."));
         }
 
         [Fact]
         public void A_powered_entry_on_two_shields_keeps_the_outer_shield_with_the_stage_below_it_and_the_inner_is_never_fired()
         {
             var tree = TwoShields();
-            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintPowered));
-            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Kerbin", Return) + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin, "none") + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Kerbin", Return, "none") + PrintPowered));
         }
 
         [Fact]
         public void A_powered_entry_with_its_shield_above_the_engines_keeps_it_on_a_pod_shield_stage()
         {
             var tree = MunShotV2();
-            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintPowered));
-            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Kerbin", Return) + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin, "none") + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Kerbin", Return, "none") + PrintPowered));
         }
 
         [Fact]
@@ -265,8 +295,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var pod = t.Add("mk1pod.v2", -1, Command, "pod");
             t.Add("radialEngine", pod, new[] { "ModuleEnginesFX" }, "engine");
             t.Add("HeatShield1", pod, Shield, "shield");
-            Assert.Equal(new[] { "0", "", "shield", "False", "True", "True" },
-                Run(t, t.Below("Duna", DunaLast) + PrintPowered
+            Assert.Equal(new[] { "0", "shield", "False", "True", "True" },
+                Run(t, t.Below("Duna", DunaLast, "none") + PrintPowered
                     + "print reentry_shield_due(false, 900, 20000).\n print reentry_shield_due(false, 400, 20000).\n print reentry_shield_due(false, 900, 20000, true).\n"));
         }
 
@@ -278,33 +308,142 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var dec = t.Add("Decoupler.1", tank, Decoupler);
             var shield = t.Add("HeatShield1", dec, Shield, "shield");
             t.Add("mk1pod.v2", shield, Command, "pod");
-            Assert.Equal(new[] { "0", "", "" }, Run(t, t.Below("Duna", DunaLast) + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(t, t.Below("Duna", DunaLast, "none") + PrintPowered));
         }
 
-        [Fact]
-        public void A_drop_that_failed_is_said_after_the_names()
-        {
-            Assert.Equal("stack attached below the heat shield: fuelTank; drop it first or use separate (separate: nothing separated: the decouplers did not fire)",
-                Run(new Tree(), "print reentry_stack_refusal(\"auto\", list(\"fuelTank\"), \"nothing separated: the decouplers did not fire\").").Single());
-        }
+        // ---- When the stack drops (#815): read at block start, dropped at the drop point, its lead s before the air ----
 
-        [Fact]
-        public void The_drop_and_refusal_come_after_the_entry_check_and_before_the_wait_and_the_hold_and_the_shield_is_found_after_them()
+        private static string Body()
         {
             var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
-            var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
-            var refusal = body.IndexOf("reentry_stack_refusal(", StringComparison.Ordinal);
-            Assert.True(refusal > 0);
-            Assert.True(body.IndexOf("claudia_fire_drop(ctx, drop)", StringComparison.Ordinal) < refusal);
-            // Nothing drops before the orbit is known to reach the atmosphere: a capsule left in orbit has no engine.
-            Assert.True(body.IndexOf("the orbit never reaches the atmosphere", StringComparison.Ordinal) < body.IndexOf("claudia_fire_drop(ctx, drop)", StringComparison.Ordinal));
-            Assert.True(refusal < body.IndexOf("lock steering to srfretrograde", StringComparison.Ordinal));
-            Assert.True(refusal < body.IndexOf("claudia_wait_until(", StringComparison.Ordinal));
-            Assert.True(refusal < body.IndexOf("reentry_shield_modules(shield_uid, ship:parts)", StringComparison.Ordinal));
-            // Read fresh at block start, and again for the craft that's left.
-            Assert.True(body.IndexOf("addons:claudia:entrydrop(entry_ask)", StringComparison.Ordinal) < body.IndexOf("claudia_fire_drop(ctx, drop)", StringComparison.Ordinal));
-            // The refusal is only above the atmosphere: a craft already in the air flies on.
-            Assert.Contains("if ship:altitude > body_:atm:height {\n      local refused is reentry_stack_refusal(", body);
+            return source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
+        }
+
+        private static int At(string body, string text)
+        {
+            var i = body.IndexOf(text, StringComparison.Ordinal);
+            Assert.True(i > 0, "not in reentry: " + text);
+            return i;
+        }
+
+        private const string StartRead = "local below is addons:claudia:entrydrop(entry_ask).";
+        private const string DropPoint = "if entry_in > below:lead {\n    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
+        private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop).";
+
+        /// <summary>The wait to the drop point: from its if to the closing brace at the block's own indent.</summary>
+        private static string DropPointWait(string body)
+        {
+            var start = At(body, DropPoint);
+            return body.Substring(start, body.IndexOf("\n  }\n", start, StringComparison.Ordinal) - start);
+        }
+
+        [Fact]
+        public void From_far_out_the_drop_fires_after_the_wait_to_the_lead_ENTRYDROP_gives_not_at_block_start()
+        {
+            var body = Body();
+            Assert.True(At(body, "the orbit never reaches the atmosphere") < At(body, DropPoint));
+            Assert.True(At(body, DropPoint) < At(body, Fire));
+            // The wait warps on rails and is back at 1x 30 s before the point (claudia_wait_until), so the drop fires off rails.
+            Assert.DoesNotContain("claudia_fire_drop", body.Substring(0, At(body, DropPoint)));
+        }
+
+        [Fact]
+        public void A_stuck_stack_is_still_refused_at_block_start_by_ENTRYDROPs_first_read()
+        {
+            var body = Body();
+            // reentry's ask carries what Core's refusal needs (EntryDropTests, EntryFinishTests); its error ends the block before any wait.
+            Assert.Contains("local entry_ask is lexicon(\"home\", reentry_home_uid(), \"separate\", opt:separate, \"jettison_stage\", opt:jettison_stage, \"chutes\", opt:chutes <> \"none\" and opt:chute_mode <> \"none\", \"core\", core:part:uid).", body);
+            var read = At(body, StartRead);
+            Assert.True(read < At(body, "if below:error <> \"\" {\n    return claudia_finish(ctx, false, below:error, extra)."));
+            Assert.True(read < At(body, "claudia_wait_until("));
+            Assert.DoesNotContain("reentry_stack_refusal", CoreLibrary.Files.Single(f => f.Name == "reentry").Source);
+        }
+
+        [Fact]
+        public void The_drop_points_read_flies_the_engines_the_chute_group_the_shield_and_the_prediction_come_after_it()
+        {
+            var body = Body();
+            var reread = At(body, "    set below to addons:claudia:entrydrop(entry_ask).");
+            Assert.True(At(body, DropPoint) < reread);
+            // ENTRYFINISH is read once, at the drop point, and the drop is the one that read gives.
+            Assert.Equal(1, body.Split("addons:claudia:entryfinish(").Length - 1);
+            var finish = At(body, "addons:claudia:entryfinish(");
+            Assert.True(reread < finish);
+            foreach (var after in new[]
+            {
+                "reentry_light(ship:engines, finish:engines).", "local drop is reentry_separation(opt:separate, below, ship:parts).", Fire,
+                "local group is reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", "addons:claudia:shipsystems(\"entry\").",
+                "local shield_uid is below:jettison.", "addons:claudia:reentryimpact(",
+            })
+                Assert.True(finish < At(body, after), after);
+        }
+
+        [Fact]
+        public void An_engine_landing_and_a_craft_with_no_Entry_Shield_fire_nothing()
+        {
+            var body = Body();
+            Assert.Contains("if powered {\n    set opt:separate to \"none\".\n  }\n  local dropped is list().\n  if below:names:length > 0 and not claudia_on_ground() {", body);
+            // No Entry Shield: ENTRYDROP names nothing, so "auto" fires nothing.
+            var t = new Tree();
+            t.Add("fuelTank", t.Add("Decoupler.1", t.Add("mk1pod.v2", -1, Command, "pod"), Decoupler), None);
+            Assert.Equal(new[] { "", "" }, Run(t, t.Below("Kerbin", Return) + PrintFires).Take(2));
+            Assert.Equal("", t.Refused("Kerbin", Return));
+        }
+
+        [Fact]
+        public void A_block_starting_inside_the_lead_drops_at_once_and_the_abort_before_the_drop_fires_nothing_and_arms_the_fresh_group()
+        {
+            var wait = DropPointWait(Body());
+            // Only the wait and the read are inside the if: inside the lead (or when a warp ran past the point) nothing waits and the drop is next.
+            Assert.DoesNotContain("claudia_fire_drop", wait);
+            Assert.DoesNotContain("reentry_light(", wait);
+            Assert.Contains("    if waited <> \"\" {\n      reentry_abort(opt:chute_mode, reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts)).\n"
+                + "      return claudia_finish(ctx, false, waited, extra).\n    }\n    set below to addons:claudia:entrydrop(entry_ask).", wait);
+            // Nothing chosen yet: the group is read fresh with no engine lit.
+            Assert.True(At(Body(), "local ask is lexicon(\"none\", opt:chutes = \"none\", \"engine\", false).") < At(Body(), DropPoint));
+        }
+
+        [Fact]
+        public void The_hold_starts_after_the_drop_and_nothing_holds_attitude_before_it()
+        {
+            var body = Body();
+            var hold = At(body, "lock steering to srfretrograde.");
+            Assert.True(At(body, Fire) < hold);
+            Assert.DoesNotContain("lock steering", body.Substring(0, hold));
+            // The wait for the air comes after the hold, on the orbit the drop left.
+            Assert.True(hold < At(body, "local waited is claudia_wait_until(ctx, time:seconds + reentry_entry_eta(ship:orbit:eccentricity"));
+        }
+
+        [Fact]
+        public void A_resumed_block_fires_only_what_is_still_on_and_a_second_pass_fires_nothing()
+        {
+            var body = Body();
+            // After a Coast Checkpoint the block starts afresh: a stack already gone names nothing and fires nothing; one still on waits as normal.
+            Assert.True(At(body, "if below:names:length > 0 and not claudia_on_ground() {") < At(body, Fire));
+            // One drop, before the fall; the skip-out loop waits and falls again but drops nothing.
+            Assert.Equal(1, body.Split("claudia_fire_drop(").Length - 1);
+            Assert.True(At(body, Fire) < At(body, "until fell <> \"\" or not skipped {"));
+        }
+
+        [Fact]
+        public void The_drop_is_reported_at_the_air_with_the_periapsis_before_and_after_it_and_the_distance_to_the_stack()
+        {
+            var body = Body();
+            var before = At(body, "local pe_before is ship:periapsis.");
+            Assert.True(before < At(body, Fire));
+            Assert.Contains("if drop_error = \"\" { set dropped to list(pe_before, ship:periapsis, drop:gone[0]:ship). }", body);
+            var note = At(body, "lexicon(\"phase\", \"stack_dropped\", \"pe_before\", round(dropped[0]), \"pe_after\", round(dropped[1]), \"stack_m\", choose -1 if dropped[2]:isdead else round(dropped[2]:distance))");
+            Assert.True(At(body, "reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly)).") < note);
+            Assert.True(note < At(body, "local has_drogues is"));
+        }
+
+        [Fact]
+        public void After_the_drop_ENTRYDROP_refuses_a_stack_still_on_above_the_air_and_the_shield_is_found_after()
+        {
+            var body = Body();
+            var after = At(body, "set below to addons:claudia:entrydrop(lexicon(\"home\", entry_ask:home, \"separate\", opt:separate, \"jettison_stage\", opt:jettison_stage, \"drop_error\", drop_error)).");
+            Assert.True(At(body, Fire) < after);
+            Assert.True(after < At(body, "reentry_shield_modules(shield_uid, ship:parts)"));
         }
 
         // ---- The options ----

@@ -119,7 +119,7 @@ namespace ClaudiaKerman.Core.Tests
                 new SnapshotBody { Name = "Sun", Parent = "", Gm = 1.1723328e18, Radius = 261600000, AtmosphereHeight = 600000, SeaLevelAtm = 0.16 },
                 new SnapshotBody { Name = "Moho", Parent = "Sun", Gm = 1.6860938e11, Radius = 250000, Sma = 5263138304, Inclination = 7 },
                 new SnapshotBody { Name = "Eve", Parent = "Sun", Gm = 8.1717302e12, Radius = 700000, AtmosphereHeight = 90000, SeaLevelAtm = 5, Sma = 9832684544, Inclination = 2.1 },
-                new SnapshotBody { Name = "Gilly", Parent = "Eve", Gm = 8289449.8, Radius = 13000, Sma = 31500000, Inclination = 12 },
+                new SnapshotBody { Name = "Gilly", Parent = "Eve", Gm = 8289449.8, Radius = 13000, Sma = 31500000, Eccentricity = 0.55, Inclination = 12 },
                 new SnapshotBody { Name = "Kerbin", Parent = "Sun", Gm = 3.5316e12, Radius = 600000, AtmosphereHeight = 70000, SeaLevelAtm = 1, Sma = 13599840256 },
                 new SnapshotBody { Name = "Mun", Parent = "Kerbin", Gm = 6.5138398e10, Radius = 200000, Sma = 12000000 },
                 new SnapshotBody { Name = "Minmus", Parent = "Kerbin", Gm = 1.7658e9, Radius = 60000, Sma = 47000000, Inclination = 6 },

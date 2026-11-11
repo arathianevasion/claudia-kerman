@@ -140,6 +140,163 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_stuck_stack_is_refused_at_block_start_unless_the_Entry_lands_on_its_engines_and_keeps_it()
+        {
+            // #815: ENTRYDROP refuses at block start what reentry's separate can't drop, with ENTRYFINISH's own choice of the engines.
+            Func<GameSnapshot, GameSnapshot> stuck = s =>
+            {
+                s.Craft.Parts.Single(p => p.Id == Dec).Tags.Remove("decoupler");
+                s.Altitude = 100000;
+                return s;
+            };
+            Func<GameSnapshot, IList<PlannedSequence>, string> refused = (s, legs) => (string)BlockCalls.EntryDropCall(
+                new Dictionary<string, object> { { "home", Uid(Pod) }, { "separate", "auto" }, { "chutes", true }, { "core", Uid(Pod) } }, s, legs, 0, "", Uid)["error"];
+
+            Assert.Equal(true, Ask(Flight("Duna", 3.9, 2.5), DunaLast)["powered"]);
+            Assert.Equal("", refused(stuck(Flight("Duna", 3.9, 2.5)), DunaLast));
+            Assert.Equal(false, Ask(Flight("Kerbin", 3.9, 1.4), KerbinReturn)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", refused(stuck(Flight("Kerbin", 3.9, 1.4)), KerbinReturn));
+        }
+
+        // #879: what the block's activate can't light is refused at block start, from what the snapshot read (per-part resources, the running module's propellants).
+        private static string RefusedAtStart(GameSnapshot s)
+        {
+            s.Craft.Parts.Single(p => p.Id == Dec).Tags.Remove("decoupler");
+            s.Altitude = 100000;
+            return (string)BlockCalls.EntryDropCall(
+                new Dictionary<string, object> { { "home", Uid(Pod) }, { "separate", "auto" }, { "chutes", false }, { "core", Uid(Pod) } }, s, KerbinReturn, 0, "", Uid)["error"];
+        }
+
+        private static GameSnapshot ReadEngine(double fuel, params string[] running)
+        {
+            // Heavy, chutes none, so Decide asks for engines.
+            var snapshot = Flight("Kerbin", 3.9, 2.5, radialChutes: 0);
+            snapshot.Craft.Parts.Single(p => p.Id == Tank).Resources.Add(new SnapshotPartResource { Name = "LiquidFuel", Amount = fuel, Density = 0.005 });
+            snapshot.Craft.Parts.Single(p => p.Id == Engine).EnginePropellants.AddRange(running);
+            return snapshot;
+        }
+
+        [Fact]
+        public void An_engine_that_can_light_with_its_propellant_aboard_is_still_accepted_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+
+            Assert.Equal(true, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.Equal("", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void An_engine_with_no_running_module_is_refused_at_block_start_for_it_would_not_light()
+        {
+            var snapshot = ReadEngine(100); // every mode disabled: EngineFuelled came from a module that doesn't run
+
+            Assert.Equal(false, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void An_engine_whose_running_mode_burns_a_propellant_nothing_aboard_holds_is_refused_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LqdHydrogen"); // the other mode's LiquidFuel made it read as fuelled
+
+            Assert.Equal(false, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_multi_mode_engine_left_in_its_air_breathing_mode_is_not_refused_for_the_air_it_has_no_part_to_hold()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel", "IntakeAir"); // RAPIER-like: no part holds IntakeAir above the air
+
+            var answer = Ask(snapshot, KerbinReturn, chutes: false);
+
+            Assert.Equal(true, answer["powered"]);
+            Assert.Equal(new object[] { Uid(Engine) }, (List<object>)answer["engines"]);
+            Assert.Equal("", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_second_engine_that_can_light_still_carries_the_Entry_when_the_first_cannot()
+        {
+            var snapshot = ReadEngine(100, "LqdHydrogen");
+            var spare = Part(60, Tank, "spareEngine", 0, 3, "engine");
+            spare.EngineFuelled = true;
+            spare.EnginePropellants.Add("LiquidFuel");
+            snapshot.Craft.Parts.Add(spare);
+
+            var answer = Ask(snapshot, KerbinReturn, chutes: false);
+
+            Assert.Equal(true, answer["powered"]);
+            Assert.Equal(new object[] { Uid(60) }, (List<object>)answer["engines"]);
+        }
+
+        // #889: an engine that can't light again is unavailable at block start; the fields are Core-internal.
+        [Fact]
+        public void An_engine_shut_down_with_allowRestart_false_is_refused_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            var engine = snapshot.Craft.Parts.Single(p => p.Id == Engine);
+            engine.EngineWasLit = true;
+            engine.EngineAllowsRestart = false;
+
+            Assert.Equal(false, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_flamed_out_engine_with_allowRestart_false_is_refused_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            var engine = snapshot.Craft.Parts.Single(p => p.Id == Engine);
+            engine.EngineFlameout = true;
+            engine.EngineAllowsRestart = false;
+
+            Assert.Equal(false, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_restartable_engine_with_flameout_and_fuel_aboard_is_accepted_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            snapshot.Craft.Parts.Single(p => p.Id == Engine).EngineFlameout = true; // sticky until it relights; allowRestart stays true
+
+            Assert.Equal(true, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.Equal("", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void An_engine_with_no_ignitions_left_is_refused_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            snapshot.Craft.Parts.Single(p => p.Id == Engine).EngineIgnitionsLeft = 0;
+
+            Assert.Equal(false, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_restartable_engine_shut_down_or_with_ignitions_left_is_accepted_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            var engine = snapshot.Craft.Parts.Single(p => p.Id == Engine);
+            engine.EngineWasLit = true; // allowRestart stays true
+            engine.EngineIgnitionsLeft = 2;
+
+            Assert.Equal(true, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.Equal("", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_never_shut_down_engine_with_allowRestart_false_is_not_taken_for_a_shut_down_engine()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            snapshot.Craft.Parts.Single(p => p.Id == Engine).EngineAllowsRestart = false; // never lit
+
+            Assert.Equal(true, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+        }
+
+        [Fact]
         public void A_capsule_on_its_pod_chute_home_from_Kerbin_orbit_is_on_chutes_and_the_stack_drops()
         {
             var snapshot = Flight("Kerbin", 3.9, 1.4);

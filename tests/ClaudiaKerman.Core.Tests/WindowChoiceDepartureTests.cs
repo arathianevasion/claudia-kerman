@@ -300,7 +300,8 @@ namespace ClaudiaKerman.Core.Tests
         public void AManualStretchNeverAsks()
         {
             var mission = Control(new StreamingFakeTransport(HomePlan("manual:Surface operations", "Ascend from Duna", "Return to Kerbin"), SurfaceStay()));
-            ToDeparture(mission, Landed("Duna", NewGame, 20000));
+            // The player asks for the manual stretch (#818), so none is refused.
+            ToDeparture(mission, Landed("Duna", NewGame, 20000), Unnamed + " I'll fly the surface stay by hand.");
             Assert.False(mission.View.WindowPickNeeded);
             mission.Send(new Approve());
             Assert.Equal(MissionStage.ManualControl, mission.View.Stage);

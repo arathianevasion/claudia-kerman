@@ -264,6 +264,16 @@ namespace ClaudiaKerman.Core.Missions
         public SceneChanged(GameScene scene) { Scene = scene; }
     }
 
+    /// <summary>
+    /// #877: outside Flight, the Mission craft as the save holds it: its situation, body table and saved orbit (no parts), so a plan offered there is judged
+    /// for a moon crossing. Null when the craft isn't in the save. Ignored in Flight, where the Game Snapshot judges.
+    /// </summary>
+    public sealed class SavedOrbitRead : MissionInput
+    {
+        public readonly GameSnapshot Snapshot;
+        public SavedOrbitRead(GameSnapshot snapshot) { Snapshot = snapshot; }
+    }
+
     /// <summary>Game time, in seconds of UT, and whether time warp was running when it was read (#834: the runaway stop's warp hold ends once warp has).</summary>
     public sealed class UtAdvanced : MissionInput
     {
@@ -285,6 +295,16 @@ namespace ClaudiaKerman.Core.Missions
         public readonly string VesselId;
         public readonly ClaudiaKerman.Core.Kos.TracedBlock Traced;
         public ClaudiaKilled(string vesselId = "", ClaudiaKerman.Core.Kos.TracedBlock traced = null) { VesselId = vesselId ?? ""; Traced = traced; }
+    }
+
+    /// <summary>
+    /// A Kerbal other than Claudia was killed (#874; KSP's onCrewKilled). The Mission records the name and the UT of its
+    /// death; Claudia's own death is <see cref="ClaudiaKilled"/>, and is not sent here.
+    /// </summary>
+    public sealed class KerbalKilled : MissionInput
+    {
+        public readonly string Name;
+        public KerbalKilled(string name) { Name = name ?? ""; }
     }
 
     // ---- kOS run events ----
@@ -370,6 +390,19 @@ namespace ClaudiaKerman.Core.Missions
     {
         public readonly string Text;
         public EncounterWatchDropped(string text)
+        {
+            Text = text;
+        }
+    }
+
+    /// <summary>
+    /// The next-patch watch dropped the warp with no script running (#867, <see cref="Tools.NextPatchWatch"/>): the Mission's line, raised as a request
+    /// (<c>NeedsPlayer</c>) naming the moon and the time.
+    /// </summary>
+    public sealed class NextPatchDropped : MissionInput
+    {
+        public readonly string Text;
+        public NextPatchDropped(string text)
         {
             Text = text;
         }

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Missions;
 
@@ -16,6 +17,8 @@ namespace ClaudiaKerman.Core.Tools
         public double TargetPe;
         /// <summary>The window's UT, or null for "next".</summary>
         public double? Window;
+        /// <summary>The ejection its watched wait led to (#867, <see cref="TransferFlight.EjectionToken"/>); "" for none.</summary>
+        public string Ejection = "";
         public bool Correction = true;
         public double PeTolerance = 1000;
         public double StartUt;
@@ -56,6 +59,11 @@ namespace ClaudiaKerman.Core.Tools
         public PlaneOption PlaneOption = PlaneOption.Auto;
         /// <summary>The arrival plane <see cref="PlaneOption"/> resolves to, set at each step; null for none.</summary>
         internal ArrivalPlane Plane;
+        /// <summary>
+        /// The block's own flight (#867, TRANSFERSTEP): a far ejection is first a wait watched by the next-patch watch. Off for the mod's own reads of
+        /// the first step (<see cref="BurnPoints"/>), which want the ejection itself.
+        /// </summary>
+        public bool WatchEjection;
     }
 
     /// <summary>The next thing <c>transfer_to</c> does: fly a node, wait until a UT, or end; or why it fails.</summary>
@@ -95,6 +103,8 @@ namespace ClaudiaKerman.Core.Tools
         public double MidUt = -1;
         /// <summary>For return's coast ask (#775): the UT its wait runs to.</summary>
         public double WaitUt;
+        /// <summary>The ejection a watched wait leads to (#867), carried so the step after it flies this node: <see cref="TransferFlight.EjectionToken"/>; "" for none.</summary>
+        public string Ejection = "";
         /// <summary>A wait's Encounter Watch (#770); null for a wait with nothing to watch.</summary>
         public EncounterWatchPlan Watch;
         /// <summary>The arrival plane this flight aims for, for Core to record for <c>capture</c> (#788): <see cref="ArrivalPlane.ToRecord"/>; "" for none.</summary>
@@ -124,6 +134,8 @@ namespace ClaudiaKerman.Core.Tools
     internal static class TransferFlight
     {
         public const string Start = "start";
+        /// <summary>After the watched wait for a far ejection (#867): the ejection, solved again from where the craft is.</summary>
+        private const string Eject = "eject";
         private const string Ejected = "ejected";
         private const string Planed = "planed";
         private const string Made = "made";
@@ -176,6 +188,8 @@ namespace ClaudiaKerman.Core.Tools
         public static TransferFlightStep Next(GameSnapshot snapshot, TransferFlightAsk ask)
         {
             if (snapshot == null) return Fail("no Game Snapshot");
+            // #867: the next-patch watch stopped the wait for the ejection: no burn, the block fails with the moon and the time.
+            if (ask.WatchDropped && ask.Phase == Eject) return Fail(WouldMeet(snapshot));
             if (ask.WatchDropped)
             {
                 ask.Phase = Restoring;
@@ -242,7 +256,9 @@ namespace ClaudiaKerman.Core.Tools
             switch (ask.Phase)
             {
                 case Start:
-                    return Begin(snapshot, setup, ask);
+                    return Begin(snapshot, setup, ask, false);
+                case Eject:
+                    return Carried(setup, ask) ?? Begin(snapshot, setup, ask, true);
                 case Ejected:
                     return AfterEjection(snapshot, setup, ask);
                 case Planed:
@@ -339,8 +355,12 @@ namespace ClaudiaKerman.Core.Tools
             };
         }
 
-        /// <summary>The ejection: to a moon, <see cref="Transfer"/>'s; to a body sharing the craft's parent, <see cref="SiblingEjection"/>'s.</summary>
-        private static TransferFlightStep Begin(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
+        /// <summary>
+        /// The ejection: to a moon, <see cref="Transfer"/>'s; to a body sharing the craft's parent, <see cref="SiblingEjection"/>'s. One more than
+        /// twice <see cref="EjectionLead"/> away is first waited for to that lead before it, watched by the next-patch watch (#867), and then solved
+        /// again from where the craft is (<paramref name="watched"/>), refused if the path meets a moon before it.
+        /// </summary>
+        private static TransferFlightStep Begin(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, bool watched)
         {
             var home = setup.Body;
             var target = setup.Target;
@@ -348,6 +368,8 @@ namespace ClaudiaKerman.Core.Tools
             if (!sibling && !string.Equals(target.Parent, home.Name, StringComparison.OrdinalIgnoreCase))
                 return Fail(target.Name + " does not orbit " + home.Name + ", the body the craft orbits" + (string.IsNullOrEmpty(home.Parent) ? "" : ", or " + home.Parent));
             var earliest = Earliest(ask.StartUt, ask.TurnTime, ask.Window);
+            // After the watched wait the block's start is long past: the ejection can't come before the craft can turn to it.
+            if (watched) earliest = Math.Max(earliest, setup.Now + ask.TurnTime);
             TransferFlightStep step;
             double arrival;
             if (sibling)
@@ -361,9 +383,13 @@ namespace ClaudiaKerman.Core.Tools
             }
             else
             {
-                var plan = Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null) });
-                if (plan.Error != null) return Fail(plan.Error);
+                string kept;
+                double? due;
+                var plan = KeptDeparture(snapshot, setup, ask, earliest, out kept, out due)
+                    ?? Fallback(snapshot, target, ask, earliest, kept != "" ? earliest + KeptRoute.MaxLoops * setup.Start.Period : (double?)null, kept != "" ? due : null);
+                if (plan.Error != null) return Fail(kept != "" ? kept + ", nor anywhere in them: circularize at alt and try again" + (plan.Error != "" ? " (" + plan.Error + ")" : "") : plan.Error);
                 step = Node("ejection", plan.Ut, plan.Prograde, plan.Normal, plan.Radial, Ejected);
+                if (kept != "") step.Report[CaptureFlight.KeptKey] = kept;
                 arrival = plan.ArrivalUt;
                 step.PlaneUt = plan.PlaneUt ?? -1;
             }
@@ -371,7 +397,112 @@ namespace ClaudiaKerman.Core.Tools
             step.Report["ejection_wait"] = Math.Round(step.Ut - ask.StartUt);
             step.Report["departure_ut"] = Math.Round(step.Ut);
             if (ask.Auto) step.MaxDuration = arrival - ask.StartUt + AutoSlack;
+            var lead = EjectionLead(setup.Start, ask.TurnTime);
+            if (watched)
+            {
+                // The last stretch before the burn is exec_node's warp, unwatched: a moon met in it refuses the burn here.
+                var met = MoonCrossings.Follow(setup.System, home, setup.Start, setup.Now, step.Ut);
+                return met != null ? Fail(NextPatchWatch.WouldMeet(met)) : step;
+            }
+            if (!ask.WatchEjection || step.Ut - setup.Now <= 2 * lead) return step;
+            var wait = new TransferFlightStep
+            {
+                Do = TransferFlightStep.Wait, Ut = step.Ut - lead, Phase = Eject, ArrivalUt = arrival, PlaneUt = step.PlaneUt, MaxDuration = step.MaxDuration,
+                Watch = new EncounterWatchPlan { NextPatch = true, SinceUt = setup.Now }, Ejection = EjectionToken(step), Sibling = step.Sibling,
+            };
+            foreach (var entry in step.Report) wait.Report[entry.Key] = entry.Value;
+            return wait;
+        }
+
+        /// <summary>
+        /// The ejection search; with a <paramref name="due"/> (#881) the cheapest whose arrival is by it: a late cheapest is cut away (the search re-run
+        /// from before its departure) until one is on time, or none is left (the search's own "found nothing" error).
+        /// </summary>
+        internal static TransferPlan Fallback(GameSnapshot snapshot, SnapshotBody target, TransferFlightAsk ask, double earliest, double? latest, double? due)
+        {
+            if (due.HasValue && double.IsNaN(due.Value)) due = null;
+            // A departure is no later than its arrival.
+            if (due.HasValue) latest = Math.Min(latest ?? double.PositiveInfinity, due.Value);
+            TransferPlan plan = null;
+            for (var tries = 0; tries < 16; tries++)
+            {
+                plan = Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null), LatestUt = latest });
+                if (plan.Error != null || !due.HasValue || plan.ArrivalUt <= due.Value) return plan;
+                latest = plan.Ut - 1;
+                if (latest.Value < earliest) break;
+            }
+            return new TransferPlan { Error = "" };
+        }
+
+        /// <summary>
+        /// #866: from the high ellipse <c>capture</c> kept for this moon, the ejection at the periapsis that meets its window (<see cref="KeptRoute.Departure"/>),
+        /// within <see cref="KeptRoute.MaxLoops"/> loops; null for any other orbit or a window given (then <see cref="Transfer"/>'s search as before), or none
+        /// found, <paramref name="why"/> saying so (then <see cref="Transfer"/>'s search over the same loops, else the circle).
+        /// </summary>
+        private static TransferPlan KeptDeparture(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, double earliest, out string why, out double? deadline)
+        {
+            why = "";
+            deadline = null;
+            var orbit = setup.Start;
+            if (ask.Window.HasValue || !KeptRoute.IsKept(setup.System, setup.Body, orbit, setup.Target)) return null;
+            string notNext;
+            var next = KeptRoute.NextMoon(snapshot, setup.System, setup.Body, out deadline, out notNext);
+            if (next == null || !string.Equals(next.Name, setup.Target.Name, StringComparison.OrdinalIgnoreCase)) deadline = null;
+            int loop;
+            var plan = KeptRoute.Departure(snapshot, setup.System, setup.Body, orbit, setup.Target, ask.TargetPe, earliest, earliest + KeptRoute.MaxLoops * orbit.Period, deadline, out loop);
+            if (plan == null) why = "no " + setup.Target.Name + " window at a periapsis within " + KeptRoute.MaxLoops + " loops of the kept orbit" + (deadline.HasValue ? " before the next fixed date" : "");
+            return plan;
+        }
+
+        /// <summary>
+        /// How long before a far ejection its watched wait ends (#867): the next-patch watch's margin (a loop, at least an hour), the turn and
+        /// <see cref="Lead"/>; exec_node warps the rest.
+        /// </summary>
+        internal static double EjectionLead(Conic orbit, double turnTime)
+        {
+            return NextPatchWatch.Margin(orbit) + turnTime + Lead;
+        }
+
+        /// <summary>The ejection node a watched wait carries (#867): "ut;prograde;normal;radial;phase", invariant.</summary>
+        internal static string EjectionToken(TransferFlightStep step)
+        {
+            return string.Join(";", new[] { step.Ut, step.Prograde, step.Normal, step.Radial }.Select(x => x.ToString("R", CultureInfo.InvariantCulture)).ToArray()) + ";" + step.Phase;
+        }
+
+        /// <summary>
+        /// After the watched wait (#867): the ejection it carried, flown as planned (the orbit hasn't changed on rails), unless the path meets a moon
+        /// before it in the last stretch, which exec_node warps unwatched. Null when nothing readable was carried: the ejection is solved again.
+        /// </summary>
+        private static TransferFlightStep Carried(PredictBurn.Setup setup, TransferFlightAsk ask)
+        {
+            var parts = (ask.Ejection ?? "").Split(';');
+            double ut, prograde, normal, radial;
+            if (parts.Length != 5 || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out ut)
+                || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out prograde)
+                || !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out normal)
+                || !double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out radial)
+                || (parts[4] != Escaping && parts[4] != Ejected) || ut < setup.Now + ask.TurnTime) return null;
+            var met = MoonCrossings.Follow(setup.System, setup.Body, setup.Start, setup.Now, ut);
+            if (met != null) return Fail(NextPatchWatch.WouldMeet(met));
+            var step = Node("ejection", ut, prograde, normal, radial, parts[4]);
+            step.ArrivalUt = ask.ArrivalUt;
+            step.PlaneUt = ask.PlaneUt;
+            step.Sibling = ask.Sibling;
             return step;
+        }
+
+        /// <summary>The block's failure after the next-patch watch stopped its wait (#867): "would meet Ike at UT …", from the path as KSP now has it.</summary>
+        private static string WouldMeet(GameSnapshot snapshot)
+        {
+            ToolOutcome error;
+            var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
+            if (setup == null) return "the next-patch watch stopped the wait for the ejection";
+            var parent = setup.System.Parent(setup.Body);
+            // KSP already has the craft round the moon.
+            if (parent != null && !string.IsNullOrEmpty(parent.Parent))
+                return NextPatchWatch.WouldMeet(new MoonCrossing { Body = parent, Moon = setup.Body, Ut = setup.Now });
+            var met = MoonCrossings.Follow(setup.System, setup.Body, setup.Start, setup.Now, setup.Now + 2 * NextPatchWatch.Margin(setup.Start));
+            return met != null ? NextPatchWatch.WouldMeet(met) : "the next-patch watch stopped the wait for the ejection";
         }
 
         /// <summary>

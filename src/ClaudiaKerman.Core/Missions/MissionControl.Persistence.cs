@@ -96,6 +96,8 @@ namespace ClaudiaKerman.Core.Missions
                 MissionPlanApproved = mission.MissionPlanApproved,
                 EvaScience = mission.EvaScience,
                 ManualPlanned = mission.ManualPlanned,
+                ManualAsk = mission.ManualAsk ? "true" : "false",
+                PrecisionGoal = mission.PrecisionGoal ? "true" : "false",
                 ManualOrigin = mission.ManualOrigin,
                 HandBack = mission.HandBack,
                 HandBackMessage = mission.HandBackMessage,
@@ -110,6 +112,9 @@ namespace ClaudiaKerman.Core.Missions
                 Crossings = CrossingsJson(mission),
                 RunEvents = RunEventsJson(mission),
                 RunStartUt = mission.RunStartUt,
+                RunTransfers = mission.RunTransfers,
+                RunWords = mission.RunWords,
+                CrewDeaths = CrewDeathsJson(mission),
                 RcsUse = mission.RcsUse.ToJson(),
                 RunStartMonopropellant = mission.RunStartMonopropellant,
                 RunStartDeltaVLeft = mission.RunStartDeltaVLeft,
@@ -191,6 +196,7 @@ namespace ClaudiaKerman.Core.Missions
                     PlayerText = turn.PlayerText,
                     ScriptRewrite = turn.ScriptRewrite,
                     ChildVesselRetry = turn.ChildVesselRetry,
+                    ManualRetry = turn.ManualRetry,
                     GoalStands = turn.GoalStands,
                     ReducedGoalRetry = turn.ReducedGoalRetry,
                     Waits = turn.Waits,
@@ -274,6 +280,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var leaving = _scene == GameScene.Flight && scene != GameScene.Flight;
             _scene = scene;
+            if (scene == GameScene.Flight) ForgetSavedOrbit();
             if (!leaving)
             {
                 // Entering Flight waits for its first snapshot, which says which vessel the player is in.
@@ -469,6 +476,8 @@ namespace ClaudiaKerman.Core.Missions
                 MissionPlanApproved = state.MissionPlanApproved,
                 EvaScience = state.EvaScience ?? "",
                 ManualPlanned = state.ManualPlanned,
+                ManualAsk = string.IsNullOrEmpty(state.ManualAsk) ? ManualGrounds.Asked(state.Goal) : state.ManualAsk == "true",
+                PrecisionGoal = string.IsNullOrEmpty(state.PrecisionGoal) ? ManualGrounds.PrecisionGoal(state.Goal) : state.PrecisionGoal == "true",
                 ManualOrigin = state.ManualOrigin,
                 HandBack = state.HandBack,
                 HandBackMessage = state.HandBackMessage,
@@ -499,6 +508,9 @@ namespace ClaudiaKerman.Core.Missions
             RestoreCrossings(mission, state.Crossings);
             RestoreRunEvents(mission, state.RunEvents);
             mission.RunStartUt = state.RunStartUt;
+            mission.RunTransfers = state.RunTransfers ?? "";
+            mission.RunWords = state.RunWords ?? "";
+            RestoreCrewDeaths(mission, state.CrewDeaths);
             mission.RcsUse.Restore(state.RcsUse);
             mission.RunStartMonopropellant = state.RunStartMonopropellant;
             mission.RunStartDeltaVLeft = state.RunStartDeltaVLeft;
@@ -525,6 +537,8 @@ namespace ClaudiaKerman.Core.Missions
                 List<GoalItem> steps;
                 mission.Log.AddRange(MissionLogRebuild.From(transcript, state.Goal, mission.VesselName, _config, MissionStore.ReadNotices(mission.Folder), out steps));
                 mission.GoalSteps = steps;
+                // A Mission saved before ManualAsk was kept reads the log it has: flagged words, or the prefix rule when none are (#873).
+                if (string.IsNullOrEmpty(state.ManualAsk)) mission.ManualAsk = ManualGrounds.Asked(state.Goal, mission.Log);
                 mission.LogRebuilt = transcript.Messages.Count > 0;
             }
             else
@@ -683,6 +697,7 @@ namespace ClaudiaKerman.Core.Missions
                     PlayerText = unanswered.PlayerText,
                     ScriptRewrite = unanswered.ScriptRewrite,
                     ChildVesselRetry = unanswered.ChildVesselRetry,
+                    ManualRetry = unanswered.ManualRetry,
                     GoalStands = unanswered.GoalStands,
                     ReducedGoalRetry = unanswered.ReducedGoalRetry,
                     Waits = unanswered.Waits,

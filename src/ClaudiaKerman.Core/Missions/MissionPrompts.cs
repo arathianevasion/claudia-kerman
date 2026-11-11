@@ -506,6 +506,8 @@ namespace ClaudiaKerman.Core.Missions
                     + findings.BiomeMiss.Goal.Biome + " (find_landing_site's biome, land's target biome), or keep it and say why in the plan's why.");
             if (findings.DeorbitNoTarget != null)
                 parts.Add(char.ToUpperInvariant(DeorbitNoTargetMissed(findings.DeorbitNoTarget)[0]) + DeorbitNoTargetMissed(findings.DeorbitNoTarget).Substring(1) + ". Give it a target (LATLNG(lat, lng)).");
+            if (findings.MoonCrossing != null)
+                parts.Add("The craft would wait for the Due Time in an orbit that crosses a moon: " + findings.MoonCrossing.Line() + ". Send the fix as this sequence, with no Due Time, and the wait after it.");
             return text + (failed ? "\n" : "The mod sent back your Sequence Plan, so the player hasn't seen it; its Mission Script passed the Script Check. ")
                 + string.Join("\n", parts.ToArray());
         }
@@ -517,6 +519,7 @@ namespace ClaudiaKerman.Core.Missions
             if (findings.Crossings.Count > 0) fixes.Add("each delta-v left threshold set below what the plan itself leaves");
             if (findings.BiomeMiss != null) fixes.Add("land aimed at " + findings.BiomeMiss.Goal.Biome + " (or why it lands elsewhere in why)");
             if (findings.DeorbitNoTarget != null) fixes.Add("deorbit given a target");
+            if (findings.MoonCrossing != null) fixes.Add("the orbit fixed before any wait (change_orbit " + findings.MoonCrossing.FixOption + ")");
             var with = string.Join(" and ", fixes.ToArray());
             if (findings.ScriptFailed) return fixes.Count == 0 ? RewriteNotice : RewriteNotice + " Also send it with " + with + ", or change the plan.";
             return "Send the Sequence Plan again with " + with + " (or change the plan): reply with kind \"sequence_plan\" and sequence_plan filled in, "
@@ -921,6 +924,24 @@ namespace ClaudiaKerman.Core.Missions
                     + (!one.Landable ? "not landable (" + one.Note + ")." : air ? "reentry can't aim at it yet (no precision landing through air)." : Beside));
             }
             return string.Join(" ", lines.ToArray());
+        }
+
+        /// <summary>
+        /// #867: the Blocker of a plan whose wait is in an orbit that crosses a moon: "Blocker: the orbit round Duna crosses Ike's sphere of influence
+        /// (from 1,734 km up) about UT 169,104,601: fly change_orbit set_ap 1,520 km (about 26 m/s; a circle costs about 260 m/s) before waiting."
+        /// </summary>
+        internal static string MoonCrossingBlocker(Tools.MoonCrossing crossing)
+        {
+            return "Blocker: " + crossing.Line() + ".";
+        }
+
+        /// <summary>#867: the Debrief's fact of an orbit the run left that crosses a moon, for Claudia's next plan.</summary>
+        internal static string MoonCrossingFact(Tools.MoonCrossing crossing, bool onCourse = false)
+        {
+            // #871: already on the encounter path and nothing shows it planned: the fix only if it isn't intended.
+            if (onCourse)
+                return "On course to meet " + crossing.Moon.Name + (crossing.Ut.HasValue ? " at UT " + Tools.MoonCrossing.Num(crossing.Ut.Value) : "") + " (nothing in the run or the Mission Plan names it); if this encounter isn't intended, fly " + crossing.Fix();
+            return char.ToUpperInvariant(crossing.Line()[0]) + crossing.Line().Substring(1) + "; a plan that waits in it is blocked";
         }
 
         /// <summary>#831: a deorbit with no target where the block's auto gives none.</summary>

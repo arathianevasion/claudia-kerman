@@ -17,6 +17,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var mission = _mission;
             if (mission == null || !MissionOver) return;
+            ForgetSavedOrbit();
             try
             {
                 if (!File.Exists(Path.Combine(mission.Folder, MissionFolder.EndedFile)))

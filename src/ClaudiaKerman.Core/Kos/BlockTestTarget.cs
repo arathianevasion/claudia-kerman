@@ -36,7 +36,7 @@ namespace ClaudiaKerman.Core.Kos
         }
 
         /// <summary>KSP's elements of <paramref name="orbit"/> (inclination, LAN and argument of periapsis in degrees, mean anomaly in radians).</summary>
-        private static SnapshotOrbit Elements(Conic orbit, string body)
+        internal static SnapshotOrbit Elements(Conic orbit, string body)
         {
             var lan = Math.Atan2(orbit.W.X, -orbit.W.Y);
             var node = new Vec3(Math.Cos(lan), Math.Sin(lan), 0);

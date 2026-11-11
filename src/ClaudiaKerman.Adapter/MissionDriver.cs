@@ -26,6 +26,8 @@ namespace ClaudiaKerman.Adapter
         private Game _game;
         private GameScene? _scene;
         private float _nextSnapshot;
+        private const float SavedOrbitSeconds = 3f;
+        private float _nextSaved;
         private readonly AttentionWatch _watch = new AttentionWatch();
         private int _watchedVersion = -1;
         private const float UtSeconds = 0.5f;
@@ -38,6 +40,8 @@ namespace ClaudiaKerman.Adapter
         /// <summary>Ship Systems (#756): moves the panels, antennas, radiators and lights of the craft Claudia flies.</summary>
         private readonly ShipSystemsKeeper _shipSystems;
         private readonly EncounterWatcher _encounterWatcher;
+        /// <summary>#867: the craft's next patch while it warps between runs.</summary>
+        private readonly NextPatchWatcher _nextPatchWatcher;
 
         /// <summary>The Mission window's body, drawn by the floating window or, docked in Flight, under the Capcom strip.</summary>
         public readonly MissionPanel Panel;
@@ -177,12 +181,14 @@ namespace ClaudiaKerman.Adapter
             MissionsList = new MissionsWindow(Send);
             Strip = new CapcomStrip(Panel) { TabClicked = () => PanelOpen = !PanelOpen };
             GameEvents.onKerbalStatusChange.Add(OnKerbalStatusChange);
+            GameEvents.onCrewKilled.Add(OnCrewKilled);
             GameEvents.onCrewOnEva.Add(OnCrewOnEva);
             _vessels = new VesselWatch(Send);
             _events = new RunEventWatcher(Send, () => _mission.View.Stage == MissionStage.Running,
                 () => _mission.View.CraftVesselId, () => _mission.View.RunningChildVesselId);
             _shipSystems = new ShipSystemsKeeper(Send, () => _mission.View, manageShipSystems ?? (() => true));
             _encounterWatcher = new EncounterWatcher(Send);
+            _nextPatchWatcher = new NextPatchWatcher(Send);
             // Any stock alarm drops a running script's in-script warp (ADR 0004); the core ignores it when nothing runs.
             GameEvents.onAlarmTriggered.Add(alarm => Send(new StockAlarmFired()));
             // Building Block progress, for the strip and the log, with no Claude call behind it.
@@ -222,6 +228,9 @@ namespace ClaudiaKerman.Adapter
 
         /// <summary>The Child Vessel the run flies, for <c>ADDONS:CLAUDIA:ENTRYDROP</c> (#823); "" for the craft.</summary>
         public static string RunningChild = "";
+
+        /// <summary>The craft the last <c>return</c> or <c>deorbit</c> aimed its landing with (#814). Not saved: after a load there is nothing to compare.</summary>
+        public static readonly EntryAim AimedCraft = new EntryAim();
 
         /// <summary>
         /// The arrival plane <c>transfer_to</c> last aimed for, for <c>capture</c> (#788; <see cref="MissionView.ArrivalPlane"/> holds the Mission's own, in its
@@ -283,6 +292,7 @@ namespace ClaudiaKerman.Adapter
                 _saveFolder = HighLogic.SaveFolder;
                 _shipSystems.Reset();
                 _encounterWatcher.Reset();
+                _nextPatchWatcher.Reset();
                 // A save from before the rename (ADR 0015): its Mission folder and Claudia Flag take the new names first.
                 RenameMigration.MissionFolder(SaveDirectory(), LogLine);
                 ClaudiaFlags.Renamed();
@@ -309,6 +319,8 @@ namespace ClaudiaKerman.Adapter
                 _nextUt = Time.realtimeSinceStartup + UtSeconds;
                 Send(new UtAdvanced(Planetarium.GetUniversalTime(), TimeWarp.fetch != null && TimeWarp.CurrentRateIndex > 0));
             }
+            // #867: in every scene too, so the player's warp at the Tracking Station is watched.
+            if (HighLogic.CurrentGame != null) _nextPatchWatcher.Update(_mission.View.NextPatchVesselId, _mission.View.NextPatchPlanned);
 
             // Which vessel is the craft after a switch, docking or EVA: the core decides from what the game shows.
             _vessels.Update(scene == GameScene.Flight && FlightGlobals.ready);
@@ -327,6 +339,16 @@ namespace ClaudiaKerman.Adapter
                 _nextSnapshot = Time.realtimeSinceStartup + SnapshotSeconds;
                 var ship = SnapshotReader.ReadEditor(EditorLogic.fetch.ship);
                 if (ship != null) Send(ship);
+            }
+
+            // #877: outside Flight, the Mission craft's saved orbit judges a plan offered there for a moon crossing.
+            if (scene != GameScene.Flight && HighLogic.CurrentGame != null && !string.IsNullOrEmpty(_mission.View.CraftVesselId) && Time.realtimeSinceStartup >= _nextSaved)
+            {
+                _nextSaved = Time.realtimeSinceStartup + SavedOrbitSeconds;
+                GameSnapshot saved = null;
+                try { saved = SnapshotReader.ReadSavedCraft(_mission.View.CraftVesselId); }
+                catch (System.Exception e) { Debug.LogWarning("[ClaudiaKerman] saved orbit read failed: " + e.Message); }
+                Send(new SavedOrbitRead(saved));
             }
 
             // The core says what Claudia's hold on the craft locks; the player's own input held over a second is
@@ -520,6 +542,16 @@ namespace ClaudiaKerman.Adapter
         private void OnKerbalStatusChange(ProtoCrewMember kerbal, ProtoCrewMember.RosterStatus oldStatus, ProtoCrewMember.RosterStatus newStatus)
         {
             if (newStatus == ProtoCrewMember.RosterStatus.Dead && Roster.RosterGateway.IsClaudia(kerbal)) Send(new ClaudiaKilled(VesselAboard(kerbal), RunningTrace()));
+        }
+
+        /// <summary>Any other Kerbal's death is a game event for the core too (#874); Claudia's goes by <see cref="OnKerbalStatusChange"/> and isn't sent twice.</summary>
+        private void OnCrewKilled(EventReport report)
+        {
+            var kerbal = report == null ? null : report.sender;
+            if (string.IsNullOrEmpty(kerbal)) return;
+            var game = HighLogic.CurrentGame;
+            if (game != null && game.CrewRoster != null && Roster.RosterGateway.IsClaudia(Roster.RosterGateway.Find(game.CrewRoster, kerbal))) return;
+            Send(new KerbalKilled(kerbal));
         }
 
         /// <summary>The run's last traced state (#375); her death must reach the Mission even if reading it fails.</summary>

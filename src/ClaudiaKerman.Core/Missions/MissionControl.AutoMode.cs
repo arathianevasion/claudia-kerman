@@ -59,6 +59,8 @@ namespace ClaudiaKerman.Core.Missions
             ScriptFailedAgain,
             /// <summary>A revised Mission Plan's or a departure's Transfer Window is the player's to pick (#686, #782): nothing stands in for them.</summary>
             WindowPick,
+            /// <summary>The plan waits in an orbit that crosses a moon (#867): its Blocker holds until it is re-planned or the orbit fixed.</summary>
+            MoonCrossing,
         }
 
         /// <summary>The Auto Mode checkbox, in any stage of a Mission in play. Ticking it lets the check below approve a plan that waits.</summary>
@@ -147,6 +149,12 @@ namespace ClaudiaKerman.Core.Missions
                 if (WindowPickMissing(mission))
                 {
                     WaitsForPlayer(mission, AdvanceWait.WindowPick, plan.Name);
+                    return;
+                }
+                if (CrossingAwaitsRead(mission, plan)) return;
+                if (CrossingHeld(mission, plan))
+                {
+                    WaitsForPlayer(mission, AdvanceWait.MoonCrossing, plan.Name);
                     return;
                 }
                 // The one exception (#775): Auto Mode may stand in at a coast checkpoint's Due Time, with the player still in the craft, and at no other kind.
@@ -247,6 +255,7 @@ namespace ClaudiaKerman.Core.Missions
                 case AdvanceWait.ScriptFailedAgain: mission.AutoModeStop = AutoModeWaitsFor("the script failed again after a re-plan"); break;
                 case AdvanceWait.NoRoom: mission.AutoModeStop = mission.AutoModeRoomStop; break;
                 case AdvanceWait.WindowPick: mission.AutoModeStop = AutoModeWaitsFor("a Transfer Window to pick"); break;
+                case AdvanceWait.MoonCrossing: mission.AutoModeStop = AutoModeWaitsFor("a Blocker: " + mission.CrossingBlocker.Replace("Blocker: ", "").TrimEnd('.')); break;
             }
         }
 

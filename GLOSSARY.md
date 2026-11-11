@@ -181,6 +181,10 @@ _Avoid_: deployables, auto-deploy
 The mod's check of an encounter during `transfer_to`'s long coasts (and, by the same rule, the check when the player is back from a Coast Checkpoint): at intervals of game time, tighter near the coast's two ends, it reads the craft's orbit from KSP with no physics and asks whether the encounter the coast was planned on still holds. Only a lost encounter, a re-patch onto a body the coast doesn't go round, or a periapsis drifted past its limit ends the wait early, and the block then plans the restore. It never raises warp.
 _Avoid_: encounter guard, warp monitor
 
+**Next-patch Watch**:
+The mod's check, while the Mission's craft warps with no planned encounter, of whether its path meets a moon's sphere of influence nobody planned: between runs (a plan pending, Auto Mode, the warp to a Due Time, the player's own warp) and in `transfer_to`'s wait for a far ejection. It reads KSP's orbit as the Encounter Watch does, and drops the warp one loop (at least an hour) before the meeting; between runs the player gets a request, and a block fails with the moon and the time. The same check of an orbit over a wait makes a Blocker of a Sequence Plan that waits for its Due Time in an orbit crossing a moon, and a fact in the Debrief.
+_Avoid_: SOI guard, moon alarm
+
 **Coast Checkpoint**:
 A place in a long coast of `transfer_to` or `return` where the block ends Nominal so the player can fly something else, without any setting or reply. It falls before each of the block's correction points more than 6 h away, and only when the encounter is confirmed, the predicted periapsis is out of the atmosphere and off the surface (a trip home that ends in reentry, whose periapsis is in the air on purpose, passes while the correction comes before the home body's sphere of influence entry, and never after it), and no sphere of influence change comes first (the target's own entry aside, which the finer correction sits just inside); otherwise the block corrects or keeps flying. The mod writes a Nominal Debrief and a resumed Sequence Plan with the same `plan_step`, with no request, entering the flight at the coast with no ejection; its Due Time is the correction point less 30 min of game time, never less than the turn time plus 60 s (the resumed script warps the rest itself). A far switch, or leaving Flight for the Space Center or the Tracking Station (not the main menu, quit or revert), while the block only warps on such a coast makes one too. When the player is back on the craft the mod checks the trajectory on the Game Snapshot: kept and within tolerance, the resume stands; drifted (over 10% of the target's sphere of influence, or an unsafe periapsis) or lost, Claudia plans the next sequence from the check's figures. The Mission Plan never names one.
 _Avoid_: coast pause, save point, parking
@@ -225,10 +229,10 @@ _Avoid_: retry (which is the player's), escalation, re-ask
 A Debrief outcome: the Maneuver Sequence ended within its Sequence Plan's tolerances.
 
 **Off-Nominal**:
-A Debrief outcome: the Maneuver Sequence ended outside tolerance, but the Mission Goal is still reachable.
+A Debrief outcome: the Maneuver Sequence ended outside tolerance, but the Mission Goal is still reachable. A landing miss alone is Off-Nominal: the craft down alive and nothing else short.
 
 **Failed**:
-A Debrief outcome: the Mission Goal can no longer be reached as stated.
+A Debrief outcome: the Mission Goal can no longer be reached as stated. A Failed Debrief of a landing step with the craft down and its crew alive is sent back once, unless the Mission Goal makes the landing spot the point (a precision landing); a second Failed stands.
 _Avoid_: Lost (which is a Mission outcome, not a Debrief outcome)
 
 **Approval**:
@@ -292,7 +296,7 @@ The player's act, with an optional message about what they did, of giving the cr
 _Avoid_: give back, return control, release
 
 **Manual stretch**:
-A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. EVA science; docking is the `dock` block's), so it has no script. Approving it starts Manual Control; the player's Hand back ends it.
+A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. EVA science; docking is the `dock` block's), so it has no script. Approving it starts Manual Control; the player's Hand back ends it. Claudia plans one only when the player asked (the Mission Goal's or their typed words, a later "no" cancelling an earlier yes, or they took Manual Control with the button), or it serves EVA science the plan or a Debrief names; the mod refuses any other once with the reason, and a second one stops the Mission with a request to the player, Auto Mode included. A landing's accuracy is never grounds: she flies it as best she can and reports the miss.
 _Avoid_: manual sequence, manual mode (Manual Control is the state)
 
 **Lost**:

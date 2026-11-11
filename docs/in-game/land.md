@@ -44,3 +44,32 @@ In-game checks for #713 (ADR 0014 block migration): `find_poi`, `find_landing_si
 1. Fly a Mission with the goal "Land next to the monolith on Minmus".
 2. The plan requests carry `Monolith TMA-8 is a Minmus Point of Interest: land beside it with find_landing_site's poi and land's poi target, not on it.` until the landing step is ticked.
 3. Claudia lands on flat ground 150 m to 1.5 km from TMA-8, never on it; the report's `distance_to_poi` is in that range.
+
+# land in KSP: the final descent stays upright with far more thrust than it needs (#865)
+
+In-game checks for #865 (ADR 0014 block migration): `land`'s steering for a demand (the old `land_steer`), its lean limit, its throttle and the new settle before touchdown run in Core (`ADDONS:CLAUDIA:LANDSTEER`, each braking tick). Steering, throttle and staging are still kOS's; RCS is unchanged (#506). In the final descent (`phase terminal`), below 50 m or under 2 m/s across the ground (the player's call, 2026-11-07), the thrust leans at most 20 degrees (adding lift, up to what holds its height, to keep braking across the ground; tighter in the last 7.5 m, as before); higher and faster it leans as before #865, and entering the zone its command turns onto the cap at the turn rate below. Through the whole final descent it turns its command no faster than TURNTIME's top rate, gives only the vertical need while more than 15 degrees off, and below 10 m holds height while more than 10 degrees off or turning faster than 5 deg/s, for up to 10 s or 2% of its delta-v (`settle_s`). The agent run that wrote this did not launch KSP.
+
+Install as in `phase-3-gate.md`. Results are in `block-tests.log` and `KSP.log`.
+
+## Check 1: Run land_high_twr_ike
+
+The land test lander with its tank 70% full: about 15:1 thrust at Ike by touchdown, like m20261107-055424-908b, which touched down 43 degrees off at 21 deg/s and tipped to 70.
+
+1. Before running, check in the VAB or the flight that the craft's FL-T800 shows 252 of 360 LiquidFuel and 308 of 440 Oxidizer. If it shows full, the craft file's tank contents didn't load: say so on #865.
+2. Pick `land_high_twr_ike` and press **Run** (up to 1800 s). It passes (`PASS land_high_twr_ike`, every `ok` line): `lean` under 10, `touchdown_h_speed` under 0.5 m/s, `settle_s` from 0 to 10.
+3. In `KSP.log`, the `land trace` `phase touchdown` line has `error` no more than 5 and `rate` no more than 2 (degrees, deg/s). That is #865's pass.
+4. From `phase terminal` on, the `phase rcs` lines' `error` stays under about 20 and `rate` under about 10, where 908b's swung 40-110 degrees at 30 deg/s.
+5. About once a second while braking, `block call LANDSTEER took ... ms (the slowest of <n> calls ...): throttle ..., ... deg off, lean ... deg`: the slowest should be well under 1 ms. A `, settling` on lines below 10 m shows the hold.
+6. If it tips (`tipped over on landing`) or `lean` is 10 or more, copy the `land trace` lines from `phase terminal` to the end, and the `LANDSTEER` lines, into #865. Don't change RCS for it: that is a separate ticket.
+
+## Check 2: Run land_high_twr_mun
+
+The same craft on the Mun (about 10:1): the Mun landing still lands clean.
+
+1. Pick `land_high_twr_mun` and press **Run**. It passes, with `lean` under 10 and `touchdown_h_speed` under 0.5.
+2. Note `distance_to_target`. The Minmus and Mun landings no longer hold height above 50 m (the cap's lift is bounded by land's wanted descent rate, #886) and land near the site: the simulated Minmus Flats approach lands within 25 m of it in about 250 s. Over 300 m from the site, a `phase hover` line, or a hold of about 5 s or more above 50 m, copy the `phase terminal` lines into #886.
+3. Against m20261107-051747-7bc7's Mun terminal states (every 2 s from 357 m to 8 m), the direction and its thrust are as before #865 in every state. The 20 degree cap binds in none: at 322 and 284 m, where land laid that craft flat at 21% and 9% throttle, it was 5.9 and 2.3 m/s across, outside the cap's zone, so it still does. Only the throttle changes, where the nose is over 15 degrees off (in the replay, 240 and 112 m: 0.129 to 0.124 and 0.321 to 0.308).
+
+## Check 3: Run land
+
+1. Pick `land` and press **Run**. It passes as before (the reference lander, about 7:1 at the Mun).

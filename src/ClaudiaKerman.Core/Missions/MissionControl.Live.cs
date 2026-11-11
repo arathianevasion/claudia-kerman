@@ -139,6 +139,9 @@ namespace ClaudiaKerman.Core.Missions
         private void StartLive(Mission mission, SequencePlan plan)
         {
             mission.RunStartUt = _ut;
+            // #867: the bodies this run's transfer_to aims at are planned, not crossed, until the next run.
+            mission.RunTransfers = string.Join(",", TransferTargets(plan).ToArray());
+            mission.RunWords = plan == null ? "" : plan.Name + " " + plan.Intent;
             mission.RunStartDeltaVLeft = LiveReadings.DeltaVLeftOf(MissionVesselSnapshot(mission));
             mission.RunDroppedDeltaV = 0;
             mission.ScienceKept.Clear();
@@ -147,6 +150,8 @@ namespace ClaudiaKerman.Core.Missions
             mission.DockedWith = "";
             mission.RunStartMonopropellant = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
             mission.RunStartOrbit = OrbitFix.Of(MissionVesselSnapshot(mission));
+            var startSnapshot = MissionVesselSnapshot(mission);
+            mission.RunStartCrew = startSnapshot == null ? null : startSnapshot.Crew.Select(c => c.Name).ToList();
             mission.Checks.Clear();
             foreach (var check in TelemetryDefaults.Fill(plan, _config)) mission.Checks.Add(new LiveCheck { Check = check });
             mission.Crossings.Clear();

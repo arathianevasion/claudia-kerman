@@ -144,6 +144,9 @@ namespace ClaudiaKerman.Core.Missions
                 case AdvanceWait.DueTime:
                     WaitsForLink(mission, "The Sequence Plan " + MissionPrompts.Quoted(planName) + " has a Due Time for you, so it waits for the link.");
                     break;
+                case AdvanceWait.MoonCrossing:
+                    WaitsForLink(mission, "The Sequence Plan " + MissionPrompts.Quoted(planName) + " has a Blocker (" + mission.CrossingBlocker.Replace("Blocker: ", "").TrimEnd('.') + "), so it waits for the link.");
+                    break;
             }
         }
 
@@ -172,7 +175,7 @@ namespace ClaudiaKerman.Core.Missions
                 words = words.Trim();
                 if (words.Length == 0) return true;
                 mission.HeldWords.Add(words);
-                Note(LogKind.Player, words);
+                Note(LogKind.Player, words, typed: true);
                 Note(LogKind.Notice, "Held: there is no link to Kerbin. Claudia gets it when the link returns.");
                 return true;
             }
