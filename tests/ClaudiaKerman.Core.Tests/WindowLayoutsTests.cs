@@ -160,6 +160,22 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AtUiScale125PercentTheScaleIsTheOldBaseSoNoneIsWrittenAndNothingRescales()
+        {
+            // 0.96 x 1.25 is 1.2, a hair off it as a float.
+            var live = UiScale.Factor(1.25f, 1f);
+            var layouts = new WindowLayouts();
+            layouts.Set("flight", "mission", new WindowBox(10, 20, 501, 799), live);
+            Assert.Contains("flight.mission = 10, 20, 501, 799\n", layouts.Format());
+            var loaded = new WindowLayouts();
+            loaded.Parse(layouts.Format().Split('\n'));
+            Assert.False(loaded.Set("flight", "mission", new WindowBox(10, 20, 501, 799), live));
+            WindowBox box;
+            Assert.True(loaded.TryGet("flight", "mission", live, out box));
+            Assert.Equal(new WindowBox(10, 20, 501, 799), box);
+        }
+
+        [Fact]
         public void AScaleReadBackFromTheFileIsTheSameScale()
         {
             // 1.2 x 1.1 x 0.9 is kept as 1.188; the live float is a hair off it.

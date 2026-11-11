@@ -197,13 +197,13 @@ namespace ClaudiaKerman.Core.Tests
 
         // A 2560 x 1440 screen: the altimeter spans x 1080..1480 from the top down to 90; the app bar starts at x 2200
         // and runs down to 50. The sizes at 100% UI and Apps scale (0.96, #993): a 592 px default strip that can't go
-        // under 499, a 5 px margin, 56 px down when the stock UI can't be read, a 512 px panel that can shrink to 176.
+        // under 521, a 5 px margin, 56 px down when the stock UI can't be read, a 512 px panel that can shrink to 174.
         private static readonly StockUi Stock = new StockUi(1080, 1480, 0, 90, 2200, 50);
-        private static readonly StripSize Default = new StripSize(592, 120, 32, 512, 176);
+        private static readonly StripSize Default = new StripSize(592, 120, 32, 512, 174);
 
         private static StripPlacement Unmoved(StockUi stock, float screenWidth = 2560, float screenHeight = 1440)
         {
-            return CapcomStripLayout.Place(stock, 5, 499, 56, Default, screenWidth, screenHeight);
+            return CapcomStripLayout.Place(stock, 5, 521, 56, Default, screenWidth, screenHeight);
         }
 
         [Fact]
@@ -211,7 +211,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var scale = UiScale.Factor(1f, 1f);
             Assert.Equal(5, DefaultSizes.StripMargin(scale));
-            Assert.Equal(499, DefaultSizes.StripMinWidth(scale));
+            Assert.Equal(521, DefaultSizes.StripMinWidth(scale));
             Assert.Equal(56, DefaultSizes.StripTop(scale));
             Assert.Equal(Default.Width, DefaultSizes.StripWidth(scale));
             Assert.Equal(Default.PanelHeight, DefaultSizes.PanelHeight(scale));
@@ -253,16 +253,16 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void AGapJustWideEnoughForTheMinimumIsUsed()
         {
-            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1480 + 499 + 10, 50));
+            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1480 + 521 + 10, 50));
             Assert.Equal(1485, place.X);
-            Assert.Equal(499, place.Width);
+            Assert.Equal(521, place.Width);
         }
 
         [Fact]
         public void AGapOnePixelShortOfTheMinimumAndBothMarginsIsNarrow()
         {
-            // 1480..1988 less both 5 px margins is 498 px, one short of the floor (with one margin it would be 503).
-            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1480 + 498 + 10, 50));
+            // 1480..2010 less both 5 px margins is 520 px, one short of the floor (with one margin it would be 525).
+            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1480 + 520 + 10, 50));
             Assert.Equal(592, place.Width);
             Assert.Equal(984, place.X);
             Assert.Equal(90 + 5, place.Y);
@@ -354,7 +354,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void AGapNarrowerThanTheMinimumPutsTheStripUnderTheAltimeterCentred()
         {
-            // 1480..1950 less the margins is 460 px, under the 499 px floor.
+            // 1480..1950 less the margins is 460 px, under the 521 px floor.
             var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1950, 50));
             Assert.Equal(592, place.Width);
             Assert.Equal(1280 - 296, place.X);
