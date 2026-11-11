@@ -1050,9 +1050,8 @@ function claudia_drop_empty {
         }
       }
       local outcome is claudia_drop_settle(ctx, fired[i], stayed).
-      local tries is ctx:drop_tries[fired[i]].
       if outcome = "gave_up" {
-        addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_empty", "note", "a decoupler fired " + tries + " times and its parts are still aboard: left on")).
+        addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_empty", "note", "a decoupler fired " + claudia_drop_max_tries() + " times and its parts are still aboard: left on")).
       }
     }
     set ctx:parts to ship:parts:length.

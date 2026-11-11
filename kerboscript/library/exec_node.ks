@@ -112,7 +112,8 @@ function exec_node {
   }
   set extra:turn_time to round(turn:turn_time, 1).
 
-  // A craft whose engines aren't lit yet stages into them (within stage_limit).
+  // Empty drop tanks the auto rule lets go leave before the burn (#985); a craft whose engines aren't lit yet then stages into them.
+  claudia_drop_empty(ctx).
   local lit is claudia_stage_into_engines(ctx).
   if lit <> "" {
     return claudia_finish(ctx, false, lit, extra).
