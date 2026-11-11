@@ -78,7 +78,7 @@ namespace ClaudiaKerman.Adapter
         }
 
         // A new UI scale resizes the default, the minimum and a resizable window by as much; the position is kept (Show
-        // keeps it on screen). A box remembered in another scene is the player's and is applied as it was kept.
+        // keeps it on screen). A box remembered at the old scale, applied on entering a scene, is resized with it.
         private void FollowScale()
         {
             if (_scale <= 0) return;

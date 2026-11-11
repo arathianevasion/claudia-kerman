@@ -45,7 +45,7 @@ namespace ClaudiaKerman.Adapter
         private readonly MissionPanel _panel;
         private readonly TypingFocus _typing = MissionPanel.NewTypingFocus();
         private readonly WindowFrame _frame =
-            new WindowFrame(0x434B04, "", "ClaudiaKermanCapcom", new Rect(0, 0, DefaultWidth, 0), new Vector2(MinWidth, MinPanelHeight), false);
+            new WindowFrame(0x434B04, "", "ClaudiaKermanCapcom", new Rect(0, 0, DefaultWidth, 0), new Vector2(MinWidth, MinPanelHeight), false, ClaudiaSkin.FontScale);
         // The expand tab's width as last drawn; the mouse lock leaves the transparent band either side of it to the game.
         private float _tabWidth;
         private Texture2D _portrait;
