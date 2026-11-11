@@ -268,13 +268,13 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// Whether the leg in hand's words name a capture into orbit, not an aerocapture: "coast to Duna, and capture into a 60 km orbit". A capture its clause turns down
-        /// ("skip capture, straight down") is none.
+        /// ("skip capture, straight down") is none; so is an aerobrake it turns down ("no aerobraking").
         /// </summary>
         private static bool CapturesHere(IList<PlannedSequence> legs)
         {
             if (legs.Count == 0) return false;
             var words = SequenceWords.Of(legs[0]);
-            return !SequenceWords.Aero.IsMatch(words) && SequenceWords.Capture.Matches(words).Cast<Match>().Any(m => !NoCapture.IsMatch(Clause(words, m.Index)));
+            return !SequenceWords.Aero.Matches(words).Cast<Match>().Any(m => !NoCapture.IsMatch(Clause(words, m.Index))) && SequenceWords.Capture.Matches(words).Cast<Match>().Any(m => !NoCapture.IsMatch(Clause(words, m.Index)));
         }
 
         /// <summary>Whether <paramref name="words"/> name the equator as the place (#986), not as where it isn't: "Land at Duna, far from the equator" doesn't.</summary>

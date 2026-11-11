@@ -55,6 +55,8 @@ namespace ClaudiaKerman.Core.Tests
             /// <summary>The first far-out correction as asked, and the encounter's periapsis altitude (m) once it was flown.</summary>
             public TransferFlightStep FarOutStep;
             public double PeAfterFarOut = double.NaN;
+            /// <summary>m/s the first far-out correction left on its node, flown off it.</summary>
+            public double FarOutResidual;
 
             /// <summary>m/s burned out on the star's patch after the ejection: the far-out corrections.</summary>
             public double FarOut
@@ -80,14 +82,27 @@ namespace ClaudiaKerman.Core.Tests
         /// </summary>
         private static double ExecNodeStop(TransferFlightStep step)
         {
-            return Math.Min(0.1, (step.MaxResidual > 0 ? step.MaxResidual : 0.5) / 4);
+            return Math.Min(step.DoneDv, MaxResidual(step) / 4);
+        }
+
+        private static double MaxResidual(TransferFlightStep step)
+        {
+            return step.MaxResidual > 0 ? step.MaxResidual : 0.5;
+        }
+
+        /// <summary>exec_node_finish (exec_node.ks): "done" within max_residual, "short" within its finish_fraction (0.05) of the node (a trim finishes it), else "over": the block fails.</summary>
+        private static string ExecNodeFinish(TransferFlightStep step, double residual)
+        {
+            return residual <= MaxResidual(step) ? "done" : residual <= 0.05 * Dv(step) ? "short" : "over";
         }
 
         /// <summary>
         /// <see cref="TransferRig.Run"/>, noting the inclination the craft has as it first finds itself round <paramref name="ask"/>'s target. <paramref name="farOut"/>
         /// gives the m/s the first far-out correction is flown to, from the step (the rig flies every other burn exactly).
         /// </summary>
-        private static Flight Fly(TransferRig rig, TransferFlightAsk ask, double tilt = 0, Func<TransferFlightStep, double> farOut = null, double tiltAlong = 0)
+        /// <param name="pointing">Degrees the first far-out correction is flown off its node: exec_node stops steering on a node under 1 m/s and lights within 10° of it, so the
+        /// burn runs on until it overshoots the node along it, leaving the sideways part; past exec_node's finish rule the block fails there.</param>
+        private static Flight Fly(TransferRig rig, TransferFlightAsk ask, double tilt = 0, Func<TransferFlightStep, double> farOut = null, double tiltAlong = 0, double pointing = 0)
         {
             var flight = new Flight { Rig = rig };
             var tilted = tilt == 0;
@@ -116,7 +131,26 @@ namespace ClaudiaKerman.Core.Tests
                     var first = step.Kind == "correction" && step.Phase == "mid_check" && rig.Body.Name != ask.Target && flight.FarOutStep == null;
                     var dv = Dv(step);
                     var share = first && farOut != null && dv > 0 ? Math.Max(0, farOut(step)) / dv : 1;
-                    ask.LastDv = rig.Fly(step.Kind, step.Ut, step.Prograde * share, step.Normal * share, step.Radial * share);
+                    if (first && pointing != 0)
+                    {
+                        // Off by pointing, sideways in the node's prograde-normal plane, burned until its part along the node is the node.
+                        var off = dv * Math.Tan(pointing * Math.PI / 180);
+                        var sideMag = Math.Sqrt(step.Normal * step.Normal + step.Prograde * step.Prograde);
+                        var burnedP = step.Prograde - off * step.Normal / sideMag;
+                        var burnedN = step.Normal + off * step.Prograde / sideMag;
+                        ask.LastDv = rig.Fly(step.Kind, step.Ut, burnedP, burnedN, step.Radial);
+                        flight.FarOutResidual = off;
+                        var finish = ExecNodeFinish(step, off);
+                        if (finish == "over")
+                        {
+                            flight.Last = new TransferFlightStep { Error = "residual " + Math.Round(off, 3) + " m/s is over max_residual " + MaxResidual(step) + " m/s" };
+                            flight.FarOutStep = step;
+                            return flight;
+                        }
+                        // A trim finishes a short one: the rig flies the sideways part back exactly.
+                        if (finish == "short") rig.Fly(step.Kind, step.Ut, step.Prograde - burnedP, step.Normal - burnedN, 0);
+                    }
+                    else ask.LastDv = rig.Fly(step.Kind, step.Ut, step.Prograde * share, step.Normal * share, step.Radial * share);
                     if (first)
                     {
                         flight.FarOutStep = step;
@@ -361,6 +395,29 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(Round(flight, "Kerbin") + flight.Inside("Minmus") < insideOnly.Inside("Minmus") / 3, flight.Burns + " against " + insideOnly.Burns);
         }
 
+        /// <summary>
+        /// Re-review of #986 item 1: the far-out plane burn is stopped tight (done_dv 0.005) but held to exec_node's own max_residual (0.5 m/s), so a pointing error under
+        /// 10° (exec_node lights within 10° of the node and stops steering on it under 1 m/s) leaves a sideways residual that doesn't fail the block mid-coast with its node
+        /// left; the trim inside the sphere of influence then restores the periapsis and the plane.
+        /// </summary>
+        [Theory]
+        [InlineData("Duna", 60000.0, false, 4.0)]
+        [InlineData("Duna", 60000.0, false, 9.0)]
+        [InlineData("Kerbin", 30000.0, true, 4.0)]
+        public void A_far_out_plane_burn_flown_off_its_node_completes_and_the_trim_inside_restores_periapsis_and_plane(string target, double pe, bool home, double pointing)
+        {
+            var flight = Fly(TransferRig.Circular(home ? "Duna" : "Kerbin", 100000, 0), Ask(target, pe, home ? null : (object)0.0), ArcTilt, null, 0, pointing);
+            _out.WriteLine("{0} {1}° off: plane burn {2:0.000} m/s, residual {3:0.000} m/s, max_residual {4}, stop {5}; pe after it {6:0} m; in at {7:0.0}°; inside {8:0.00} m/s; ends pe {9:0} m at {10:0.0}° | {11}",
+                target, pointing, Dv(flight.FarOutStep), flight.FarOutResidual, MaxResidual(flight.FarOutStep), ExecNodeStop(flight.FarOutStep), flight.PeAfterFarOut, flight.IncAtEntry,
+                flight.Inside(target), flight.Rig.Body.Name == target ? PeAtEnd(flight) : double.NaN, flight.Rig.Orbit.Inclination, flight.Burns);
+            Assert.True(flight.Last.Error == "", flight.Last.Error + " | " + flight.Burns);
+            Assert.InRange(ExecNodeStop(flight.FarOutStep), 0, 0.005);
+            Assert.Equal(target, flight.Rig.Body.Name);
+            Assert.InRange(PeAtEnd(flight), pe - 1000, pe + 1000);
+            Assert.InRange(flight.Inside(target), 0, 10);
+            if (!home) Assert.InRange(flight.Rig.Orbit.Inclination, 0, 3);
+        }
+
         /// <summary>Review of #986 item 3: a capture the leg in hand turns down is none, so a landing after it is still a direct entry (#762).</summary>
         [Theory]
         [InlineData("Transfer to Duna, skip capture, straight down")]
@@ -374,7 +431,7 @@ namespace ClaudiaKerman.Core.Tests
             string error;
             Assert.Null(ArrivalPlanes.Resolve(snapshot, rig.System, rig.System.Find("Duna"), PlaneOption.Auto, out error));
             // A leg naming its capture gives the equator, whatever else its clause turns down.
-            foreach (var capture in new[] { "Transfer to Duna, capture into orbit", "Transfer to Duna without delay and capture into orbit" })
+            foreach (var capture in new[] { "Transfer to Duna, capture into orbit", "Transfer to Duna without delay and capture into orbit", "Transfer to Duna, no aerobraking, capture into orbit" })
             {
                 snapshot.LegsAhead = Legs(capture, "Land at Duna equator");
                 Assert.Equal(0, ArrivalPlanes.Resolve(snapshot, rig.System, rig.System.Find("Duna"), PlaneOption.Auto, out error).Inc);

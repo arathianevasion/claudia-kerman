@@ -89,6 +89,8 @@ namespace ClaudiaKerman.Core.Tools
         public double Radial;
         /// <summary>exec_node's max_residual, m/s; -1 for its default.</summary>
         public double MaxResidual = -1;
+        /// <summary>exec_node's done_dv, m/s (claudia_burn's fine): it stops the burn once what is left is under this, or a quarter of max_residual.</summary>
+        public double DoneDv = 0.1;
         /// <summary>A burn that fails ends the block with this before exec_node's reason, unless <see cref="KeepGoing"/>.</summary>
         public string FailPrefix = "";
         /// <summary>A failed burn's reason is carried as <see cref="TransferFlightAsk.Why"/> to the next phase instead of ending the block.</summary>
@@ -136,7 +138,7 @@ namespace ClaudiaKerman.Core.Tools
     /// With an arrival plane (<see cref="ArrivalPlanes"/>, #788) the flight waits for the target's sphere of influence whatever the target, and the
     /// trim there aims the periapsis and the plane together (<see cref="PlaneTrim"/>). The halfway correction aims the plane first, where a change of the
     /// approach costs less: to a moon, whose sphere of influence is small, and, but for a body's or vessel's whole plane, to a far target (#986), stopped
-    /// within <see cref="PlaneResidual"/>. A trip home aims far out for its landing's plane (<see cref="ArrivalPlanes.Home"/>).
+    /// within <see cref="PlaneDoneDv"/>. A trip home aims far out for its landing's plane (<see cref="ArrivalPlanes.Home"/>).
     /// </summary>
     internal static class TransferFlight
     {
@@ -164,11 +166,11 @@ namespace ClaudiaKerman.Core.Tools
         private const double SkipDv = 0.1;
         private const double FineResidual = 0.1;
         /// <summary>
-        /// A far target's plane burn far out (#986): its max_residual, so exec_node stops it within a quarter of it, <see cref="BurnWorth.LeastDone"/>. Far out it swings the arrival
-        /// sideways, and the 0.1 m/s exec_node leaves of its own moved Duna's periapsis 122 km, into the planet; 0.005 m/s moves it about 8 km. The trim inside restores the rest.
-        /// A residual over it is trimmed when within 5% of the node; past that exec_node fails the block (a pointing error of about 3.6° at the end of Duna's 0.32 m/s).
+        /// A far target's plane burn far out (#986): its done_dv, so exec_node stops it within <see cref="BurnWorth.LeastDone"/>. Far out it swings the arrival sideways, and
+        /// the 0.1 m/s exec_node leaves of its own moved Duna's periapsis 122 km, into the planet; 0.005 m/s moves it about 8 km. Its max_residual stays exec_node's own:
+        /// held to 0.02 m/s, a pointing error of about 3.6° would fail the block mid-coast with its node left. The trim inside restores the rest.
         /// </summary>
-        internal const double PlaneResidual = 4 * BurnWorth.LeastDone;
+        internal const double PlaneDoneDv = BurnWorth.LeastDone;
         private const double Lead = 60;
         /// <summary>s past the end of max_duration a Course Correction must leave to burn in; s past the arrival "auto" leaves.</summary>
         private const double BurnRoom = 120;
@@ -733,7 +735,7 @@ namespace ClaudiaKerman.Core.Tools
         /// pe_tolerance or the arrival plane is off; to a far target it keeps the encounter, aimed at target_pe but not held to pe_tolerance (#747: far out,
         /// a flown error of 0.05 m/s moves the periapsis by tens of km), so one the solver can't bring within it is not flown.
         /// Under 0.1 m/s, which exec_node can't fly accurately, it is not flown either. No encounter: the recovery. It aims the plane as well (#788, #986), and a
-        /// far target's is stopped within <see cref="PlaneResidual"/>; a plane burn flown short is restored by the trim inside the sphere of influence.
+        /// far target's is stopped within <see cref="PlaneDoneDv"/>; a plane burn flown short or off its node is restored by the trim inside the sphere of influence.
         /// </summary>
         private static TransferFlightStep MidCorrection(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
@@ -775,7 +777,7 @@ namespace ClaudiaKerman.Core.Tools
             if (far && ask.MidUt < 0 && fix.DeltaV >= SkipDv && ut > setup.Now + 2 * lead + Lead)
                 return new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = ut - lead - Lead, Phase = Mid, MidUt = ut, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask, ut, ut - lead - Lead, Mid, ut) };
             var step = FlyCorrection(ask, fix, "correction", MidCheck);
-            if (far && plane && step.Do == TransferFlightStep.Burn) step.MaxResidual = PlaneResidual;
+            if (far && plane && step.Do == TransferFlightStep.Burn) step.DoneDv = PlaneDoneDv;
             return step;
         }
 
