@@ -180,6 +180,10 @@ namespace ClaudiaKerman.Core.Tests
         // An air body's own reentry, with the return after the landing.
         [InlineData("Duna: reenter and land on the plains, then return to Kerbin.")]
         [InlineData("Aerobrake at Laythe, reenter and land, refuel, then return to Kerbin.")]
+        // The body and the landing word share a clause, so a Kerbin place after them doesn't take the landing.
+        [InlineData("Mun landing and Kerbin return.")]
+        [InlineData("Leave Mun orbit and land at the crater before the Kerbin window.")]
+        [InlineData("Ike landing before the Kerbin transfer.")]
         public void LeavingAMoonsOrbitToLandThereIsALanding(string intent)
         {
             Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg("Second stop", intent) }, 0));

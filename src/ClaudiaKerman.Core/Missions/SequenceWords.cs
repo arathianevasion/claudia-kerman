@@ -28,7 +28,7 @@ namespace ClaudiaKerman.Core.Missions
         /// before the next reentry word or Kerbin place ("Leave Mun orbit and land at the crater, then return to Kerbin"). A reentry word
         /// doesn't stop it when a return follows the landing: "Duna: reenter and land on the plains, then return to Kerbin" lands on Duna.
         /// Otherwise the body is where the return comes from: "Leave Mun orbit, then reenter and land", "Return from the Mun to Kerbin and
-        /// land"; a landing word in the Kerbin place's own clause goes with Kerbin: "Leave Mun orbit, then land at KSC".
+        /// land"; a landing word in the Kerbin place's own clause, past the body's, goes with Kerbin: "Leave Mun orbit, then land at KSC".
         /// </summary>
         public static bool IsLandingSite(string words, Match body)
         {
@@ -40,10 +40,11 @@ namespace ClaudiaKerman.Core.Missions
             var upTo = kerbin.Success ? after.Substring(0, kerbin.Index) : after;
             var down = ComesDown.Match(upTo);
             if (!down.Success) return false;
-            if (kerbin.Success && upTo.IndexOfAny(Clauses, down.Index) < 0) return false;
+            if (kerbin.Success && upTo.LastIndexOfAny(Clauses, down.Index) >= 0 && upTo.IndexOfAny(Clauses, down.Index) < 0) return false;
             return !Reentry.IsMatch(after.Substring(0, down.Index)) || ReturnWord.IsMatch(after.Substring(down.Index + down.Length));
         }
 
+        /// <summary>The marks that end a clause.</summary>
         private static readonly char[] Clauses = { '.', ',', ';' };
 
         /// <summary>Land, touch down, splash down, deorbit, descend or descent.</summary>
