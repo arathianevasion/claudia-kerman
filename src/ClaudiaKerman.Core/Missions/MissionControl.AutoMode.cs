@@ -61,7 +61,7 @@ namespace ClaudiaKerman.Core.Missions
             ManualStretch,
             /// <summary>
             /// A Due Time is a wait that needs the player (ADR 0004), even once it is reached; a coast checkpoint's only once they have left (#775),
-            /// and one they warped to with Auto Mode on only while they are away from the craft (#967).
+            /// and one they warped to with Auto Mode on, in a Blackout too, only while they are away from the craft (#967).
             /// </summary>
             DueTime,
             /// <summary>Auto Mode only: the Spending Cap has no room for the Debrief and next plan request that follow.</summary>
@@ -174,7 +174,7 @@ namespace ClaudiaKerman.Core.Missions
                 // The exceptions: Auto Mode may stand in at a coast checkpoint's Due Time, with the player still in the craft (#775), and at one they warped to (#967).
                 if (plan.DueTimeUt.HasValue && !(mission.AutoMode && !mission.Blackout && SoftDueTime(mission, plan)))
                 {
-                    // #967: the Due Time the player warped to with Auto Mode on, in the craft: Auto Mode approves once it is reached.
+                    // #967: the Due Time the player warped to with Auto Mode on, in the craft: Auto Mode approves once it is reached, in a Blackout too.
                     if (!AutoModeTakesDue(mission, plan))
                     {
                         WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
@@ -199,9 +199,12 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             if (mission.Blackout)
+            {
                 mission.BlackoutRevisions.Add(missionPlan
                     ? "Mission Plan revised: " + mission.Plan.Why
                     : "Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " flown without Approval: " + plan.Why);
+                if (atDue) Note(LogKind.Notice, AutoModeApprovedAtDueNote);
+            }
             else
             {
                 mission.AutoModeApprovedFor = inHand;
@@ -213,12 +216,13 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #967: Auto Mode stands in at this Due Time: the player pressed Warp to Due Time for this plan and this Due Time with Auto
-        /// Mode on, it is still on, there is no Blackout, and they are in the craft (away from it, Go to the vessel comes first).
-        /// A manual stretch has waited already, before this is asked.
+        /// Mode on, it is still on, and they are in the craft (away from it, Go to the vessel comes first). A Blackout doesn't stop it:
+        /// there every plan is approved, by the player's ruling, so it takes the Blackout's Approval path (no room check, the plan
+        /// listed for when the link returns). A manual stretch has waited already, before this is asked.
         /// </summary>
         private bool AutoModeTakesDue(Mission mission, SequencePlan plan)
         {
-            return mission.AutoMode && !mission.Blackout && plan == mission.PendingSequence && DueWarpOf(mission).HasValue && CraftActive;
+            return mission.AutoMode && plan == mission.PendingSequence && DueWarpOf(mission).HasValue && CraftActive;
         }
 
         /// <summary>
@@ -242,12 +246,11 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #967: Warp to Due Time pressed. With Auto Mode on it is the player's word that the plan may start there: Auto Mode
-        /// approves it on arrival (<see cref="ApproveOrWait"/>), and the log says so now.
+        /// approves it on arrival (<see cref="ApproveOrWait"/>), and the log says so now. Pressed in a Blackout it is kept as well.
         /// </summary>
         private void DueWarpPressed(Mission mission, SequencePlan plan)
         {
-            // In a Blackout the Due Time waits for the player (ADR 0004): a warp pressed then is no promise for Auto Mode, even once the link is back.
-            if (!mission.AutoMode || mission.Blackout || plan.Manual) return;
+            if (!mission.AutoMode || plan.Manual) return;
             mission.DueWarpFor = plan;
             mission.DueWarpUt = plan.DueTimeUt.Value;
             Note(LogKind.Notice, DueWarpNote);
