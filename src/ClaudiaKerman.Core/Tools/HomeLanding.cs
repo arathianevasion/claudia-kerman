@@ -29,7 +29,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The delta-v left covers capture and deorbit over the reserve and the craft can't enter as it is (#981): fly <c>capture</c>, <c>deorbit</c>, <c>reentry</c>.</summary>
         public bool CaptureFirst;
         /// <summary>#981: the craft can enter as it is (<see cref="EntryCraft.CanEnter"/>), so it comes in directly whatever the delta-v.</summary>
-        public bool Enters;
+        public bool CanEnter;
         /// <summary>The craft's delta-v on arrival, m/s: what it has now less any ascent and the departure; null when stock can't say.</summary>
         public double? DvLeft;
         public double CaptureDv;
@@ -159,20 +159,20 @@ namespace ClaudiaKerman.Core.Tools
             var trip = map.Trip(at.Name, home.Name);
             if (trip == null) return null;
             var ascent = snapshot.IsGrounded ? map.Legs.Where(leg => leg.Id == "ascend:" + at.Name).Select(leg => leg.DeltaV).FirstOrDefault() : 0;
-            var plan = new HomeArrivalPlan { CaptureDv = trip.Arrival, DeorbitDv = DeorbitBurn.FromLowOrbit(home), ArrivalPe = ArrivalRule.EntryPe(home), Enters = EntryCraft.CanEnter(snapshot) };
+            var plan = new HomeArrivalPlan { CaptureDv = trip.Arrival, DeorbitDv = DeorbitBurn.FromLowOrbit(home), ArrivalPe = ArrivalRule.EntryPe(home), CanEnter = EntryCraft.CanEnter(snapshot) };
             var stockDv = StockDv(snapshot);
             if (stockDv.HasValue) plan.DvLeft = stockDv.Value - ascent - trip.Departure - trip.PlaneChange;
             var need = plan.Need;
             if (plan.DvLeft.HasValue)
             {
                 plan.SpareDv = DeorbitBurn.AutoMaxDv(plan.DvLeft.Value, PoweredLanding(snapshot, home), snapshot.LaterLegsDv ?? 0);
-                // #981: a craft that can enter comes in directly by default; a capture asked for is still priced.
-                plan.CaptureFirst = need <= plan.SpareDv && !plan.Enters;
+                // #981: a craft that can enter comes in directly by default; plan_transfer's capture true still prices one.
+                plan.CaptureFirst = need <= plan.SpareDv && !plan.CanEnter;
             }
             if (plan.CaptureFirst) plan.ArrivalPe = DeltaVMap.LowOrbit(home) - home.Radius;
             plan.Note = plan.CaptureFirst
                 ? "arrival: " + Ms(need) + " of " + Ms(plan.SpareDv) + " m/s: target_pe " + Ms(plan.ArrivalPe) + ", capture(), deorbit(), reentry()"
-                : ArrivalRule.Note(snapshot, target, false) + (plan.Enters ? "; shielded: transfer_to, reentry()" : "");
+                : ArrivalRule.Note(snapshot, target, false) + (plan.CanEnter ? "; shielded: transfer_to, reentry()" : "");
             return plan;
         }
 

@@ -282,7 +282,8 @@ namespace ClaudiaKerman.Core.Tests
             snapshot.Stages.Add(new SnapshotStage { DeltaVVac = 1837.83 });
             snapshot.Craft.Parts.Add(new SnapshotPart { Id = 1, Name = "mk1pod.v2", MassT = 1.2, Chute = new ReentryChute() });
             snapshot.Craft.Parts.Add(new SnapshotPart { Id = 2, ParentId = 1, Name = "HeatShield1", MassT = 0.3, Tags = shield ? new List<string> { "heat_shield", "decoupler" } : new List<string>() });
-            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 3, ParentId = 2, Name = "liquidEngine3.v2", MassT = 10.08, Tags = new List<string> { "engine" } });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 3, ParentId = 4, Name = "liquidEngine3.v2", MassT = 10.03, Tags = new List<string> { "engine" } });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 4, ParentId = 2, Name = "Decoupler.1", MassT = 0.05, Tags = new List<string> { "decoupler" } });
             snapshot.Craft.MassTonnes = 11.583;
             return snapshot;
         }
@@ -294,7 +295,7 @@ namespace ClaudiaKerman.Core.Tests
             var snapshot = ShieldedAtDuna();
             var plan = HomeLanding.Arrival(snapshot, "Kerbin");
             Assert.False(plan.CaptureFirst);
-            Assert.Equal(ArrivalRule.EntryPe(snapshot.Bodies[1]), plan.ArrivalPe);
+            Assert.Equal(ArrivalRule.EntryPe(snapshot.Bodies.Find(b => b.Name == "Kerbin")), plan.ArrivalPe);
             var result = Plan(snapshot);
             Assert.False(result.GetProperty("capture").GetBoolean());
             var note = result.GetProperty("arrival_note").GetString();
@@ -328,6 +329,31 @@ namespace ClaudiaKerman.Core.Tests
             var result = JsonDocument.Parse(outcome.Json).RootElement;
             Assert.True(result.GetProperty("capture").GetBoolean());
             Assert.True(result.GetProperty("optimal").TryGetProperty("capture_dv", out _));
+        }
+
+        /// <summary>The Mission Plan's budget reads the Kerbin leg from the Mission request's stage-table row, which is plan_transfer's answer: the entry, no capture.</summary>
+        [Fact]
+        public void The_mission_requests_kerbin_row_budgets_the_entry()
+        {
+            var table = MissionPrompts.StageTable(ShieldedAtDuna(), "return to kerbin in the soonest window", null);
+            var row = table.Substring(table.IndexOf("plan_transfer {\"target\":\"Kerbin\"", StringComparison.Ordinal));
+            row = row.Substring(row.IndexOf(": ", StringComparison.Ordinal) + 2).Split('\n')[0];
+            var result = JsonDocument.Parse(row).RootElement;
+            Assert.False(result.GetProperty("capture").GetBoolean());
+            Assert.Contains("transfer_to, reentry()", result.GetProperty("arrival_note").GetString());
+            Assert.InRange(result.GetProperty("optimal").GetProperty("total_dv").GetDouble(), 660, 682);
+        }
+
+        /// <summary>A chute only in the stack the Entry drops lands nothing: with no engine either, the craft can't enter.</summary>
+        [Fact]
+        public void A_chute_in_the_dropped_stack_does_not_count()
+        {
+            var snapshot = ShieldedAtDuna();
+            Assert.True(EntryCraft.CanEnter(snapshot));
+            snapshot.Craft.Parts[0].Chute = null;
+            snapshot.Craft.Parts[2].Tags.Clear();
+            snapshot.Craft.Parts[2].Chute = new ReentryChute();
+            Assert.False(EntryCraft.CanEnter(snapshot));
         }
 
         /// <summary>From a moon of Kerbin the way home is <c>return</c>, and from a moon of another planet the same choice as its planet.</summary>

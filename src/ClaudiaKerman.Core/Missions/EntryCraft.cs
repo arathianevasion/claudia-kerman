@@ -154,14 +154,17 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// #981: whether the craft as it is can enter the air and come down on its own: an Entry Shield <c>reentry</c> would find, and chutes or an engine
-        /// for the finish. A trip home then needs no capture first.
+        /// #981: whether the craft as it is can enter the air and come down on its own: the Last Entry's shield (number 1 from the root), and chutes
+        /// on what stays once its stack drops, or an engine for a powered finish (which keeps the stack, ADR 0020). A trip home then needs no capture first.
         /// </summary>
         public static bool CanEnter(GameSnapshot snapshot)
         {
             if (snapshot == null || snapshot.Craft == null) return false;
             var parts = snapshot.Craft.Parts;
-            return EntryStack.Of(parts, null, 1).Shield != null && parts.Any(p => p.Chute != null || p.Tags.Contains("engine"));
+            var lastEntry = EntryStack.Of(parts, null, 1);
+            if (lastEntry.Shield == null) return false;
+            var dropped = new HashSet<uint>(lastEntry.Leaves.Select(p => p.Id));
+            return parts.Any(p => (p.Chute != null && !dropped.Contains(p.Id)) || p.Tags.Contains("engine"));
         }
 
         /// <summary>The craft in a few words for the log, with its mass.</summary>
