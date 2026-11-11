@@ -843,6 +843,9 @@ namespace ClaudiaKerman.Core.Tools
                 { "normal", step.Normal },
                 { "radial", step.Radial },
                 { "max_residual", step.MaxResidual },
+                // claudia_burn's fine, as BURNWORTH gives it (#986): the step is passed whole.
+                { "max_throttle", 1.0 },
+                { "done_dv", step.DoneDv },
                 { "fail_prefix", step.FailPrefix },
                 { "keep_going", step.KeepGoing },
                 { "report", new Dictionary<string, object>(step.Report) },
@@ -1723,6 +1726,15 @@ namespace ClaudiaKerman.Core.Tools
             {
                 { "error", "" }, { "refused", verdict.Refused }, { "reason", verdict.Reason }, { "taken", verdict.Taken }, { "need", verdict.Need },
             };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:AUTODROPFREE</c> (#979, ADR 0014), for drop_empty's "auto" drop: <see cref="AutoDrop.FreeKinds"/> on the Mission Plan
+        /// (<paramref name="plan"/>, null with none) and the step in hand. Gives <c>error</c> "" and <c>free</c>, the part kinds that may leave with an empty tank.
+        /// </summary>
+        public static IDictionary<string, object> AutoDropFree(IList<PlannedSequence> plan, int step)
+        {
+            return new Dictionary<string, object> { { "error", "" }, { "free", AutoDrop.FreeKinds(plan, step).Cast<object>().ToList() } };
         }
 
         private static IDictionary<string, object> Error(string reason)

@@ -176,7 +176,7 @@ function transfer_to {
   }, {
     parameter step.
     add node(step:ut, step:radial, step:normal, step:prograde).
-    return claudia_burn(ctx, nextnode, step:max_residual).
+    return claudia_burn(ctx, nextnode, step:max_residual, false, step).
   }, {
     parameter step.
     // The mod's Encounter Watch (#770) may end the wait early; the next step then plans the restore.

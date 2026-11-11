@@ -89,6 +89,8 @@ namespace ClaudiaKerman.Core.Tools
         public double Radial;
         /// <summary>exec_node's max_residual, m/s; -1 for its default.</summary>
         public double MaxResidual = -1;
+        /// <summary>exec_node's done_dv, m/s (claudia_burn's fine): it stops the burn once what is left is under this, or a quarter of max_residual.</summary>
+        public double DoneDv = 0.1;
         /// <summary>A burn that fails ends the block with this before exec_node's reason, unless <see cref="KeepGoing"/>.</summary>
         public string FailPrefix = "";
         /// <summary>A failed burn's reason is carried as <see cref="TransferFlightAsk.Why"/> to the next phase instead of ending the block.</summary>
@@ -134,8 +136,9 @@ namespace ClaudiaKerman.Core.Tools
     /// (<see cref="Recover"/>), before the block fails with the figures. In a Mission's run a coast of over 6 h to a correction may stop
     /// at a Coast Checkpoint (<see cref="CoastCheckpoints"/>, #775), and the resumed flight starts where it stopped.
     /// With an arrival plane (<see cref="ArrivalPlanes"/>, #788) the flight waits for the target's sphere of influence whatever the target, and the
-    /// trim there aims the periapsis and the plane together (<see cref="PlaneTrim"/>); to a moon, whose sphere of influence is small, the halfway
-    /// correction aims the plane first, where a change of the approach costs less.
+    /// trim there aims the periapsis and the plane together (<see cref="PlaneTrim"/>). The halfway correction aims the plane first, where a change of the
+    /// approach costs less: to a moon, whose sphere of influence is small, and, but for a body's or vessel's whole plane, to a far target (#986), stopped
+    /// within <see cref="PlaneDoneDv"/>. A trip home aims far out for its landing's plane (<see cref="ArrivalPlanes.Home"/>).
     /// </summary>
     internal static class TransferFlight
     {
@@ -162,6 +165,12 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>m/s under which a Course Correction is not flown; the finer one's max_residual (#672); a burn's lead, s, past its turn.</summary>
         private const double SkipDv = 0.1;
         private const double FineResidual = 0.1;
+        /// <summary>
+        /// A far target's plane burn far out (#986): its done_dv, so exec_node stops it within <see cref="BurnWorth.LeastDone"/>. Far out it swings the arrival sideways, and
+        /// the 0.1 m/s exec_node leaves of its own moved Duna's periapsis 122 km, into the planet; 0.005 m/s moves it about 8 km. Its max_residual stays exec_node's own:
+        /// held to 0.02 m/s, a pointing error of about 3.6° would fail the block mid-coast with its node left. The trim inside restores the rest.
+        /// </summary>
+        internal const double PlaneDoneDv = BurnWorth.LeastDone;
         private const double Lead = 60;
         /// <summary>s past the end of max_duration a Course Correction must leave to burn in; s past the arrival "auto" leaves.</summary>
         private const double BurnRoom = 120;
@@ -723,9 +732,10 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// The Course Correction halfway to the encounter (sooner if max_duration ends first, #368), when the periapsis is outside
-        /// pe_tolerance; to a far target it keeps the encounter, aimed at target_pe but not held to pe_tolerance (#747: far out,
+        /// pe_tolerance or the arrival plane is off; to a far target it keeps the encounter, aimed at target_pe but not held to pe_tolerance (#747: far out,
         /// a flown error of 0.05 m/s moves the periapsis by tens of km), so one the solver can't bring within it is not flown.
-        /// Under 0.1 m/s, which exec_node can't fly accurately, it is not flown either. No encounter: the recovery.
+        /// Under 0.1 m/s, which exec_node can't fly accurately, it is not flown either. No encounter: the recovery. It aims the plane as well (#788, #986), and a
+        /// far target's is stopped within <see cref="PlaneDoneDv"/>; a plane burn flown short or off its node is restored by the trim inside the sphere of influence.
         /// </summary>
         private static TransferFlightStep MidCorrection(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
@@ -733,9 +743,13 @@ namespace ClaudiaKerman.Core.Tools
             var enc = Encounter(setup);
             if (enc == null) return Recover(snapshot, setup, ask, Lost(setup.Target));
             var far = Far(setup, ask);
-            // To a moon the halfway burn sets the plane too: its sphere of influence is small, and a change of plane inside it costs twice as much (#788).
-            // A burn that size swings a moon's slow approach by some degrees, so a whole plane can come out of the trim that far off; capture takes that up.
-            var plane = !far && setup.Body != setup.Target && ask.Plane != null && ask.Plane.OffBy(enc.Normal) > PlaneClose;
+            // The halfway burn sets the plane too: to a moon, whose sphere of influence is small, a change of plane inside it costs twice as much (#788); to a planet far out it
+            // costs next to nothing, and the trim inside is then a trim (#986). A burn that size swings a moon's slow approach by some degrees, so a whole plane can come out of the
+            // trim that far off; capture takes that up. A trip home aims far out for its landing's plane (#986), and inside for the landing itself (#915).
+            // A planet's whole plane (a body's or vessel's) waits for the trim: far out it is aimed about the asymptote, which leaves the entry point's offset (0.75 degrees at Duna).
+            var home = ask.Plane == null;
+            var aim = !home ? ask.Plane : far && (ask.PlaneOption ?? PlaneOption.Auto).IsAuto ? ArrivalPlanes.Home(snapshot, setup.Target, ask.TargetPe) : null;
+            var plane = setup.Body != setup.Target && aim != null && !(far && aim.Normal.HasValue) && aim.OffBy(enc.Normal) > PlaneClose;
             if (!plane && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
             string late;
             var lead = ask.TurnTime + Lead;
@@ -744,13 +758,14 @@ namespace ClaudiaKerman.Core.Tools
             if (late != "") return ask.MidUt >= 0 || plane && Within(enc.Pe - ask.TargetPe, ask.PeTolerance) ? Go(ask, MidCheck) : Fail(late);
             var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk
             {
-                Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, TargetNormal = plane ? ask.Plane.Through(enc.Approach, enc.Normal).Normal : (Vec3?)null,
+                Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, TargetNormal = plane ? aim.Through(enc.Approach, enc.Normal).Normal : (Vec3?)null,
             });
-            // One the solver can't aim, or the craft can't pay for: the plane waits for the trim, and the plain correction flies.
-            if (plane && (!fix.HasBurn || fix.Error != null || PlaneOverDvLeft(ask, fix, enc, setup.Target)))
+            // One the solver can't aim, or the craft can't pay for: the plane waits for the trim, and the plain correction flies. A trip home pays for no capture.
+            if (plane && (!fix.HasBurn || fix.Error != null || (home ? OverDvLeft(ask, fix) : PlaneOverDvLeft(ask, fix, enc, setup.Target))))
             {
                 if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
                 fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
+                plane = false;
             }
             if (far && (!fix.HasBurn || fix.Error != null)) return Go(ask, MidCheck);
             if (ask.MidUt < 0 && fix.HasBurn && fix.Error == null && fix.DeltaV >= SkipDv)
@@ -761,7 +776,9 @@ namespace ClaudiaKerman.Core.Tools
             // exec_node's warp to a node has no stop: a far target's long coast to it is a watched wait, and the node is planned at its end (#770).
             if (far && ask.MidUt < 0 && fix.DeltaV >= SkipDv && ut > setup.Now + 2 * lead + Lead)
                 return new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = ut - lead - Lead, Phase = Mid, MidUt = ut, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask, ut, ut - lead - Lead, Mid, ut) };
-            return FlyCorrection(ask, fix, "correction", MidCheck);
+            var step = FlyCorrection(ask, fix, "correction", MidCheck);
+            if (far && plane && step.Do == TransferFlightStep.Burn) step.DoneDv = PlaneDoneDv;
+            return step;
         }
 
         /// <summary>
