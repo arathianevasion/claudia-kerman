@@ -124,6 +124,9 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("set tset to min(opt:max_throttle, claudia_burn_throttle(", exec);
             Assert.Contains("local done_dv is min(opt:done_dv, opt:max_residual / 4).", exec);
             Assert.Contains("\"max_throttle\", 1, \"done_dv\", 0.1)", exec);
+            // #986: transfer_to's step is its own fine (TRANSFERSTEP gives max_throttle and done_dv), so a far-out plane burn stops tight on exec_node's own max_residual.
+            var transfer = CoreLibrary.Blocks.Single(b => b.Name == "transfer_to").Source;
+            Assert.Contains("return claudia_burn(ctx, nextnode, step:max_residual, false, step).", transfer);
         }
     }
 }

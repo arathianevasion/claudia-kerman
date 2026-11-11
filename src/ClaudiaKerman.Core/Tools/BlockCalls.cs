@@ -843,6 +843,9 @@ namespace ClaudiaKerman.Core.Tools
                 { "normal", step.Normal },
                 { "radial", step.Radial },
                 { "max_residual", step.MaxResidual },
+                // claudia_burn's fine, as BURNWORTH gives it (#986): the step is passed whole.
+                { "max_throttle", 1.0 },
+                { "done_dv", step.DoneDv },
                 { "fail_prefix", step.FailPrefix },
                 { "keep_going", step.KeepGoing },
                 { "report", new Dictionary<string, object>(step.Report) },
