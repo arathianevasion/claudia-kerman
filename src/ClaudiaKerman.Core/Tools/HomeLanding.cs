@@ -197,7 +197,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The craft's speed at the ground with no chutes, m/s, which its engines must take out; 0 with chutes.</summary>
         public static double PoweredLanding(GameSnapshot snapshot, SnapshotBody home)
         {
-            if (snapshot.Craft == null || snapshot.Craft.Parts.Any(p => p.Chute != null)) return 0;
+            // #981 review: a chute opened already (on Duna) lands nothing, as ChuteGroups.Usable reads it.
+            if (snapshot.Craft == null || ChuteGroups.Usable(snapshot).Count > 0) return 0;
             return ChuteGroups.TouchdownWithoutChutes(home, snapshot.Craft.MassTonnes * 1000);
         }
 

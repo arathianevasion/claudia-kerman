@@ -162,23 +162,22 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #981: whether the craft as it is can enter <paramref name="body"/>'s air and come down on what stays, so a trip home needs no capture first. It takes the
-        /// Last Entry's shield (number 1 from the root) holding <see cref="AblatorShareNeeded"/> of its Ablator (when the parts' resources were read), and a chute
-        /// still stowed or armed (as <see cref="ChuteGroups.Usable"/>; the adapter reads a cut chute as no chute) on a part that neither the Entry's stack nor any
-        /// staging still to come takes away. Where a kept stack is dangerous (<see cref="Entries.KeepsStackDangerous"/>: Kerbin, Eve, Laythe) that is all; elsewhere
-        /// a powered finish counts too, on an engine that stays, is fuelled and will light (<see cref="EntryFinish.WillLight"/>). Known limit: "staging still to come"
-        /// is every decoupler aboard, from <see cref="ChildVessels.Staging"/>'s crew-first side, so a craft that keeps another side reads as unable and keeps the capture.
+        /// Last Entry's shield (number 1 from the part the craft keeps, <see cref="ChildVessels.Keeper"/>) holding <see cref="AblatorShareNeeded"/> of its Ablator (when
+        /// the parts' resources were read), and a chute <see cref="ChuteGroups.Usable"/> counts (stowed or armed; the adapter reads a cut chute as no chute) on a part
+        /// that neither the Entry's stack nor any staging takes away. Where a kept stack is dangerous (<see cref="Entries.KeepsStackDangerous"/>: Kerbin, Eve, Laythe)
+        /// that is all; elsewhere a powered finish counts too, on an engine that stays, is fuelled and will light (<see cref="EntryFinish.WillLight"/>). Known limit: any
+        /// decoupler aboard counts as staging still to come, so a chute behind one kept for Kerbin reads as gone and the craft keeps the capture.
         /// </summary>
         public static bool CanEnter(GameSnapshot snapshot, string body)
         {
             if (snapshot == null || snapshot.Craft == null) return false;
-            var parts = snapshot.Craft.Parts;
-            var lastEntry = EntryStack.Of(parts, null, 1);
+            var lastEntry = EntryStack.Of(snapshot.Craft.Parts, ChildVessels.Keeper(snapshot, false, null), 1);
             if (lastEntry.Shield == null || !AblatorLeft(lastEntry.Shield)) return false;
             var gone = new HashSet<uint>(lastEntry.Leaves.Select(p => p.Id));
-            foreach (var separation in ChildVessels.Staging(snapshot, false, null).Separations) gone.UnionWith(separation.PartIds);
-            var stays = parts.Where(p => !gone.Contains(p.Id)).ToList();
-            if (stays.Any(p => p.Chute != null && p.Chute.State != Tools.ReentryChuteState.SemiDeployed && p.Chute.State != Tools.ReentryChuteState.Deployed)) return true;
-            return !Entries.KeepsStackDangerous(body) && stays.Any(p => p.Tags.Contains("engine") && p.EngineFuelled && EntryFinish.WillLight(snapshot, p));
+            if (ChuteGroups.Usable(snapshot).Any(c => c.LeavesAtStage == null && !gone.Contains(c.PartId))) return true;
+            var staged = new HashSet<uint>(ChildVessels.Staging(snapshot, false, null).Separations.SelectMany(s => s.PartIds));
+            return !Entries.KeepsStackDangerous(body) && snapshot.Craft.Parts.Any(p => !gone.Contains(p.Id) && !staged.Contains(p.Id)
+                && p.Tags.Contains("engine") && p.EngineFuelled && EntryFinish.WillLight(snapshot, p));
         }
 
         /// <summary>Whether <paramref name="shield"/> holds <see cref="AblatorShareNeeded"/> of its Ablator; true when that wasn't read (an older recording).</summary>

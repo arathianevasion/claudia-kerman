@@ -390,7 +390,26 @@ namespace ClaudiaKerman.Core.Tests
             var snapshot = ShieldedAtDuna();
             snapshot.Craft.Parts[0].Chute.State = state;
             Assert.False(EntryCraft.CanEnter(snapshot, "Kerbin"));
+            // Nor does it spare the reserve a powered landing: with no chute to open, the capture is priced with one held back.
+            Assert.True(HomeLanding.PoweredLanding(snapshot, snapshot.Bodies.Find(b => b.Name == "Kerbin")) > 0);
+            snapshot.Stages.Add(new SnapshotStage { DeltaVVac = 4000 });
             Assert.True(HomeLanding.Arrival(snapshot, "Kerbin").CaptureFirst);
+        }
+
+        /// <summary>A craft built from the engine up (its root under the shield) is the same craft: the pod's chute is on what lands, and it comes in directly.</summary>
+        [Fact]
+        public void A_craft_rooted_below_the_shield_can_enter()
+        {
+            var snapshot = ShieldedAtDuna();
+            var parts = snapshot.Craft.Parts;
+            parts[0].CrewCapacity = 1;
+            parts[2].ParentId = null;
+            parts[3].ParentId = 3;
+            parts[1].ParentId = 4;
+            parts[0].ParentId = 2;
+            parts.Reverse();
+            Assert.True(EntryCraft.CanEnter(snapshot, "Kerbin"));
+            Assert.False(HomeLanding.Arrival(snapshot, "Kerbin").CaptureFirst);
         }
 
         /// <summary>A chute on a stage the craft will drop before home (a descent stage's, hung off the pod by a decoupler) isn't on what lands.</summary>
