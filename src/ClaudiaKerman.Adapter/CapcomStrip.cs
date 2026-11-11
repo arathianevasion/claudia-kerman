@@ -25,7 +25,7 @@ namespace ClaudiaKerman.Adapter
     {
         // Sizes follow the UI scale, so they are read when used.
         private static float DefaultWidth { get { return DefaultSizes.StripWidth(ClaudiaSkin.FontScale); } }
-        private static float MinWidth { get { return ClaudiaSkin.Scaled(520); } }
+        private static float MinWidth { get { return DefaultSizes.StripMinWidth(ClaudiaSkin.FontScale); } }
         private const string MemoryName = "capcom";
         private static float PortraitSize { get { return ClaudiaSkin.Scaled(44); } }
         private const float PortraitRadius = 8;

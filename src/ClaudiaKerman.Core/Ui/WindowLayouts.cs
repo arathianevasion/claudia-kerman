@@ -28,8 +28,8 @@ namespace ClaudiaKerman.Core.Ui
     /// same window can sit in different places in the Space Center, the VAB/SPH and Flight. Each box keeps the UI scale
     /// it was sized at (<see cref="UiScale"/>), so it opens resized for the scale now. Format:
     /// <c>scene.window = x, y, width, height[, scale]</c> lines, <c>#</c> comments; the scale is written only when it isn't
-    /// <see cref="UiScale.Base"/> (so at 100% and 100% the file reads as before), a line without it was kept at the base,
-    /// and a line that doesn't parse is ignored.
+    /// <see cref="UiScale.OldBase"/>, as a line without it was kept at that base from before #993 (so a box sized then at
+    /// 100% and 100% opens 20% smaller now), and a line that doesn't parse is ignored.
     /// </summary>
     public sealed class WindowLayouts
     {
@@ -43,10 +43,10 @@ namespace ClaudiaKerman.Core.Ui
             public float Scale;
         }
 
-        /// <summary>The box as sized for <see cref="UiScale.Base"/>.</summary>
+        /// <summary>The box as sized for <see cref="UiScale.OldBase"/>, as a line without a scale.</summary>
         public bool TryGet(string scene, string window, out WindowBox box)
         {
-            return TryGet(scene, window, UiScale.Base, out box);
+            return TryGet(scene, window, UiScale.OldBase, out box);
         }
 
         /// <summary>The box resized for <paramref name="scaleNow"/> from the scale it was kept at (<see cref="Rescale"/>).</summary>
@@ -58,10 +58,10 @@ namespace ClaudiaKerman.Core.Ui
             return found;
         }
 
-        /// <summary>Remembers a box sized for <see cref="UiScale.Base"/>; returns false when it is the one already remembered.</summary>
+        /// <summary>Remembers a box sized for <see cref="UiScale.OldBase"/>, as a line without a scale; returns false when it is the one already remembered.</summary>
         public bool Set(string scene, string window, WindowBox box)
         {
-            return Set(scene, window, box, UiScale.Base);
+            return Set(scene, window, box, UiScale.OldBase);
         }
 
         /// <summary>Remembers a box sized for the UI <paramref name="scale"/>; returns false when it is the one already remembered.</summary>
@@ -137,7 +137,7 @@ namespace ClaudiaKerman.Core.Ui
                 var key = line.Substring(0, eq).Trim();
                 var numbers = line.Substring(eq + 1).Split(',');
                 var values = new float[5];
-                values[4] = UiScale.Base;
+                values[4] = UiScale.OldBase;
                 var ok = numbers.Length == 4 || numbers.Length == 5;
                 for (var i = 0; ok && i < numbers.Length; i++)
                     ok = float.TryParse(numbers[i].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out values[i])
@@ -161,7 +161,7 @@ namespace ClaudiaKerman.Core.Ui
                     .Append(box.Width.ToString("0", CultureInfo.InvariantCulture)).Append(", ")
                     .Append(box.Height.ToString("0", CultureInfo.InvariantCulture));
                 var scale = _boxes[key].Scale;
-                if (Math.Abs(scale - UiScale.Base) >= ScaleTolerance) text.Append(", ").Append(scale.ToString("0.####", CultureInfo.InvariantCulture));
+                if (Math.Abs(scale - UiScale.OldBase) >= ScaleTolerance) text.Append(", ").Append(scale.ToString("0.####", CultureInfo.InvariantCulture));
                 text.Append('\n');
             }
             return text.ToString();
