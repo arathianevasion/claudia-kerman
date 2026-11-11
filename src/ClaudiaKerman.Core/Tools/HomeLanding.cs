@@ -26,8 +26,10 @@ namespace ClaudiaKerman.Core.Tools
     /// <summary>What <see cref="HomeLanding.Arrival"/> found for a trip home from another planet, and why.</summary>
     internal sealed class HomeArrivalPlan
     {
-        /// <summary>The delta-v left and covers capture and deorbit over the reserve: fly <c>capture</c>, <c>deorbit</c>, <c>reentry</c>.</summary>
+        /// <summary>The delta-v left covers capture and deorbit over the reserve and the craft can't enter as it is (#981): fly <c>capture</c>, <c>deorbit</c>, <c>reentry</c>.</summary>
         public bool CaptureFirst;
+        /// <summary>#981: the craft can enter as it is (<see cref="EntryCraft.CanEnter"/>) and arrives within <see cref="HomeLanding.DirectEntryExcessLimit"/>, so it comes in directly whatever the delta-v.</summary>
+        public bool CanEnter;
         /// <summary>The craft's delta-v on arrival, m/s: what it has now less any ascent and the departure; null when stock can't say.</summary>
         public double? DvLeft;
         public double CaptureDv;
@@ -141,9 +143,17 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
+        /// #981: the most arrival excess speed, m/s (the Delta-v Map's Hohmann figure at Kerbin), at which a craft that can enter comes home directly. The only entry
+        /// heat on record is a shielded Mun return, about 3.2 km/s at the air (what <c>return</c> flies); 1,000 m/s of excess enters at about 3.4 km/s, 6% faster.
+        /// It takes the Duna (about 920) and Eve (about 780) returns and keeps the capture for Dres, Moho, Jool and Eeloo (2 km/s and more).
+        /// </summary>
+        internal const double DirectEntryExcessLimit = 1000;
+
+        /// <summary>
         /// From another planet (or its moon) to Kerbin, at the point the arrival is planned: capture into low orbit then deorbit toward KSC when the delta-v left on arrival, less the reserve,
-        /// covers both by the Delta-v Map's capture figure and the least deorbit burn from low orbit; else come in directly and let the corrections get as close as they can. Null for any other trip,
-        /// or with a Mission Goal that names another place, or when the map has no figure.
+        /// covers both by the Delta-v Map's capture figure and the least deorbit burn from low orbit, unless (#981) the craft can enter as it is (<see cref="EntryCraft.CanEnter"/>)
+        /// and arrives within <see cref="DirectEntryExcessLimit"/>; else come in directly and let the corrections get as close as they can, so a direct entry gives up the capture's
+        /// precise KSC landing for the Late Trim's best. Null for any other trip, or with a Mission Goal that names another place, or when the map has no figure.
         /// </summary>
         public static HomeArrivalPlan Arrival(GameSnapshot snapshot, string target)
         {
@@ -157,19 +167,23 @@ namespace ClaudiaKerman.Core.Tools
             var trip = map.Trip(at.Name, home.Name);
             if (trip == null) return null;
             var ascent = snapshot.IsGrounded ? map.Legs.Where(leg => leg.Id == "ascend:" + at.Name).Select(leg => leg.DeltaV).FirstOrDefault() : 0;
-            var plan = new HomeArrivalPlan { CaptureDv = trip.Arrival, DeorbitDv = DeorbitBurn.FromLowOrbit(home), ArrivalPe = ArrivalRule.EntryPe(home) };
+            var plan = new HomeArrivalPlan { CaptureDv = trip.Arrival, DeorbitDv = DeorbitBurn.FromLowOrbit(home), ArrivalPe = ArrivalRule.EntryPe(home), CanEnter = trip.ArrivalExcess <= DirectEntryExcessLimit && EntryCraft.CanEnter(snapshot, home.Name) };
             var stockDv = StockDv(snapshot);
             if (stockDv.HasValue) plan.DvLeft = stockDv.Value - ascent - trip.Departure - trip.PlaneChange;
             var need = plan.Need;
+            var covered = false;
             if (plan.DvLeft.HasValue)
             {
                 plan.SpareDv = DeorbitBurn.AutoMaxDv(plan.DvLeft.Value, PoweredLanding(snapshot, home), snapshot.LaterLegsDv ?? 0);
-                plan.CaptureFirst = need <= plan.SpareDv;
+                covered = need <= plan.SpareDv;
+                // #981: a craft that can enter comes in directly by default; plan_transfer's capture true still prices one.
+                plan.CaptureFirst = covered && !plan.CanEnter;
             }
             if (plan.CaptureFirst) plan.ArrivalPe = DeltaVMap.LowOrbit(home) - home.Radius;
+            // #981: when the shield, not the delta-v, turned the capture down, the note says so and names the Sequence Plan.
             plan.Note = plan.CaptureFirst
                 ? "arrival: " + Ms(need) + " of " + Ms(plan.SpareDv) + " m/s: target_pe " + Ms(plan.ArrivalPe) + ", capture(), deorbit(), reentry()"
-                : ArrivalRule.Note(snapshot, target, false);
+                : ArrivalRule.Note(snapshot, target, false) + (covered ? "; shielded: transfer_to, reentry()" : "");
             return plan;
         }
 
@@ -183,7 +197,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The craft's speed at the ground with no chutes, m/s, which its engines must take out; 0 with chutes.</summary>
         public static double PoweredLanding(GameSnapshot snapshot, SnapshotBody home)
         {
-            if (snapshot.Craft == null || snapshot.Craft.Parts.Any(p => p.Chute != null)) return 0;
+            // #981 review: a chute opened already (on Duna) lands nothing, as ChuteGroups.Usable reads it.
+            if (snapshot.Craft == null || ChuteGroups.Usable(snapshot).Count > 0) return 0;
             return ChuteGroups.TouchdownWithoutChutes(home, snapshot.Craft.MassTonnes * 1000);
         }
 
