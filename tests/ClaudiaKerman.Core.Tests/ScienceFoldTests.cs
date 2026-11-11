@@ -168,6 +168,46 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", ScienceFold.Line(With(4, s => s.Name = name), 5));
         }
 
+        [Fact]
+        public void AtApprovalTheStepToFoldIsTheRevisionsFirstUnflownStepElseTheOneAfterTheStepBegun()
+        {
+            // The revision marks steps 1 to 4 flown: step 5, whatever was begun.
+            Assert.Equal(5, ScienceFold.NextToFly(RevisedLanded(), 4));
+            // The landing (step 4, begun) went wrong and the revision flies it again: step 4, not the crew report.
+            Assert.Equal(4, ScienceFold.NextToFly(With(3, s => { s.Intent = "Deorbit onto the Lowlands site again."; s.Timing = "Next pass."; }), 4));
+            // A revision that marks nothing flown: the step after the one begun.
+            Assert.Equal(5, ScienceFold.NextToFly(FromThePad(), 4));
+            Assert.Equal(1, ScienceFold.NextToFly(FromThePad(), 0));
+        }
+
+        [Fact]
+        public void ACrewReportMarkedFlownIsNoFold()
+        {
+            Assert.Equal("", ScienceFold.Line(With(4, s => s.Intent = "Run the crewReport experiment and transmit it (flown, Nominal)."), 5));
+        }
+
+        [Fact]
+        public void ADepartureAtTheNextLaunchWindowIsNoAscent()
+        {
+            var legs = new List<PlannedSequence>
+            {
+                Leg("Crew report in Duna orbit", "Run the crewReport experiment and transmit it.", 0, "Now."),
+                Leg("Head for Kerbin", "Burn at the next launch window back to Kerbin.", 1000, "Next launch window."),
+            };
+            Assert.Equal("", ScienceFold.Line(legs, 1));
+        }
+
+        [Theory]
+        [InlineData("local sci is science(lexicon()). addons:claudia:report(sci).\nlocal res is launch(lexicon()). addons:claudia:report(res).\n", 6)]
+        [InlineData("science(lexicon()).\nascend(lexicon()).\n", 6)]
+        [InlineData("science(lexicon()).\n", 5)]
+        [InlineData("drop_parts(lexicon()).\nscience(lexicon()).\ncoast(lexicon(\"until\", 100)).\n", 5)]
+        public void APlanSentAsTheStepToFoldFliesTheAscentOnlyWhenItsScriptAscends(string script, int flies)
+        {
+            Assert.Equal(flies, ScienceFold.StepFlown(RevisedLanded(), 5, new SequencePlan { Name = "Crew report", Script = script }));
+            Assert.Equal(4, ScienceFold.StepFlown(RevisedLanded(), 4, new SequencePlan { Name = "Land", Script = script }));
+        }
+
         private static List<PlannedSequence> With(int index, System.Action<PlannedSequence> change)
         {
             var legs = RevisedLanded();

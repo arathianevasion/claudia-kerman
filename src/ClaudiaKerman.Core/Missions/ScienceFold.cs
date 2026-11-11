@@ -35,18 +35,36 @@ namespace ClaudiaKerman.Core.Missions
             return 0;
         }
 
+        /// <summary>
+        /// The step next to fly when a Mission Plan is approved: the first one a revision doesn't mark flown, or, when it marks none
+        /// (or all), the one after the <paramref name="stepsBegun"/> already begun.
+        /// </summary>
+        public static int NextToFly(IList<PlannedSequence> legs, int stepsBegun)
+        {
+            var first = FirstToFly(legs);
+            return first > 1 ? first : stepsBegun + 1;
+        }
+
         /// <summary>The line telling Claudia to fold 1-based <paramref name="step"/> into the step after it, or "" when it isn't one to fold.</summary>
         public static string Line(IList<PlannedSequence> legs, int step)
         {
-            if (legs == null || step < 1 || step >= legs.Count) return "";
+            if (!Folds(legs, step)) return "";
             var science = legs[step - 1];
             var next = legs[step];
-            if (!ScienceOnly(science) || next.Manual || next.DueTimeUt.HasValue || PlanLegs.IsFlown(next) || !Ascends(next)
-                || !string.Equals(Vessel(science), Vessel(next), StringComparison.OrdinalIgnoreCase)) return "";
             var n = step.ToString(CultureInfo.InvariantCulture);
             var into = (step + 1).ToString(CultureInfo.InvariantCulture);
             return "Step " + n + " \"" + science.Name + "\" is science only, 0 m/s, where step " + into + " \"" + next.Name + "\" starts: fly it as the first lines of step "
                 + into + "'s script (plan_step " + into + "), not as a sequence of its own.";
+        }
+
+        /// <summary>1-based <paramref name="step"/> is science only, still to fly, right before an unflown ascent of the same craft.</summary>
+        private static bool Folds(IList<PlannedSequence> legs, int step)
+        {
+            if (legs == null || step < 1 || step >= legs.Count) return false;
+            var science = legs[step - 1];
+            var next = legs[step];
+            return ScienceOnly(science) && !PlanLegs.IsFlown(science) && !next.Manual && !next.DueTimeUt.HasValue && !PlanLegs.IsFlown(next) && Ascends(next)
+                && string.Equals(Vessel(science), Vessel(next), StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool ScienceOnly(PlannedSequence leg)
@@ -56,19 +74,23 @@ namespace ClaudiaKerman.Core.Missions
                 && !Waits.IsMatch(words + " " + leg.Timing) && !Acts(leg.Name);
         }
 
+        /// <summary>A "launch window" names when a departure burns, not a lift-off.</summary>
+        private static readonly Regex LaunchWindow = new Regex(@"\blaunch windows?\b", RegexOptions.IgnoreCase);
+
         private static bool Ascends(PlannedSequence leg)
         {
-            return SequenceWords.Ascent.IsMatch(leg.Name) || SequenceWords.Ascent.IsMatch(SequenceWords.ActionWords(leg));
+            return SequenceWords.Ascent.IsMatch(LaunchWindow.Replace(leg.Name, ""))
+                || SequenceWords.Ascent.IsMatch(LaunchWindow.Replace(SequenceWords.ActionWords(leg), ""));
         }
 
         /// <summary>
         /// The step a Sequence Plan sent as <paramref name="sent"/> flies: the next one when <paramref name="sent"/> is a step to fold and the
-        /// script holds more than science (the ascent it rides), else <paramref name="sent"/>.
+        /// script launches or ascends (the ascent it rides), else <paramref name="sent"/>.
         /// </summary>
         public static int StepFlown(IList<PlannedSequence> legs, int sent, SequencePlan plan)
         {
-            if (plan == null || plan.Manual || Line(legs, sent).Length == 0) return sent;
-            return BlockOptionCheck.Calls(plan.Script ?? "").Any(c => c.Block != "science") ? sent + 1 : sent;
+            if (plan == null || plan.Manual || !Folds(legs, sent)) return sent;
+            return BlockOptionCheck.Calls(plan.Script ?? "").Any(c => c.Block == "launch" || c.Block == "ascend") ? sent + 1 : sent;
         }
 
         /// <summary>Where the craft already is ("Crew report (landed)", "after touchdown"): no action of the step's own.</summary>

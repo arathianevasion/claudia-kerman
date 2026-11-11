@@ -695,7 +695,7 @@ namespace ClaudiaKerman.Core.Missions
                     UserText = "The player approved the Mission Plan.\n"
                         + (newGoal != null ? "The Mission Goal is now (quoted data): " + MissionPrompts.Quoted(newGoal) + "\n" : "")
                         + WindowPickLine(mission)
-                        + FoldLine(mission, mission.Plan == null ? 0 : Math.Max(StepsBegun(mission) + 1, ScienceFold.FirstToFly(mission.Plan.Sequences)))
+                        + FoldLine(mission, mission.Plan == null ? 0 : ScienceFold.NextToFly(mission.Plan.Sequences, StepsBegun(mission)))
                         + MissionPrompts.Facts(_ut, _snapshot),
                     Notice = MissionPrompts.SequenceNotice,
                 });
@@ -2026,10 +2026,8 @@ namespace ClaudiaKerman.Core.Missions
             var bodies = _snapshot == null ? null : _snapshot.Bodies.Select(b => b.Name);
             var step = PlanSteps.Resolve(mission.Plan.Sequences, plan.Name, plan.PlanStep.Value, lastBegun, bodies);
             // #983: a science step sent with the ascent it is folded into flies the ascent's step.
-            var stands = step ?? plan.PlanStep.Value;
-            var folded = ScienceFold.StepFlown(mission.Plan.Sequences, stands, plan);
-            if (folded != stands) step = folded;
-            if (!step.HasValue) return;
+            step = ScienceFold.StepFlown(mission.Plan.Sequences, step ?? plan.PlanStep.Value, plan);
+            if (step.Value == plan.PlanStep.Value) return;
             var line = PlanSteps.Line(mission.Plan.Sequences, plan.PlanStep.Value, step.Value);
             plan.PlanStep = step;
             mission.PlanStepLine = line;
