@@ -57,7 +57,28 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new Missions.Reply("why the wait?"));
             DrainUntil(mission, v => !v.Busy && transport.Requests.Count == 3);
             var asked = Messages(transport.Requests.Last());
-            Assert.Contains("plan_step 5 is \\\"Crew report at Duna\\\"; this plan flies step 6, \\\"Ascend from Duna\\\", and counts as step 6.", asked);
+            Assert.Contains("plan_step 5 is \\\"Crew report at Duna\\\"; this plan flies step 6, \\\"Ascend from Duna\\\".", asked);
+        }
+
+        private static ScriptedResponse KerbinTransferPlan(int step)
+        {
+            return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Transfer to Kerbin, next window.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                + "\"sequence_plan\":{\"name\":\"Transfer to Kerbin, next window\",\"plan_step\":" + step + ",\"intent\":\"Depart Duna for Kerbin.\",\"why\":\"Next.\",\"target\":\"Kerbin encounter\","
+                + "\"tolerances\":\"Pe within 20 km\",\"expected_delta_v\":1718,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
+                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"" + LaunchScript + "\","
+                + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
+        }
+
+        [Fact]
+        public void TheTransferSentAsTheLandingsStepKeepsBackOnlyTheReturnForLaterLegs()
+        {
+            var transport = new StreamingFakeTransport(DunaRoundTripPlan(), KerbinTransferPlan(4));
+            var mission = Control(transport);
+            ToAscent(mission, "Duna", 1203.48, "Fly to Duna, land, send a crew report and come home.");
+
+            Assert.Equal(7, mission.View.CurrentSequence + 1);
+            // What an in-flight plan_transfer or margin check reserves: the return alone, not 2,879 from step 4 on.
+            Assert.Equal(100, MissionView.Stamp(new GameSnapshot(), mission.View).LaterLegsDv.Value, 3);
         }
 
         [Fact]

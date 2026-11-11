@@ -10,9 +10,10 @@ using System.Text.RegularExpressions;
 namespace ClaudiaKerman.Core.Missions
 {
     /// <summary>
-    /// #977: the Mission Plan step a Sequence Plan flies, read from its name as well as its <c>plan_step</c>. A <c>plan_step</c> naming a
-    /// sequence that clearly isn't this one, when exactly one clearly is, gives way to that one; so does one naming a sequence already
-    /// flown while one still to fly matches. With no clear match the step sent stands.
+    /// #977: the Mission Plan step a Sequence Plan flies, read from its name as well as its <c>plan_step</c>. A <c>plan_step</c> still to
+    /// fly gives way only to a later step that alone clearly matches, and only when its own sequence shares no word but body names and no
+    /// action with the plan's name; one naming a sequence already flown gives way to the one still to fly that matches. Otherwise the step
+    /// sent stands.
     /// </summary>
     internal static class PlanSteps
     {
@@ -40,18 +41,23 @@ namespace ClaudiaKerman.Core.Missions
             var names = (bodies ?? Enumerable.Empty<string>()).Where(b => !string.IsNullOrEmpty(b)).ToList();
             var matches = Enumerable.Range(1, legs.Count).Where(step => Clear(name, legs[step - 1].Name, names)).ToList();
             var toFly = matches.Where(step => step >= lastBegun).ToList();
-            if (matches.Contains(sent) && (sent >= lastBegun || toFly.Count == 0)) return null;
+            if (sent >= lastBegun)
+            {
+                // A step still to fly gives way only forward, and only when its sequence clearly isn't this plan: a wrong override is worse.
+                if (matches.Contains(sent) || !Unlike(name, legs[sent - 1].Name, names)) return null;
+                return toFly.Count == 1 && toFly[0] > sent ? toFly[0] : (int?)null;
+            }
+            if (matches.Contains(sent) && toFly.Count == 0) return null;
             if (toFly.Count == 1) return toFly[0];
             // A leg already flown is taken only in place of another flown one: never back over legs still to fly.
-            if (matches.Count == 1 && !matches.Contains(sent) && sent < lastBegun) return matches[0];
+            if (matches.Count == 1 && !matches.Contains(sent)) return matches[0];
             return null;
         }
 
         /// <summary>The one line the mod tells Claudia (and logs) when <paramref name="sent"/> gave way to <paramref name="step"/>.</summary>
         public static string Line(IList<PlannedSequence> legs, int sent, int step)
         {
-            var number = step.ToString(CultureInfo.InvariantCulture);
-            return "plan_step " + sent.ToString(CultureInfo.InvariantCulture) + " is \"" + legs[sent - 1].Name + "\"; this plan flies step " + number + ", \"" + legs[step - 1].Name + "\", and counts as step " + number + ".";
+            return "plan_step " + sent.ToString(CultureInfo.InvariantCulture) + " is \"" + legs[sent - 1].Name + "\"; this plan flies step " + step.ToString(CultureInfo.InvariantCulture) + ", \"" + legs[step - 1].Name + "\".";
         }
 
         /// <summary>
@@ -72,11 +78,31 @@ namespace ClaudiaKerman.Core.Missions
             return acts.Count > 0 && at.Count > 0 && acts.SetEquals(Acts(Head(sequence))) && at.SetEquals(Named(Head(sequence), bodies));
         }
 
-        /// <summary>A name before its first comma or bracket: what the sequence is, not how this try goes.</summary>
+        /// <summary>
+        /// The plan's name and the sequence's share no word but body names (every leg at Duna names Duna) and no action
+        /// <see cref="SequenceWords"/> reads: the sequence clearly isn't this plan.
+        /// </summary>
+        private static bool Unlike(string plan, string sequence, IList<string> bodies)
+        {
+            var a = Words(Unnumbered(plan));
+            a.ExceptWith(bodies.Select(b => b.ToLowerInvariant()));
+            return !a.Overlaps(Words(Unnumbered(sequence))) && !Acts(Unnumbered(plan)).Overlaps(Acts(Unnumbered(sequence)));
+        }
+
+        /// <summary>A leading "Leg 2:", "Step 3." or "4)" numbers the name, which is plan_step's job: it is left out.</summary>
+        private static readonly Regex Numbered = new Regex(@"^\s*(?:(?:leg|step|sequence|stage|phase|part)\s*)?#?\d+\s*(?:[:)]|[.\-–—](?=\s))\s*", RegexOptions.IgnoreCase);
+
+        private static string Unnumbered(string name)
+        {
+            return Numbered.Replace(name ?? "", "");
+        }
+
+        /// <summary>A name, unnumbered, before its first comma or bracket: what the sequence is, not how this try goes.</summary>
         private static string Head(string name)
         {
-            var cut = (name ?? "").IndexOfAny(new[] { ',', '(', ';', ':' });
-            return cut < 0 ? name ?? "" : name.Substring(0, cut);
+            var text = Unnumbered(name);
+            var cut = text.IndexOfAny(new[] { ',', '(', ';' });
+            return cut < 0 ? text : text.Substring(0, cut);
         }
 
         private static HashSet<string> Words(string text)

@@ -144,8 +144,47 @@ namespace ClaudiaKerman.Core.Tests
         public void ThePlayerAndClaudiaAreToldInOneLine()
         {
             var legs = AfterAscent();
-            Assert.Equal("plan_step 4 is \"Land at Duna equator\"; this plan flies step 7, \"Transfer to Kerbin, soonest window\", and counts as step 7.",
+            Assert.Equal("plan_step 4 is \"Land at Duna equator\"; this plan flies step 7, \"Transfer to Kerbin, soonest window\".",
                 PlanSteps.Line(legs, 4, 7));
+        }
+
+        private static List<PlannedSequence> Legs(params string[] names)
+        {
+            return names.Select(n => Leg(n, "", 100)).ToList();
+        }
+
+        [Theory]
+        [InlineData("Transfer to Duna, correction burn")]
+        [InlineData("Duna transfer correction")]
+        public void ACorrectionStillToFlyKeepsItsStepThoughTheTransferIsNamed(string name)
+        {
+            var legs = Legs("Launch to orbit", "Transfer to Duna", "Mid-course correction", "Duna capture", "Land");
+            Assert.Null(Resolve(legs, name, 3, 2));
+        }
+
+        [Fact]
+        public void ACircularizationStillToFlyKeepsItsStepThoughTheLowOrbitIsNamed()
+        {
+            var legs = Legs("Launch to orbit", "Transfer to the Mun", "Circularize", "Low Mun orbit", "Land");
+            Assert.Null(Resolve(legs, "Circularize in low Mun orbit", 3, 2));
+        }
+
+        [Fact]
+        public void AStepStillToFlyNeverGivesWayBackToTheLegJustFlown()
+        {
+            // The capture (step 3) was just flown; "Circularize" reads as a capture, but the sent step 4 is the next leg.
+            var legs = Legs("Launch to orbit", "Transfer to Duna", "Capture into Duna orbit", "Lower to 60 km orbit", "Land");
+            Assert.Null(Resolve(legs, "Circularize at Duna", 4, 3));
+        }
+
+        [Fact]
+        public void ANumberedPrefixInTheNameNeverBeatsTheSentStep()
+        {
+            var legs = Legs("Leg 1: Launch", "Leg 2: Transfer to Mun", "Leg 3: Land at Mun");
+            Assert.Null(Resolve(legs, "Leg 2: Land at Mun", 3, 2));
+            Assert.Null(Resolve(legs, "Step 2: Land at Mun", 3, 0));
+            // Without the prefix the names still match: the landing sent as the launch's step flies step 3.
+            Assert.Equal(3, Resolve(legs, "Leg 1: Land at Mun", 1, 0));
         }
 
         [Fact]
