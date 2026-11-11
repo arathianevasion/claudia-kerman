@@ -110,6 +110,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): what this Entry drops, from home, separate, chutes, core and drop_error (error: a stack it refuses); lexicon error, number, shield, jettison, jettison_first, decouplers, gone, names, stuck, lead"));
             AddSuffix("ENTRYTRIM", new OneArgsSuffix<Lexicon, Lexicon>(EntryTrimCall,
                 "Core Library only (reentry): at most one late trim toward the Mission's landing target, from to_air, home, dv_left, isp and has_node; lexicon as CORRECTIONBURN's, dv 0 and aim_note when none flies"));
+            AddSuffix("FALLETA", new OneArgsSuffix<ScalarValue, Lexicon>(FallEtaCall,
+                "Core Library only (reentry): seconds until a closed orbit or an inbound hyperbolic path falls to r_fall, from ecc, sma, mu, r_fall, ta (degrees); 0 under it now, -1 never"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
                 "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, core, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
             AddSuffix("LIFTOFFCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(LiftoffClearCall,
@@ -763,6 +765,18 @@ namespace ClaudiaKerman.KOS
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
                     node.ContainsKey("error_km") ? string.Format(CultureInfo.InvariantCulture, "; aimed {0:0.00} km from the target", node["error_km"]) : "",
                     node["error"] as string == "" ? "" : "; " + node["error"])) + AimLine(node) + PlanLine(node));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:FALLETA</c> (#994, ADR 0014): <see cref="BlockCalls.FallEta(System.Collections.Generic.IDictionary{string, object})"/>, pure. A failure (logged by Guarded) answers -1, the "never" the block refuses on.</summary>
+        private ScalarValue FallEtaCall(Lexicon input)
+        {
+            var eta = -1.0;
+            Guarded("FALLETA", () =>
+            {
+                eta = BlockCalls.FallEta(KosValues.ToDictionary(input));
+                return new Lexicon();
+            }, () => eta < 0 ? "never" : string.Format(CultureInfo.InvariantCulture, "{0:0} s", eta));
+            return ScalarValue.Create(eta);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:ENTRYTRIM</c> (#892): <see cref="BlockCalls.EntryTrim"/> with this planet's air and the craft reentry flies; the log line is the decision.</summary>

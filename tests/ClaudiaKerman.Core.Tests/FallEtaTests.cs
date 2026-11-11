@@ -125,6 +125,29 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(expected, Eta((rAp - RPe) / (rAp + RPe), (RPe + rAp) / 2, KerbinMu, KerbinAir, ta), 6);
         }
 
+        /// <summary>Independent check: advance the mean anomaly by <paramref name="seconds"/>, solve Kepler's equation, read the radius.</summary>
+        private static double RadiusAfter(double ecc, double sma, double trueAnomalyDegrees, double seconds)
+        {
+            var ta = trueAnomalyDegrees * Math.PI / 180;
+            var ea = 2 * Math.Atan2(Math.Sqrt(1 - ecc) * Math.Sin(ta / 2), Math.Sqrt(1 + ecc) * Math.Cos(ta / 2));
+            var m = ea - ecc * Math.Sin(ea) + seconds * Math.Sqrt(KerbinMu / Math.Pow(sma, 3));
+            var e = m;
+            for (var i = 0; i < 50; i++) e -= (e - ecc * Math.Sin(e) - m) / (1 - ecc * Math.Cos(e));
+            return sma * (1 - ecc * Math.Cos(e));
+        }
+
+        [Theory]
+        [InlineData(180)]
+        [InlineData(120)]
+        [InlineData(90)]
+        [InlineData(250)]
+        public void The_entry_eta_lands_on_the_top_of_the_atmosphere(double ta)
+        {
+            var eta = Eta(Ecc, Sma, KerbinMu, KerbinAir, ta);
+            Assert.True(eta > 0, "eta " + eta);
+            Assert.Equal(KerbinAir, RadiusAfter(Ecc, Sma, ta, eta), 0);
+        }
+
         [Fact]
         public void A_closed_orbit_inside_the_air_is_there_now_and_one_that_stays_out_never_falls()
         {

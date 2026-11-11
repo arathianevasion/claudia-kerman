@@ -358,7 +358,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private const string DropWait = "    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
         private const string Trim = "  local trim_ask is {\n    return addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"core\", entry_ask:core, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_recounted(), \"isp\", claudia_engine_isp())).\n  }.\n";
         private const string TrimFly = "  local flown is claudia_fly_correction(ctx, trim).\n";
-        private const string AirAgain = "    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
+        private const string AirAgain = "    set entry_in to addons:claudia:falleta(lexicon(\"ecc\", ship:orbit:eccentricity, \"sma\", ship:orbit:semimajoraxis, \"mu\", body_:mu, \"r_fall\", body_:radius + body_:atm:height, \"ta\", ship:orbit:trueanomaly)).\n";
         private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop, false).";
 
         /// <summary>The wait to the drop point: from its if to the closing brace at the block's own indent.</summary>
@@ -418,7 +418,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "global notes is list().\n"
             + "global wait_result is \"\".\n"
             + "function claudia_wait_until { parameter c, ut. waits:add(ut - time:seconds). set time:seconds to ut. return wait_result. }\n"
-            + "function claudia_fall_eta { parameter a, b, c, d, e. return 2400. }\n"
             + "function claudia_fly_correction { parameter c, fix. set burns to burns + 1. return lexicon(\"dv\", choose fix:dv if fix:haskey(\"dv\") else 0, \"reason\", fix:error). }\n"
             + "function claudia_dv_recounted { return 100. }\n"
             + "function claudia_engine_isp { return 300. }\n"
@@ -443,6 +442,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 + "global answers is list(" + answers + ").\n"
                 + "global addons is lexicon(\"claudia\", lexicon(\n"
                 + "  \"entrytrim\", { parameter q. asked:add(q:to_air). return answers[asked:length - 1]. },\n"
+                + "  \"falleta\", { parameter q. return 2400. },\n"
                 + "  \"chutegroup\", { parameter q. return lexicon(). },\n"
                 + "  \"blocknote\", { parameter b, n. notes:add(n:phase + \" \" + n:miss_before_km + \" \" + n:dv + \" \" + n:miss_after_km). })).\n"
                 + "function flies {\n" + slice + "  return \"went on\".\n}\n"
