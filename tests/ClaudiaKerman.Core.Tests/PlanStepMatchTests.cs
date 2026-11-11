@@ -22,7 +22,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>The Mission Plan in force for the crew report and the ascent (the flight's revised plan of 8 sequences).</summary>
-        private static List<PlannedSequence> BeforeAscent()
+        internal static List<PlannedSequence> BeforeAscent()
         {
             return new List<PlannedSequence>
             {

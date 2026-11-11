@@ -1290,6 +1290,106 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("Continue the Mission with a corrective sequence.", LastUserText(rig.Transport.Requests[3]));
         }
 
+        // ---- #983: a science-only step rides the next sequence's script ----
+
+        /// <summary>A Mission Plan reply of the named legs: each a (name, intent, delta_v) of the craft's, Duna round trip m20261110-203402-45d1.</summary>
+        private static ScriptedResponse DunaPlanReply(params (string Name, string Intent, int DeltaV)[] legs)
+        {
+            return Reply("{\"kind\":\"mission_plan\",\"say\":\"Plan.\",\"reply_intent\":\"none\",\"sequence_plan\":null,\"debrief\":null,\"alert\":null,"
+                + "\"mission_plan\":{\"why\":\"Duna and back.\",\"sequences\":["
+                + string.Join(",", legs.Select(l => "{\"name\":" + JsonSerializer.Serialize(l.Name) + ",\"intent\":" + JsonSerializer.Serialize(l.Intent)
+                    + ",\"delta_v\":" + l.DeltaV + ",\"timing\":\"next\",\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"craft\"}"))
+                + "],\"total_delta_v\":" + legs.Sum(l => l.DeltaV) + ",\"expected_duration\":\"long\",\"mission_time_s\":-1,\"goal_steps\":[]}}");
+        }
+
+        private static readonly (string, string, int) Landed = ("Land at Duna equator", "Deorbit onto the Lowlands site and descend (flown, Off-Nominal: 809 m/s against 700).", 809);
+        private static readonly (string, string, int) CrewReport = ("Crew report at Duna", "Run the crewReport experiment from the landed pod and transmit it.", 0);
+        private static readonly (string, string, int) Ascent = ("Ascend from Duna", "Launch from the Duna surface to a 60 km Duna orbit and circularize.", 1336);
+        private static readonly (string, string, int) Home = ("Transfer to Kerbin, soonest window", "Depart Duna in the soonest window and capture into an 80 km Kerbin orbit.", 1977);
+
+        private static string ApprovedRevision(MissionDebriefTests tests, ScriptedResponse revised)
+        {
+            var rig = new Rig(tests, DebriefJson("Off-Nominal", ",\"follow_up\":\"revised_plan\",\"follow_up_text\":\"Revise from the landed state.\""), revised);
+            rig.Transport.Add(Rig.SequenceReply());
+            var start = rig.RunToRunning();
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 4 && v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+            rig.Mission.Send(new Approve());
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 5 && v.Stage == MissionStage.AwaitingSequenceApproval);
+            return LastUserText(rig.Transport.Requests[4]);
+        }
+
+        [Fact]
+        public void ARevisedPlanWithACrewReportBesideTheAscentIsApprovedWithTheFoldLine()
+        {
+            var text = ApprovedRevision(this, DunaPlanReply(Landed, CrewReport, Ascent, Home));
+
+            Assert.StartsWith("The player approved the Mission Plan.\n", text);
+            Assert.Contains("\nStep 2 \"Crew report at Duna\" is science only, 0 m/s, where step 3 \"Ascend from Duna\" starts: fly it as the first lines of step 3's script (plan_step 3), not as a sequence of its own.\n", text);
+        }
+
+        [Fact]
+        public void ARevisedPlanThatDoesNotMarkTheFlownStepFoldsTheStepAfterTheOneBegun()
+        {
+            // Step 1 was begun, but the revision doesn't say "flown": the next to fly is still step 2, the crew report.
+            var text = ApprovedRevision(this, DunaPlanReply(("Link check", "Prove the link.", 0), CrewReport, Ascent, Home));
+
+            Assert.Contains("\nStep 2 \"Crew report at Duna\" is science only, 0 m/s, where step 3 \"Ascend from Duna\" starts:", text);
+        }
+
+        [Fact]
+        public void ARevisedPlanWithNoScienceOnlyStepIsApprovedWithoutIt()
+        {
+            var text = ApprovedRevision(this, DunaPlanReply(Landed, Ascent, Home));
+
+            Assert.StartsWith("The player approved the Mission Plan.\n", text);
+            Assert.DoesNotContain("science only", text);
+        }
+
+        [Fact]
+        public void TheNextSequenceRequestBeforeACrewReportCarriesTheFoldLine()
+        {
+            // The plan from the pad: step 1 flown, the crew report next.
+            var plan = DunaPlanReply(("Link check", "Prove the link.", 0), CrewReport, Ascent);
+            var rig = new Rig(this, DebriefJson("Nominal", ""), plan: plan);
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 4 && v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var text = LastUserText(rig.Transport.Requests[3]);
+            Assert.StartsWith("Continue the Mission.\nStep 2 \"Crew report at Duna\" is science only, 0 m/s, where step 3 \"Ascend from Duna\" starts: fly it as the first lines of step 3's script (plan_step 3), not as a sequence of its own.\n", text);
+        }
+
+        [Theory]
+        [InlineData(",\"follow_up\":\"none\",\"follow_up_text\":\"\"", true)]
+        [InlineData(",\"follow_up\":\"corrective_sequence\",\"follow_up_text\":\"Fly it again.\"", false)]
+        public void AnOffNominalDebriefThatMovesOnCarriesTheFoldLineAndACorrectiveSequenceDoesNot(string followUp, bool folds)
+        {
+            // The flight's landing was Off-Nominal (809 m/s against 700); only a corrective sequence flies the step begun again.
+            var plan = DunaPlanReply(("Link check", "Prove the link.", 0), CrewReport, Ascent);
+            var rig = new Rig(this, DebriefJson("Off-Nominal", followUp), plan: plan);
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 4 && v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(folds, LastUserText(rig.Transport.Requests[3]).Contains("Step 2 \"Crew report at Duna\" is science only"));
+        }
+
+        [Fact]
+        public void TheNextSequenceRequestWithNoScienceStepNextHasNoFoldLine()
+        {
+            var plan = DunaPlanReply(("Link check", "Prove the link.", 0), Ascent, CrewReport, Home);
+            var rig = new Rig(this, DebriefJson("Nominal", ""), plan: plan);
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 4 && v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.DoesNotContain("science only", LastUserText(rig.Transport.Requests[3]));
+        }
+
         // ---- Failed ----
 
         [Fact]
@@ -1543,11 +1643,12 @@ namespace ClaudiaKerman.Core.Tests
             public readonly MissionControl Mission;
 
             /// <param name="recheck">Always by default: most of these tests are of Claudia's Margin recheck itself, which auto sends only when the mod's margin check is not enough.</param>
-            public Rig(MissionDebriefTests tests, string debrief, ScriptedResponse after = null, decimal cap = 10m, MarginRecheckMode recheck = MarginRecheckMode.Always)
+            /// <param name="plan">The first Mission Plan's reply; <see cref="PlanReply"/> when null.</param>
+            public Rig(MissionDebriefTests tests, string debrief, ScriptedResponse after = null, decimal cap = 10m, MarginRecheckMode recheck = MarginRecheckMode.Always, ScriptedResponse plan = null)
             {
                 _tests = tests;
                 _cap = cap;
-                Transport = new StreamingFakeTransport(PlanReply(), SequenceReply(), Reply(debrief));
+                Transport = new StreamingFakeTransport(plan ?? PlanReply(), SequenceReply(), Reply(debrief));
                 // What follows a Debrief that doesn't end the Mission: the next Sequence Plan unless the test says otherwise.
                 Transport.Add(after ?? SequenceReply());
                 Router = new CraftCheckRouter(Transport);

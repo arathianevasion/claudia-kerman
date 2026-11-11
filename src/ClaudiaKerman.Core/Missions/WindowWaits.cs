@@ -104,7 +104,8 @@ namespace ClaudiaKerman.Core.Missions
             else
             {
                 var calls = BlockOptionCheck.Calls(plan.Script).ToList();
-                var first = calls.FirstOrDefault();
+                // #983: a science call folded in ahead of the ascent runs landed; the block after it is the ascent.
+                var first = calls.FirstOrDefault(c => c.Block != "science");
                 if ((first == null || (first.Block != "launch" && first.Block != "ascend")) && !SequenceWords.Ascent.IsMatch(plan.Name)) return null;
                 var named = calls.Where(c => c.Block == "transfer_to").Select(c => SequenceWords.Body(snapshot, (c.Option("target") ?? "").Trim('"'))).FirstOrDefault(b => b != null);
                 var flown = Elsewhere(snapshot, body, named);
