@@ -870,6 +870,8 @@ namespace ClaudiaKerman.Core.Missions
             var mission = _mission;
             var due = PendingDueTime;
             if (mission == null || mission.DueNotified || !due.HasValue || _ut < due.Value) return;
+            // #967: back at a coast checkpoint, its check runs first; a plan it keeps is called on the next input.
+            if (CoastCheckRunsNow(mission, mission.PendingSequence)) return;
             mission.DueNotified = true;
             _commands.Add(new DropWarp());
             // #967: under Auto Mode, with the player in the craft, a reached Due Time is not theirs to approve: Auto Mode's log line follows, or its stop line.

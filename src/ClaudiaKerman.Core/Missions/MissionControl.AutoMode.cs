@@ -159,6 +159,8 @@ namespace ClaudiaKerman.Core.Missions
                     return;
                 }
                 if (CrossingAwaitsRead(mission, plan)) return;
+                // Back in the craft at a coast checkpoint: its check, later in this input, decides (#775).
+                if (CoastCheckRunsNow(mission, plan)) return;
                 if (CrossingHeld(mission, plan))
                 {
                     WaitsForPlayer(mission, AdvanceWait.MoonCrossing, plan.Name);
@@ -207,6 +209,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!mission.Blackout) RetractPlanNews();
             // Before Approval's own lines, and taken back if it didn't start the run. A Blackout says so only at a Due Time Auto Mode took.
             var note = mission.Blackout && !atDue ? null : Note(LogKind.Notice, atDue ? AutoModeApprovedAtDueNote : AutoModeApprovedNote);
+            var dueBefore = plan == null ? null : plan.DueTimeUt;
             Approval();
             var started = missionPlan ? mission.Stage != MissionStage.AwaitingPlanApproval : mission.Stage == MissionStage.Running;
             // Started again after kOS refused the script: it was logged and listed the first time.
@@ -215,6 +218,12 @@ namespace ClaudiaKerman.Core.Missions
             if (!started || again)
             {
                 if (note != null) mission.Log.Remove(note);
+                // Not refused: Approval moved the Due Time to the next window, or sent a re-plan or an Alert. Auto Mode takes the plan again at its new Due Time.
+                if (!started && (mission.InFlight || plan != null && plan.DueTimeUt != dueBefore))
+                {
+                    mission.AutoModeApprovedFor = null;
+                    return;
+                }
                 // Refused, and still in hand: nothing says it was approved or flown, and at a Due Time Auto Mode took the player is called.
                 if (!started && atDue && !mission.Blackout && mission.Stage == MissionStage.AwaitingSequenceApproval && mission.PendingSequence == plan)
                     WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);

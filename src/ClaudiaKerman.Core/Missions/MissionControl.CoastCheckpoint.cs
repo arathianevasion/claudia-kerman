@@ -74,6 +74,16 @@ namespace ClaudiaKerman.Core.Missions
             return CoastPlanToken(plan) != null && !mission.CheckPending && CraftActive;
         }
 
+        /// <summary>
+        /// The check on return runs later in this same input (<see cref="CheckCoastReturn"/>): the Due Time's notice and Auto Mode's stop line
+        /// wait for its verdict rather than be logged and cleared at once (#967).
+        /// </summary>
+        private bool CoastCheckRunsNow(Mission mission, SequencePlan plan)
+        {
+            return mission == _mission && mission.Stage == MissionStage.AwaitingSequenceApproval && plan == mission.PendingSequence
+                && mission.CheckPending && CoastPlanToken(plan) != null && CraftActive && !mission.SwitchingAway && !mission.InFlight && mission.Pending == null;
+        }
+
         // ---- At a checkpoint ----
 
         /// <summary>The run ended with its block at a checkpoint: the mod's Debrief and resume are owed, once no request is out. True: taken. A Paused run's Debrief is Claudia's, on Resume.</summary>

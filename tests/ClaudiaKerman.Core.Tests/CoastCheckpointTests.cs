@@ -986,6 +986,33 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void Back_after_the_due_time_under_Auto_Mode_the_check_runs_with_no_stop_line_or_Approval_notice()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = RunToCheckpoint(transport, rig, token);
+            Leave(mission, rig);
+            mission.Send(new SetAutoMode(true));
+            mission.TakeCommands();
+            // Away, Auto Mode waits for them (the stop line is logged then); the return input adds none.
+            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+            var before = mission.View.Log.Count;
+
+            // Back in the craft past the Due Time, its snapshot the first input to reach it (#967 review).
+            rig.MoveTo(token.DueUt + 60);
+            mission.Send(Craft(rig));
+            _background.Drain();
+
+            var added = mission.View.Log.Skip(before).ToList();
+            Assert.Contains(added, e => e.Text.StartsWith("Checked on return:") && e.Text.Contains("is kept"));
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.DoesNotContain(added, e => e.Text.StartsWith("Auto Mode is waiting for you"));
+            Assert.DoesNotContain(added, e => e.Text.Contains("ready for your Approval") || e.Text.Contains("waits for your Approval"));
+            Assert.Equal("", mission.View.AutoModeStop);
+        }
+
+        [Fact]
         public void A_kept_late_return_takes_the_resume_with_its_lateness_in_the_log()
         {
             CoastToken token;

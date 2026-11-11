@@ -362,6 +362,32 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AutoModeStartsAtTheDueTimeAMissedWindowMovedOnWithNoStopLineMeanwhile()
+        {
+            // #967 review: Auto Mode's Approval at the missed Due Time moves it to the next window; it is approved again there.
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan()));
+            ToLaunchPlan(mission, 1203.48, 20000);
+            mission = Unheld(mission, OnPad(1203.48, 20000));
+            mission.Send(new SetAutoMode(true));
+            mission.TakeCommands();
+
+            var back = Window(1203.48).DepartureUt + 120 * Day;
+            mission.Send(new UtAdvanced(back));
+            var moved = Window(back).DepartureUt - WindowWaits.LaunchLeadS;
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(moved, mission.View.DueTime.Ut, 0);
+            Assert.Equal("", mission.View.AutoModeStop);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == "Auto Mode is waiting for you: a Due Time.");
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == "Approved by Auto Mode at the Due Time.");
+
+            mission.Send(new UtAdvanced(moved + 1));
+            _background.Drain();
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.View.Log, e => e.Text == "Approved by Auto Mode at the Due Time.");
+        }
+
+        [Fact]
         public void AMissedWindowWhoseNextOneIsUnderSixHoursOffStartsTheScriptAndRemovesTheAlarm()
         {
             var clock = new FakeAlarmClock();
