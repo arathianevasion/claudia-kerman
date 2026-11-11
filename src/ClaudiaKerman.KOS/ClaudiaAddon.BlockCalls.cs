@@ -540,12 +540,13 @@ namespace ClaudiaKerman.KOS
         private Lexicon AutoDropFreeCall()
         {
             System.Collections.Generic.IDictionary<string, object> found = null;
-            var answer = Guarded("AUTODROPFREE", () =>
+            var answer = (Lexicon)Guarded("AUTODROPFREE", () =>
             {
                 found = BlockCalls.AutoDropFree(MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence);
                 return KosValues.FromPlain(found);
             }, () => "free " + string.Join(", ", ((System.Collections.IList)found["free"]).Cast<object>().Select(k => k.ToString()).ToArray()), 1);
-            return found != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.AutoDropFree(null, -1));
+            // Guarded's error lexicon has no free, wherever the call threw: the block reads free unguarded.
+            return answer.ContainsKey(new StringValue("free")) ? answer : (Lexicon)KosValues.FromPlain(BlockCalls.AutoDropFree(null, -1));
         }
 
         /// <summary><c>ADDONS:CLAUDIA:LANDINGTARGET</c> (#790, ADR 0014): the landing target default (<see cref="BlockCalls.LandingTarget"/>).</summary>
