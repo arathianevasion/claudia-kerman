@@ -37,7 +37,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         /// <summary>pod, a core tank holding fuel and its engine, and an empty radial set on the tank: R, its empty tank Rt, shield Rs and nose cone Rn.</summary>
-        private static List<Spec> Core()
+        private static List<Spec> EmptyRadialCraft()
         {
             return new List<Spec>
             {
@@ -61,7 +61,10 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             source = source.Replace("\r\n", "\n");
             var start = source.IndexOf(from, StringComparison.Ordinal);
-            return source.Substring(start, source.IndexOf(to, start, StringComparison.Ordinal) - start);
+            Assert.True(start >= 0, "no " + from);
+            var end = source.IndexOf(to, start, StringComparison.Ordinal);
+            Assert.True(end >= 0, "no " + to);
+            return source.Substring(start, end - start);
         }
 
         private static string ExecNode()
@@ -146,13 +149,13 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void An_empty_radial_set_with_a_shield_and_a_nose_cone_is_dropped_before_the_burn()
         {
-            Assert.Equal(new[] { "burn starts with pod,T,E", "dropped Rt,Rs,Rn" }, Fly(Core(), "list(\"shield\")"));
+            Assert.Equal(new[] { "burn starts with pod,T,E", "dropped Rt,Rs,Rn" }, Fly(EmptyRadialCraft(), "list(\"shield\")"));
         }
 
         [Fact]
         public void A_radial_tank_with_propellant_left_stays_while_the_empty_one_goes()
         {
-            var s = Core();
+            var s = EmptyRadialCraft();
             s.AddRange(new[] { P("Q", "T", Radial), P("Qt", "Q", None, 50), P("Qs", "Qt", Shield), P("Qn", "Qt", None) });
             Assert.Equal(new[] { "burn starts with pod,T,E,Q,Qt,Qs,Qn", "dropped Rt,Rs,Rn" }, Fly(s, "list(\"shield\")"));
         }
@@ -161,7 +164,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void A_stack_Entry_Shield_over_an_empty_tank_stays_while_the_empty_radial_set_goes()
         {
             // #979's guard: only a radial decoupler lets a shield go, so the stack decoupler D above the shield S and its empty tank never fires.
-            var s = Core();
+            var s = EmptyRadialCraft();
             s.AddRange(new[] { P("D", "E", new[] { "ModuleDecouple" }), P("S", "D", Shield), P("St", "S", None, 0) });
             Assert.Equal(new[] { "burn starts with pod,T,E,D,S,St", "dropped Rt,Rs,Rn" }, Fly(s, "list(\"shield\", \"leg\")"));
         }
@@ -169,7 +172,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void With_drop_empty_off_nothing_goes()
         {
-            Assert.Equal(new[] { "burn starts with pod,T,E,R,Rt,Rs,Rn", "dropped " }, Fly(Core(), "list(\"shield\")", "list()"));
+            Assert.Equal(new[] { "burn starts with pod,T,E,R,Rt,Rs,Rn", "dropped " }, Fly(EmptyRadialCraft(), "list(\"shield\")", "list()"));
         }
     }
 }
