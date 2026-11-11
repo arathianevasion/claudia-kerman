@@ -19,6 +19,14 @@ namespace ClaudiaKerman.Core.Missions
         public static readonly Regex Reentry = new Regex(@"\b(re-?ent(er|ry|ers|ering)|splash ?down)\b", RegexOptions.IgnoreCase);
         /// <summary>Leaving orbit to come down (#979).</summary>
         public static readonly Regex Deorbit = new Regex(@"\bde-?orbit(s|ed|ing)?\b", RegexOptions.IgnoreCase);
+        /// <summary>Coming down to a surface: "descend", "descent" (#979).</summary>
+        public static readonly Regex Descent = new Regex(@"\bdescen(d|ds|ded|ding|t|ts)\b", RegexOptions.IgnoreCase);
+
+        /// <summary>True when <paramref name="before"/>, the text before a body, names it as where a trip starts or a return comes from (#979).</summary>
+        public static bool Departs(string before)
+        {
+            return Origin.IsMatch(before) || ReturnsFrom.IsMatch(before);
+        }
         /// <summary>
         /// The return to the home planet (#689): a return that names Kerbin, or "come/return/go/head home", "back home" and "fly home"
         /// (inflected where natural), whole words. "home in on" and "home stretch" are not returns.

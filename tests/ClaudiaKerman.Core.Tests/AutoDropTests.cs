@@ -87,6 +87,36 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False(AutoDrop.LegsFree(plan, 0));
         }
 
+        // The player's ruling (fix round): a Kerbin return under chutes is no landing, but a sequence that also comes down on another body is.
+        [Theory]
+        [InlineData("Return to KSC", "Deorbit from Kerbin orbit, reenter and descend under the Mk16 chute.")]
+        [InlineData("Return from the Mun to Kerbin", "Deorbit and reenter over KSC under the chutes.")]
+        [InlineData("Come home from Duna", "Reentry and descent under chutes.")]
+        public void AKerbinReturnUnderChutesIsNoLanding(string name, string intent)
+        {
+            var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
+            Assert.True(AutoDrop.LegsFree(plan, 0));
+        }
+
+        [Theory]
+        [InlineData("Mun and home", "Deorbit to the Mun crater, then return to Kerbin.")]
+        [InlineData("Return to Kerbin via Minmus", "Descend to the Minmus flats for a sample, then come home.")]
+        public void AReturnThatAlsoComesDownOnAnotherBodyIsALanding(string name, string intent)
+        {
+            var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
+            Assert.False(AutoDrop.LegsFree(plan, 0));
+        }
+
+        [Theory]
+        [InlineData("Mun descent", "Descend on the engine to the crater.")]
+        [InlineData("Duna", "Powered descent to the Lowlands.")]
+        [InlineData("Ike", "Descending to the equator.")]
+        public void DescendAndDescentAreLandings(string name, string intent)
+        {
+            var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
+            Assert.False(AutoDrop.LegsFree(plan, 0));
+        }
+
         [Fact]
         public void WithNoPlanTheLegsStay()
         {
