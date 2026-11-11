@@ -21,7 +21,7 @@ A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You 
 
 Claudia is also a Kerbal: a female crew member with the **Super Intelligence** role, which combines Pilot, Engineer and Scientist. She flies aboard crewed craft, or remotely from Mission Control for probes. If she dies aboard, the Mission is **Lost**, and she returns to the roster later.
 
-In Flight, the **Capcom strip** under the altimeter follows the Mission: Claudia's latest line, where the Mission is in its plan, the Spending Cap and what is locked. Its tab expands the Mission window docked to it, and it turns amber when she needs you. In the Space Center and Tracking Station, the **Missions list** shows every Mission in the save: the active one, Paused ones and finished ones with their final Debrief and cost.
+In Flight, the **Capcom strip** between the altimeter and the app launcher bar follows the Mission: Claudia's latest line, where the Mission is in its plan, the Spending Cap and what is locked. Its tab expands the Mission window docked to it, and it turns amber when she needs you. In the Space Center and Tracking Station, the **Missions list** shows every Mission in the save: the active one, Paused ones and finished ones with their final Debrief and cost.
 
 ## Building Blocks
 

@@ -10,8 +10,9 @@ using UnityEngine;
 namespace ClaudiaKerman.Adapter
 {
     /// <summary>
-    /// The Capcom strip: a bar in Flight, under the altimeter until the player drags it by its status row (double-click
-    /// that row to put it back); where it sits is kept in windows.cfg as <c>flight.capcom</c>. Collapsed, it shows
+    /// The Capcom strip: a bar in Flight, between the stock altimeter and the app launcher bar (<see cref="StockUiEdges"/>)
+    /// until the player drags it by its status row (double-click that row to put it back); where it sits is kept in
+    /// windows.cfg as <c>flight.capcom</c>. Collapsed, it shows
     /// Claudia's portrait, her status chip and latest line, the spend meter, the Mission Plan's sequences as a segment
     /// track (scrolling sideways when they don't fit) and the lock line, with a tab that expands the docked
     /// <see cref="MissionPanel"/> (and turns amber with what Claudia needs from the player). The tab and the panel are
@@ -22,19 +23,19 @@ namespace ClaudiaKerman.Adapter
     /// </summary>
     public class CapcomStrip
     {
-        private static readonly float DefaultWidth = DefaultSizes.StripWidth(ClaudiaSkin.FontScale);
-        private static readonly float MinWidth = ClaudiaSkin.Scaled(520);
-        private const float Top = 70;
+        // Sizes follow the UI scale, so they are read when used.
+        private static float DefaultWidth { get { return DefaultSizes.StripWidth(ClaudiaSkin.FontScale); } }
+        private static float MinWidth { get { return ClaudiaSkin.Scaled(520); } }
         private const string MemoryName = "capcom";
-        private static readonly float PortraitSize = ClaudiaSkin.Scaled(44);
+        private static float PortraitSize { get { return ClaudiaSkin.Scaled(44); } }
         private const float PortraitRadius = 8;
         private const float SegmentGap = 6;
         private const float SegmentBarHeight = 6;
-        private static readonly float ArrowWidth = ClaudiaSkin.Scaled(20);
+        private static float ArrowWidth { get { return ClaudiaSkin.Scaled(20); } }
         // A drag shorter than this was a click (the first of a double-click), not a move.
         private const float DragThreshold = 3;
-        private static readonly float MeterWidth = ClaudiaSkin.Scaled(72);
-        private static readonly float DefaultPanelHeight = DefaultSizes.PanelHeight(ClaudiaSkin.FontScale);
+        private static float MeterWidth { get { return ClaudiaSkin.Scaled(72); } }
+        private static float DefaultPanelHeight { get { return DefaultSizes.PanelHeight(ClaudiaSkin.FontScale); } }
         private const string PanelMemoryName = "panel";
         // Below this the prompt and the control bar leave the transcript no room; only a very short screen gets there.
         private const float MinPanelHeight = 200;
@@ -44,7 +45,7 @@ namespace ClaudiaKerman.Adapter
         private readonly MissionPanel _panel;
         private readonly TypingFocus _typing = MissionPanel.NewTypingFocus();
         private readonly WindowFrame _frame =
-            new WindowFrame(0x434B04, "", "ClaudiaKermanCapcom", new Rect(0, Top, DefaultWidth, 0), new Vector2(MinWidth, MinPanelHeight), false);
+            new WindowFrame(0x434B04, "", "ClaudiaKermanCapcom", new Rect(0, 0, DefaultWidth, 0), new Vector2(MinWidth, MinPanelHeight), false);
         // The expand tab's width as last drawn; the mouse lock leaves the transparent band either side of it to the game.
         private float _tabWidth;
         private Texture2D _portrait;
@@ -59,7 +60,7 @@ namespace ClaudiaKerman.Adapter
         // The strip's own height last Repaint, for clamping the panel to the screen.
         private float _stripHeight = 120;
 
-        // Where the player put the strip (its top left); unmoved, it sits under the altimeter.
+        // Where the player put the strip (its top left); unmoved, it sits between the altimeter and the app bar.
         private bool _moved;
         private Vector2 _position;
         private bool _memoryApplied;
@@ -72,6 +73,8 @@ namespace ClaudiaKerman.Adapter
         // The size the player gave the docked panel: its width is the whole window's (strip, panel and tab), and its height
         // is what it asks for, which the screen may cut short. _width is this frame's width, kept within the screen.
         private float _wantWidth = DefaultWidth, _wantPanelHeight = DefaultPanelHeight, _width = DefaultWidth;
+        // The UI scale those sizes are for: a new one resizes them by as much.
+        private float _sizedAt = ClaudiaSkin.FontScale;
         // The panel's rect in the window last Repaint (empty when it isn't open), where a press starts a resize.
         private Rect _panelArea;
 
@@ -131,10 +134,16 @@ namespace ClaudiaKerman.Adapter
             var expanded = PanelShowing;
             if (!expanded) EndResize();
             else StepResize();
+            FollowScale();
             _width = Mathf.Min(_wantWidth, Screen.width);
-            // Placed every frame from where the player left it, so a smaller screen re-clamps it and a larger one gives it back.
-            var at = _moved ? _position : new Vector2((Screen.width - _width) / 2f, Top);
-            _place = CapcomStripLayout.Place(at.x, at.y, new StripSize(_width, _stripHeight, TabHeight(), _wantPanelHeight, MinPanelHeight), Screen.width, Screen.height);
+            // Placed every frame, so a smaller screen re-clamps it and a larger one gives it back. Where the player left it;
+            // unmoved, in the gap between the altimeter and the app bar, which is re-read for a new scale, screen or bar.
+            var size = new StripSize(_width, _stripHeight, TabHeight(), _wantPanelHeight, MinPanelHeight);
+            _place = _moved
+                ? CapcomStripLayout.Place(_position.x, _position.y, size, Screen.width, Screen.height)
+                : CapcomStripLayout.Place(StockUiEdges.Read(), DefaultSizes.StripMargin(ClaudiaSkin.FontScale), MinWidth,
+                    DefaultSizes.StripTop(ClaudiaSkin.FontScale), size, Screen.width, Screen.height);
+            _width = _place.Width;
             var above = _place.Side == PanelSide.Above;
 
             // The size is in the shape, so the window re-fits to it every frame of a resize (it only grows on its own).
@@ -251,6 +260,17 @@ namespace ClaudiaKerman.Adapter
             WindowMemory.Store(MemoryName, new WindowBox(_position.x, _position.y, _wantWidth, _stripHeight));
         }
 
+        // A new UI scale resizes the strip and panel the player sized by as much; a moved strip keeps its position.
+        private void FollowScale()
+        {
+            var now = ClaudiaSkin.FontScale;
+            if (now == _sizedAt) return;
+            var by = now / _sizedAt;
+            _sizedAt = now;
+            _wantWidth = Mathf.Max(Mathf.Round(_wantWidth * by), MinWidth);
+            _wantPanelHeight = Mathf.Max(Mathf.Round(_wantPanelHeight * by), MinPanelHeight);
+        }
+
         // ---- Moving the strip ----
 
         // On the first draw, where the player last left it.
@@ -282,11 +302,13 @@ namespace ClaudiaKerman.Adapter
                 return;
             }
             if (!_dragMoved && delta.magnitude < DragThreshold) return;
+            // Out of the gap it keeps the width the gap gave it.
+            if (!_moved) _wantWidth = _width;
             _dragMoved = _moved = true;
             _position = _dragFromStrip + delta;
         }
 
-        // Back under the altimeter, and forgotten, so it follows the screen's centre again.
+        // Back in the gap between the altimeter and the app bar, and forgotten, so it follows them again.
         private void ResetPosition()
         {
             _dragging = false;
@@ -297,7 +319,7 @@ namespace ClaudiaKerman.Adapter
         // A press in the status row starts a drag; a double-click resets.
         private void HandleStatusRowInput(Rect row)
         {
-            GUI.Label(row, new GUIContent("", "Drag to move the strip; double-click to put it back under the altimeter"), GUIStyle.none);
+            GUI.Label(row, new GUIContent("", "Drag to move the strip; double-click to put it back between the altimeter and the app bar"), GUIStyle.none);
             var e = Event.current;
             if (e.type != EventType.MouseDown || e.button != 0 || !row.Contains(e.mousePosition)) return;
             if (e.clickCount == 2) ResetPosition();
