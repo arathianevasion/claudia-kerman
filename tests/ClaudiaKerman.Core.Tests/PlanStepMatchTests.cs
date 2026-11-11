@@ -170,11 +170,18 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void AStepStillToFlyNeverGivesWayBackToTheLegJustFlown()
+        public void ALegStillToFlyNeverGivesWayBackToTheLegJustFlownByActionAlone()
         {
             // The capture (step 3) was just flown; "Circularize" reads as a capture, but the sent step 4 is the next leg.
             var legs = Legs("Launch to orbit", "Transfer to Duna", "Capture into Duna orbit", "Lower to 60 km orbit", "Land");
             Assert.Null(Resolve(legs, "Circularize at Duna", 4, 3));
+        }
+
+        [Fact]
+        public void ARetryOfTheLegJustBegunNamedInItsWordsTakesItsStep()
+        {
+            // The ascent (step 6) began and came short; its retry sent as the next leg's number is the ascent again.
+            Assert.Equal(6, Resolve(BeforeAscent(), "Ascend from Duna, second try", 7, 6));
         }
 
         [Fact]

@@ -10,13 +10,16 @@ using System.Text.RegularExpressions;
 namespace ClaudiaKerman.Core.Missions
 {
     /// <summary>
-    /// #977: the Mission Plan step a Sequence Plan flies, read from its name as well as its <c>plan_step</c>. A <c>plan_step</c> still to
-    /// fly gives way only to a later step that alone clearly matches, and only when its own sequence shares no word but body names and no
-    /// action with the plan's name; one naming a sequence already flown gives way to the one still to fly that matches. Otherwise the step
-    /// sent stands.
+    /// #977: the Mission Plan step a Sequence Plan flies, read from its name as well as its <c>plan_step</c>. A <c>plan_step</c> on a leg
+    /// still to fly gives way only when that leg's sequence shares no word but body names and no action with the plan's name, and then only
+    /// to the one leg that clearly matches: a later one, or the leg just begun when named in its words (a retry). One on a leg already
+    /// flown gives way to the one still to fly that matches. Otherwise the step sent stands.
     /// </summary>
     internal static class PlanSteps
     {
+        /// <summary>A leading "Leg 2:", "Step 3." or "4)" numbers the name, which is plan_step's job: it is left out.</summary>
+        private static readonly Regex Numbered = new Regex(@"^\s*(?:(?:leg|step|sequence|stage|phase|part)\s*)?#?\d+\s*(?:[:)]|[.\-–—](?=\s))\s*", RegexOptions.IgnoreCase);
+
         private static readonly HashSet<string> Small = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "a", "an", "the", "to", "at", "from", "of", "on", "in", "into", "onto", "for", "and", "with", "by",
@@ -43,9 +46,11 @@ namespace ClaudiaKerman.Core.Missions
             var toFly = matches.Where(step => step >= lastBegun).ToList();
             if (sent >= lastBegun)
             {
-                // A step still to fly gives way only forward, and only when its sequence clearly isn't this plan: a wrong override is worse.
-                if (matches.Contains(sent) || !Unlike(name, legs[sent - 1].Name, names)) return null;
-                return toFly.Count == 1 && toFly[0] > sent ? toFly[0] : (int?)null;
+                // A leg still to fly gives way only when its sequence clearly isn't this plan (a wrong override is worse), and only forward,
+                // or back to the leg just begun when named in its words (a retry), never by action and body alone.
+                if (matches.Contains(sent) || !SharesNothing(name, legs[sent - 1].Name, names) || toFly.Count != 1) return null;
+                var to = toFly[0];
+                return to > sent || (to == lastBegun && SameWords(name, legs[to - 1].Name)) ? to : (int?)null;
             }
             if (matches.Contains(sent) && toFly.Count == 0) return null;
             if (toFly.Count == 1) return toFly[0];
@@ -66,31 +71,33 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private static bool Clear(string plan, string sequence, IList<string> bodies)
         {
-            var a = Words(Head(plan));
-            var b = Words(Head(sequence));
-            if (a.Count == 0 || b.Count == 0) return false;
-            if (a.SetEquals(b)) return true;
-            var small = a.Count <= b.Count ? a : b;
-            var big = a.Count <= b.Count ? b : a;
-            if (small.Count >= 2 && small.IsSubsetOf(big)) return true;
+            if (SameWords(plan, sequence)) return true;
             var acts = Acts(Head(plan));
             var at = Named(Head(plan), bodies);
             return acts.Count > 0 && at.Count > 0 && acts.SetEquals(Acts(Head(sequence))) && at.SetEquals(Named(Head(sequence), bodies));
         }
 
+        /// <summary>The two names before any comma hold the same words, or one's two or more words are all in the other's.</summary>
+        private static bool SameWords(string plan, string sequence)
+        {
+            var a = Words(Head(plan));
+            var b = Words(Head(sequence));
+            if (a.Count == 0 || b.Count == 0) return false;
+            var small = a.Count <= b.Count ? a : b;
+            var big = a.Count <= b.Count ? b : a;
+            return a.SetEquals(b) || (small.Count >= 2 && small.IsSubsetOf(big));
+        }
+
         /// <summary>
-        /// The plan's name and the sequence's share no word but body names (every leg at Duna names Duna) and no action
+        /// The plan's whole name and the sequence's share no word but body names (every leg at Duna names Duna) and no action
         /// <see cref="SequenceWords"/> reads: the sequence clearly isn't this plan.
         /// </summary>
-        private static bool Unlike(string plan, string sequence, IList<string> bodies)
+        private static bool SharesNothing(string plan, string sequence, IList<string> bodies)
         {
             var a = Words(Unnumbered(plan));
             a.ExceptWith(bodies.Select(b => b.ToLowerInvariant()));
             return !a.Overlaps(Words(Unnumbered(sequence))) && !Acts(Unnumbered(plan)).Overlaps(Acts(Unnumbered(sequence)));
         }
-
-        /// <summary>A leading "Leg 2:", "Step 3." or "4)" numbers the name, which is plan_step's job: it is left out.</summary>
-        private static readonly Regex Numbered = new Regex(@"^\s*(?:(?:leg|step|sequence|stage|phase|part)\s*)?#?\d+\s*(?:[:)]|[.\-–—](?=\s))\s*", RegexOptions.IgnoreCase);
 
         private static string Unnumbered(string name)
         {
