@@ -59,7 +59,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             return "\"\"";
         }
 
-        private static string[] Plan(List<Spec> s, string free)
+        private static string[] Plan(List<Spec> s, string free, string wanted = null)
         {
             var b = new StringBuilder();
             for (var i = 0; i < s.Count; i++)
@@ -73,7 +73,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             }
             b.Append("local parts is list(" + string.Join(", ", Enumerable.Range(0, s.Count).Select(i => "p_" + i)) + ").\n");
             b.Append("local scan is claudia_scan_craft(parts, lexicon(\"pod\", true)).\n");
-            b.Append("local plan is claudia_scan_plan(scan, true, \"auto\", list(), " + free + ").\n");
+            b.Append("local plan is claudia_scan_plan(scan, " + (wanted == null ? "true, \"auto\"" : "false, " + wanted) + ", list(), " + free + ").\n");
             b.Append("for step in plan { local ids is list(). for g in step:gone { ids:add(g:uid). } print step:uid + \":\" + ids:join(\",\"). }\n");
             return KosHarness.Run(CoreLibrary.Bundle(b.ToString())).ToArray();
         }
@@ -105,6 +105,45 @@ namespace ClaudiaKerman.Kerboscript.Tests
             // The shield's own decoupler module is no decoupler (#516), so what hangs under it leaves with R: an engine there blocks, trim goes.
             Assert.Empty(Plan(Radial(("Re", "Rs", new[] { "ModuleEngines" })), ShieldsAndLegs));
             Assert.Equal(new[] { "R:Rt,Rs,Rn,Rx" }, Plan(Radial(("Rx", "Rs", None)), Shields));
+        }
+
+        /// <summary>pod (a kerbal), a stack decoupler D, then the given parts in a stack under it, each the child of the one before.</summary>
+        private static List<Spec> Stack(params Spec[] under)
+        {
+            var s = new List<Spec>
+            {
+                new Spec { Uid = "pod", Parent = -1, Modules = new[] { "ModuleCommand" } },
+                new Spec { Uid = "D", Parent = 0, Modules = new[] { "ModuleDecouple" } },
+            };
+            foreach (var p in under)
+            {
+                p.Parent = s.Count - 1;
+                s.Add(p);
+            }
+            return s;
+        }
+
+        private static Spec Shield() => new Spec { Uid = "S", Modules = new[] { "ModuleDecouple", "ModuleAblator" } };
+        private static Spec EmptyTank() => new Spec { Uid = "T", Modules = None, Amount = 0 };
+
+        // The fix round's probe (#940/#948: pod, decoupler, shield is a real design): only a radial decoupler lets a shield go (#843).
+        [Fact]
+        public void AStackDecouplerAboveAShieldAndAnEmptyTankDoesNotFire()
+        {
+            Assert.Empty(Plan(Stack(Shield(), EmptyTank()), ShieldsAndLegs));
+        }
+
+        [Fact]
+        public void AStackDecouplerAboveAnEmptyTankAndAShieldDoesNotFire()
+        {
+            Assert.Empty(Plan(Stack(EmptyTank(), Shield()), ShieldsAndLegs));
+        }
+
+        [Fact]
+        public void ANamedTankUnderAStackShieldDoesNotTakeTheShield()
+        {
+            // The walk past a shield stops at a stack decoupler: the named tank has no decoupler of its own, as before #979.
+            Assert.Empty(Plan(Stack(Shield(), EmptyTank()), ShieldsAndLegs, "list(\"T\")"));
         }
 
         [Fact]

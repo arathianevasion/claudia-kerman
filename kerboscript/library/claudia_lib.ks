@@ -762,7 +762,7 @@ function claudia_drop_settle {
 //   decs: uid -> uid of the part's decoupler as claudia_decoupler_of gives it (a heat shield never one), or "";
 //   parents: uid -> parent uid or "";  parts: uid -> the part, for firing;  tanks: the records holding propellant
 //   tanks (claudia_scan_refresh re-reads them);  gone_by: claudia_scan_gone of the scan;
-//   cands: claudia_scan_cands of an auto scan.
+//   cands: claudia_scan_cands of an auto scan;  known: uid -> record of the parts whose kind and radial were read.
 // crewed: a lexicon keyed by the uids of the parts holding a kerbal. The kind and the tanks of a part are
 // read only if the scan can use them: it has a decoupler above it, is a decoupler, or is one's decoupler.
 function claudia_scan_craft {
@@ -794,14 +794,13 @@ function claudia_scan_craft {
       local p is parts[i].
       local kind is claudia_part_kind(p).
       set rec["kind"] to kind.
+      set rec["radial"] to p:hasmodule("ModuleAnchoredDecoupler").
       known:add(rec:uid, rec).
       if rec:raw <> "" {
-        local amounts is rec:amounts.
-        local capacities is rec:caps.
         for res in p:resources {
           if claudia_is_propellant(res:name) and res:capacity > 0 {
-            amounts:add(res:amount).
-            capacities:add(res:capacity).
+            rec:amounts:add(res:amount).
+            rec:caps:add(res:capacity).
           }
         }
         if rec:caps:length > 0 {
@@ -814,14 +813,17 @@ function claudia_scan_craft {
   local parents is lexicon().
   for rec in recs {
     local d is rec:raw.
-    // A heat shield is no decoupler (#516): a part under one leaves with the decoupler above it (#979).
+    // A heat shield is no decoupler (#516): a part under one leaves with the radial decoupler above it, else stays (#979).
     until d = "" or not known:haskey(d) or known[d]:kind <> "shield" {
       set d to known[d]:raw.
+      if d <> "" and not known[d]:radial {
+        set d to "".
+      }
     }
     decs:add(rec:uid, d).
     parents:add(rec:uid, rec:parent).
   }
-  local scan is lexicon("recs", recs, "decs", decs, "parents", parents, "parts", by_uid, "tanks", tanks).
+  local scan is lexicon("recs", recs, "decs", decs, "parents", parents, "parts", by_uid, "tanks", tanks, "known", known).
   // Who leaves with each decoupler is structure too: kept, so a cached scan is not walked for it again (#679).
   set scan["gone_by"] to claudia_scan_gone(scan).
   set scan["cands"] to claudia_scan_cands(scan, true, "auto").
@@ -923,17 +925,10 @@ function claudia_scan_cands {
 // parts whose decoupler is judged. tried: uids drop_empty is done with; free: kinds auto lets go (#979).
 function claudia_scan_plan {
   parameter scan, auto, wanted, tried, free is list().
-  local gone_by is 0.
-  if scan:haskey("gone_by") {
-    set gone_by to scan:gone_by.
-  } else {
-    set gone_by to claudia_scan_gone(scan).
-  }
+  local gone_by is scan:gone_by.
   local plan is list().
-  local cands is list().
-  if auto and scan:haskey("cands") {
-    set cands to scan:cands.
-  } else {
+  local cands is scan:cands.
+  if not auto {
     set cands to claudia_scan_cands(scan, auto, wanted).
   }
   for d in cands {
@@ -953,8 +948,8 @@ function claudia_scan_plan {
           capacities:add(c).
         }
         if auto {
-          // Second net for a crew cabin whose modules the kind check does not know: any part holding a kerbal.
-          if g:crewed {
+          // Held as crew: a part holding a kerbal (a cabin the kind check doesn't know), or a shield a stack decoupler takes (#979).
+          if g:crewed or (g:kind = "shield" and not scan:known[d]:radial) {
             kinds:add("crew").
           } else {
             kinds:add(g:kind).
@@ -997,7 +992,9 @@ function claudia_drop_empty {
   local fired_names is list().
   local fired_groups is list().
   local seats is list().
+  local free is list().
   if auto {
+    set free to addons:claudia:autodropfree():free.
     for c in ship:crew {
       seats:add(c:part:uid).
     }
@@ -1005,7 +1002,7 @@ function claudia_drop_empty {
   // One walk of the craft, kept on ctx while it is unchanged; judging and firing read what it recorded (#533, #679).
   local scan_from is time:seconds.
   local scan is claudia_drop_scan(ctx, ship:parts, seats, stage:number).
-  local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried, addons:claudia:autodropfree():free).
+  local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried, free).
   // launch traces what a scan and its plan cost (#531), only in launch: the game seconds they took, which a long one spends over
   // several physics ticks.
   if auto and ctx:block = "launch" {

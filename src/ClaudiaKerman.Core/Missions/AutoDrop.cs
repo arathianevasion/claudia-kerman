@@ -12,9 +12,9 @@ namespace ClaudiaKerman.Core.Missions
     /// #979: what may leave with an empty tank in an "auto" drop, besides trim (the player's rule, 2026-11-10). The block judges each
     /// decoupler's parts against these kinds (<c>claudia_part_kind</c>); engines, parachutes, crew and the rest always keep it aboard.
     /// <para>
-    /// <b>A heat shield always.</b> If the parts it shields go with it, it doesn't matter. A shield on the crew part's side of a decoupler
-    /// only leaves with the crew part, and a part holding a kerbal blocks the drop; a shield past a decoupler from the crew part (a drop
-    /// tank's) goes with that decoupler's parts, as staging would take it.
+    /// <b>A heat shield a radial decoupler takes.</b> If the parts it shields go with it, it doesn't matter. The block holds a shield a stack
+    /// decoupler would take as it holds a kerbal: that one may be the crew part's Entry Shield (pod, decoupler, shield, #940/#948), and Core
+    /// never counts a radial shield as one (#843).
     /// </para>
     /// <para>
     /// <b>Landing legs once no landing is left</b> (<see cref="LegsFree"/>). No Mission Plan (a block test): they stay.
