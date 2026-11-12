@@ -138,6 +138,18 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("on each body of the Kerbin system and each body the Mission Goal names", text);
         }
 
+        [Fact]
+        public void InKerbinOrbitTheLaunchIsFlownSoItsRowIsGone()
+        {
+            var snapshot = GameSnapshot.Parse(Fixture("mun-shot-v2-kerbin-orbit.json"));
+            var text = CraftCheckPrompts.Facts("Land on the Mun", snapshot, 15, null);
+            var map = DeltaVMap.Compute(snapshot.Bodies, "Kerbin");
+
+            Assert.False(HasLine(text, "launch:Kerbin"));
+            Assert.Equal(map.Leg("transfer:Mun").DeltaV, Figure(Line(text, "transfer:Mun")), 0);
+            Assert.Contains("on each body of the Kerbin system", text);
+        }
+
         private static GameSnapshot OnPad(double ut)
         {
             var snapshot = GameSnapshot.Parse(Fixture("on-pad.json"));

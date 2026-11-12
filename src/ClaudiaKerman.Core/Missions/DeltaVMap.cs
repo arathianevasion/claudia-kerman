@@ -412,8 +412,11 @@ namespace ClaudiaKerman.Core.Missions
         public string ToText(IList<SnapshotBody> named, GameSnapshot snapshot = null, WindowRow window = null)
         {
             var start = RoutePlanners.Start(snapshot);
-            var away = start != null && start.Name != Home;
+            // Round the star (between planets), the trips are priced as before.
+            var away = start != null && start.Name != Home && !string.IsNullOrEmpty(start.Parent);
             var legs = LegsFor(named, !away);
+            // In flight at home, the launch is flown (#998: launch:Home only when the craft is on the ground there).
+            if (snapshot != null && start != null && start.Name == Home && !snapshot.IsGrounded) legs = legs.Where(l => l.Id != "launch:" + Home).ToList();
             // The start's rows (#998): their figures and notes are final.
             var planned = new Dictionary<DeltaVLeg, string>();
             var windowUsed = false;

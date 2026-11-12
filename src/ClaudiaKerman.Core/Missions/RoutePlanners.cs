@@ -51,7 +51,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The ascent from the surface the craft is on to orbit, by plan_ascent (its dv_budget); null with <paramref name="refusal"/> when it gives none.</summary>
         public static PlannedFigure Ascent(GameSnapshot snapshot, out string refusal)
         {
-            var key = "ascent|" + snapshot.Craft.Name + "|" + snapshot.Bodies.Count + "|" + snapshot.Body + "|" + Math.Round(snapshot.Altitude / 100) + "|" + snapshot.Craft.NoseDrag.Count + "|"
+            var key = "ascent|" + snapshot.Craft.Name + "|" + snapshot.Bodies.Count + "|" + snapshot.Body + "|" + snapshot.Situation + "|" + Math.Round(snapshot.Latitude) + "|" + Math.Round(snapshot.Altitude / 100) + "|" + snapshot.Craft.NoseDrag.Count + "|"
                 + string.Join(",", snapshot.Stages.Select(s => s.Number + ":" + Math.Round(s.DeltaVVac) + ":" + Math.Round(s.ThrustVacKn)).ToArray());
             return Remembered(key, snapshot.Ut, out refusal, () =>
             {
