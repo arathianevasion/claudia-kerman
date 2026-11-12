@@ -176,6 +176,8 @@ namespace ClaudiaKerman.Core.Missions
             private DeltaVLeg[] _high;
             /// <summary>The delta-v the walk has spent, for the stages a leg will burn.</summary>
             private double _used;
+            /// <summary>#998: the craft hasn't left the body it is at now, so its ascent and trip are the planners' (<see cref="RoutePlanners"/>).</summary>
+            private bool _atStart = true;
             private JudgedLeg _leg;
 
             public Walk(GameSnapshot snapshot, IList<PlannedSequence> rest, string plannedAscent)
@@ -213,7 +215,9 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>A manual leg isn't judged, but the craft goes where it goes.</summary>
             private void Follow(string words)
             {
-                _at = SequenceWords.NextBody(_snapshot, words, _at);
+                var next = SequenceWords.NextBody(_snapshot, words, _at);
+                if (next != _at) _atStart = false;
+                _at = next;
                 if (SequenceWords.Landing.IsMatch(words)) _grounded = true;
                 if (SequenceWords.Ascent.IsMatch(words)) _grounded = false;
             }
@@ -251,11 +255,17 @@ namespace ClaudiaKerman.Core.Missions
                     if (leg != null) Add(leg.Id, _launch ?? leg.DeltaV);
                     return;
                 }
-                AddSurface("ascend:" + _at.Name, _at);
+                // #998: from where the craft is, plan_ascent's figure; where it refuses, the Map's as before.
+                string why;
+                var planned = _atStart && _snapshot.IsGrounded ? RoutePlanners.Ascent(_snapshot, out why) : null;
+                if (planned != null) Add("ascend:" + _at.Name, planned.DeltaV);
+                else AddSurface("ascend:" + _at.Name, _at);
             }
 
             private void Trip(SnapshotBody target, string words, bool landsHere, int index)
             {
+                var fromStart = _atStart;
+                _atStart = false;
                 // Already on the way (round the star, or escaping): the ejection is flown, and no low orbit is left to price a trip from.
                 if (_inTransit)
                 {
@@ -267,6 +277,9 @@ namespace ClaudiaKerman.Core.Missions
                 }
                 var trip = _map.Trip(_at.Name, target.Name);
                 if (trip == null) return;
+                // #998: the first trip from where the craft is, unless a planet to its own moon or a moon to its planet, is plan_transfer's at the pick; where it refuses, the Map's.
+                string why;
+                var planned = fromStart && !RoutePlanners.IsMapTrip(_at, target) ? RoutePlanners.Transfer(_snapshot, target, null, _snapshot.MarginPercent, out why) : null;
                 // #866: in to a planet with its moon next, the capture stops in the high orbit; on to the moon, the trip leaves from there.
                 if (_at.Name == _map.Home)
                 {
@@ -278,6 +291,12 @@ namespace ClaudiaKerman.Core.Missions
                     if (_high != null && _at.Name == _high[0].Bodies[1] && target.Name == _high[1].Bodies[1]) trip = _high[1];
                     // Used, or passed by: a later capture here or trip on is the low circle's.
                     _high = null;
+                }
+                if (planned != null)
+                {
+                    // A high-route capture stops short of the low circle the window's is costed to (#866), as the Craft Check's row says.
+                    var saving = _high != null && _at.Name == _map.Home ? _high[0].HighSaving : 0;
+                    trip = new DeltaVLeg { Departure = planned.DeltaV - planned.Capture, Arrival = planned.Capture - saving, Bodies = trip.Bodies };
                 }
                 var id = _at.Name == _map.Home ? (_map.Leg("transfer:" + target.Name) != null ? "transfer:" + target.Name : "transfer:" + _at.Name + ">" + target.Name)
                     : target.Name == _map.Home ? "return:" + _at.Name : "transfer:" + _at.Name + ">" + target.Name;
