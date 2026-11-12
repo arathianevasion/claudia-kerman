@@ -34,6 +34,10 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
                 "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
+            AddSuffix("BURNTHROUGH", new OneArgsSuffix<Lexicon, Lexicon>(BurnThrough,
+                "Core Library only (launch, at its first cutoff and each tick of a burn-through): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, altitude, target_ap, atm_height, angle, stages, turn and burning; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap, climb, time_left"));
+            AddSuffix("BURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(BurnTimeCall,
+                "Core Library only (claudia_burn_timing): the seconds to burn dv (m/s) over stages (claudia_burn_stages' list) and to burn half of it; lexicon error, burn_time, half_burn (each -1 with no thrust)"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
             AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
@@ -48,6 +52,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): the great-circle km on a body of radius (m) between lat, lng and actual_lat, actual_lng; lexicon km"));
             AddSuffix("TURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(TurnTime,
                 "Core Library only (a block that turns to a burn): the time to leave for a 190 degree turn on the wheels and RCS (if the craft has monoprop, on or off), given max_stopping_time; lexicon error, turn_time, turn_s, top_rate, and wheels_turn_time, wheels_turn_s on the wheels alone (-1: no wheel torque)"));
+            AddSuffix("LOWCHARGE", new OneArgsSuffix<Lexicon, Lexicon>(LowChargeCall,
+                "Core Library only (reentry, each tick): what low charge does with the periapsis in the air, from ec_pct, min_ec_pct, pe, air_top; lexicon error, carry_on, step (0 nothing, 1 steering released, 2 chutes armed), abort_pct (the charge min_ec_pct is to judge)"));
             AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
                 "Core Library only (RCS Use, once per turn): the burst turn through angle (deg) with left_s to the deadline (-1: none), or after a stop burst with corrections taken; lexicon error, rcs, wheels_s, coast_rate, spin_s, coast_s, stop_s, stop_deg, wheels_deg, turn_s, alpha, and spin, coast, stop (kOS's t, kp, ki)"));
             AddSuffix("BURSTTURN", new TwoArgsSuffix<Lexicon, Lexicon, Lexicon>(BurstTurnCall,
@@ -87,13 +93,15 @@ namespace ClaudiaKerman.KOS
             AddSuffix("CHUTEGROUP", new OneArgsSuffix<Lexicon, Lexicon>(ChuteGroupSet,
                 "Core Library only (reentry): this entry's Chute Group, read fresh, from none and engine; lexicon error, last (true: every chute aboard), stage, stages, uids, titles, touchdown_speed, why, warning"));
             AddSuffix("ENTRYFINISH", new OneArgsSuffix<Lexicon, Lexicon>(EntryFinishSet,
-                "Core Library only (reentry): whether this entry lands on its engines, from home, chutes and drop; lexicon error, powered, speed, kept_speed, engines, spare, why"));
+                "Core Library only (reentry): whether this entry lands on its engines, from home, chutes, drop and core; lexicon error, powered, keeps_stack, speed, kept_speed, engines, spare, why"));
             AddSuffix("ENTRYDROP", new OneArgsSuffix<Lexicon, Lexicon>(EntryDrop,
-                "Core Library only (reentry): what this Entry drops, from home, separate, chutes, core and drop_error (error: a stack it refuses); lexicon error, number, shield, decouplers, gone, names, stuck, lead"));
+                "Core Library only (reentry): what this Entry drops, from home, separate, chutes, core and drop_error (error: a stack it refuses); lexicon error, number, shield, jettison, jettison_first, decouplers, gone, names, stuck, lead"));
             AddSuffix("ENTRYTRIM", new OneArgsSuffix<Lexicon, Lexicon>(EntryTrimCall,
                 "Core Library only (reentry): at most one late trim toward the Mission's landing target, from to_air, home, dv_left, isp and has_node; lexicon as CORRECTIONBURN's, dv 0 and aim_note when none flies"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
-                "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
+                "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, core, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
+            AddSuffix("LIFTOFFCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(LiftoffClearCall,
+                "Core Library only (launch, ascend): the decouplers under the engines that give thrust, from core and home; lexicon error, decouplers, gone, stuck"));
             AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
                 "Core Library only (drop_parts, deorbit, reentry): whether a drop taking the craft from before to left m/s of delta-v takes what the Mission Plan still needs; lexicon error, refused, reason, taken, need"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
@@ -433,6 +441,20 @@ namespace ClaudiaKerman.KOS
                 : (string)drop["error"]);
         }
 
+        /// <summary><c>ADDONS:CLAUDIA:LIFTOFFCLEAR</c> (#945, ADR 0014): what is still under an engine giving thrust (<see cref="BlockCalls.LiftoffClearCall"/>), read fresh.</summary>
+        private Lexicon LiftoffClearCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> found = null;
+            return (Lexicon)Guarded("LIFTOFFCLEAR", () =>
+            {
+                var vessel = shared.Vessel;
+                var uids = new System.Collections.Generic.Dictionary<uint, string>();
+                foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+                found = BlockCalls.LiftoffClearCall(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(vessel), id => uids.ContainsKey(id) ? uids[id] : null);
+                return KosValues.FromPlain(found);
+            }, () => found["error"] as string == "" ? ((System.Collections.IList)found["decouplers"]).Count + " decoupler(s) under the engines" : (string)found["error"]);
+        }
+
         /// <summary><c>ADDONS:CLAUDIA:DROPCHECK</c> (#825, ADR 0014): the Mission Plan's need against a drop (<see cref="BlockCalls.DropCheck"/>).</summary>
         private Lexicon DropCheckCall(Lexicon input)
         {
@@ -466,10 +488,10 @@ namespace ClaudiaKerman.KOS
                 var ask = KosValues.ToDictionary(input);
                 // Aimed at a landing (#792), the predictor flies the planet's air: the craft is still at the moon.
                 node = ask.ContainsKey("lat")
-                    ? BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody.referenceBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)))
+                    ? BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody.referenceBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()))
                     : BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody()); // #888: the body reads the planet's frame for the turn direction
                 // A return aimed at no landing clears the last one (#892): a later reentry mustn't trim toward it.
-                MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.referenceBody.bodyName));
+                MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.referenceBody.bodyName), vessel);
                 return KosValues.FromPlain(node);
             }, () => node.ContainsKey("dv")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
@@ -568,13 +590,13 @@ namespace ClaudiaKerman.KOS
                     SnapshotReader.ReadEngineFuel(snapshot, vessel);
                     ask["craft"] = BlockCalls.EntryCraftCall(new System.Collections.Generic.Dictionary<string, object> { { "core", ask.ContainsKey("core") ? ask["core"] : "" }, { "body", planet.bodyName }, { "stage_limit", ask.ContainsKey("stage_limit") ? ask["stage_limit"] : 0.0 } }, snapshot,
                         MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild, id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => { });
-                    step = BlockCalls.TransferStep(ask, snapshot, new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                    step = BlockCalls.TransferStep(ask, snapshot, new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()));
                 }
                 else step = BlockCalls.TransferStep(ask, snapshot);
                 // Core's record of the plane it aims for, for capture (#788). A timing ask aims for nothing.
                 if (step.ContainsKey("aimed_plane")) MissionDriver.RecordAimedPlane((string)step["aimed_plane"]);
                 // #880: a trip home from another planet aims at the default landing, for the Late Trim.
-                if (step.ContainsKey("lat")) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(step, (string)step["landing_body"]));
+                if (step.ContainsKey("lat")) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(step, (string)step["landing_body"]), vessel);
                 return KosValues.FromPlain(step);
             }, () => (string)step["error"] != "" ? (string)step["error"]
                 : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",
@@ -644,9 +666,9 @@ namespace ClaudiaKerman.KOS
                 ask.TryGetValue("target", out target);
                 var planet = BodyNamed(target as string);
                 node = ask.ContainsKey("lat") && planet != null
-                    ? BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)))
+                    ? BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()))
                     : BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel));
-                if (ask.ContainsKey("lat") && planet != null) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, planet.bodyName));
+                if (ask.ContainsKey("lat") && planet != null) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, planet.bodyName), vessel);
                 return KosValues.FromPlain(node);
             }, () => (!node.ContainsKey("dv") ? (string)node["error"]
                 : node.ContainsKey("distance_predicted")
@@ -674,10 +696,10 @@ namespace ClaudiaKerman.KOS
                     var snapshot = SnapshotReader.ReadForMission(vessel);
                     SnapshotReader.ReadEngineFuel(snapshot, vessel);
                     // The craft this Entry flies, read here and not through ENTRYCRAFT's call: that records the craft aimed with, which ENTRYFINISH compares this one against (#814).
-                    var entryCraft = BlockCalls.EntryCraftCall(new System.Collections.Generic.Dictionary<string, object> { { "home", ask.ContainsKey("home") ? ask["home"] : "" }, { "body", vessel.mainBody.bodyName }, { "stage_limit", ask.ContainsKey("stage_limit") ? ask["stage_limit"] : 0.0 } }, snapshot,
+                    var entryCraft = BlockCalls.EntryCraftCall(new System.Collections.Generic.Dictionary<string, object> { { "home", ask.ContainsKey("home") ? ask["home"] : "" }, { "core", ask.ContainsKey("core") ? ask["core"] : "" }, { "body", vessel.mainBody.bodyName }, { "stage_limit", ask.ContainsKey("stage_limit") ? ask["stage_limit"] : 0.0 } }, snapshot,
                         MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild, id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => { });
                     ask["craft"] = entryCraft;
-                    fix = BlockCalls.EntryTrim(ask, snapshot, new PlanningBody(), new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                    fix = BlockCalls.EntryTrim(ask, snapshot, new PlanningBody(), new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()));
                     return KosValues.FromPlain(fix);
                 }
                 finally
@@ -722,6 +744,53 @@ namespace ClaudiaKerman.KOS
                 : (string)heading["error"], 2);
         }
 
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:BURNTHROUGH</c> (#932, ADR 0014): launch's burn-through decision (<see cref="LaunchBurnThrough.Call"/>), pure, called
+        /// at the first cutoff and on every tick of a burn-through. KSP.log has a line for the first call, one every 30 s of re-checks with the slowest call's time (ADR 0014 guardrail 6), and one for the re-check that ends it. A failure (logged by Guarded) coasts, as a launch always did.
+        /// </summary>
+        private Lexicon BurnThrough(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> decision = null;
+            var burning = new StringValue("burning");
+            var rechecking = input != null && input.ContainsKey(burning) && input[burning] is BooleanValue && ((BooleanValue)input[burning]).Value;
+            Func<string> describe = () => string.Format(CultureInfo.InvariantCulture, "burn_through {0}: half burn {1:0.0} s for {2:0.0} m/s + turn {3:0.0} s for {6:0.0} deg against {7:0.0} s left as launch ends ({4:0.0} s to apoapsis less {8:0.0} s climb){5}",
+                decision["burn_through"], decision["half_burn"], decision["dv"], decision["turn_time"], decision["eta_ap"],
+                decision["error"] as string == "" ? "" : " (" + decision["error"] + ")", decision["angle"], decision["time_left"], decision["climb"]);
+            var answer = Guarded("BURNTHROUGH", () =>
+            {
+                decision = LaunchBurnThrough.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(decision);
+            }, describe, rechecking ? 30 : 0);
+            // The re-check that ends the burn-through is always logged, however Guarded's 30 s falls.
+            if (rechecking && decision != null && !(bool)decision["burn_through"])
+            {
+                // The periapsis and fell-back ends are not a coast: no half burn or time left to show (half burn is -1 there).
+                var fail = decision["fail"] as string;
+                var ended = !(bool)decision["done"] ? "the coast works again: " + describe()
+                    : fail != "" ? "fell back, launch fails: " + fail
+                    : "periapsis clear of the air, launch ends";
+                Debug.Log(ModInfo.LogTag + " block call BURNTHROUGH ended it: " + ended);
+            }
+            return decision != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(LaunchBurnThrough.Call(null));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:BURNTIME</c> (#935, ADR 0014): the one burn-timing rule (<see cref="StagedBurnTime.Call"/>), pure, asked a few times a burn
+        /// by <c>claudia_burn_timing</c>, never per tick; the line's a diagnostic of the figures and the call's time (Guarded).
+        /// </summary>
+        private Lexicon BurnTimeCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> timing = null;
+            var answer = Guarded("BURNTIME", () =>
+            {
+                timing = StagedBurnTime.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(timing);
+            }, () => string.Format(CultureInfo.InvariantCulture, "burn_time {0:0.0} s, half burn {1:0.0} s{2}",
+                timing["burn_time"], timing["half_burn"], timing["error"] as string == "" ? "" : " (" + timing["error"] + ")"));
+            // A failure (logged by Guarded) has no figures: no thrust, as burn_time -1 says.
+            return timing != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(StagedBurnTime.Call(null));
+        }
+
         private Lexicon TurnTime(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> turn = null;
@@ -740,6 +809,21 @@ namespace ClaudiaKerman.KOS
                             : string.Format(CultureInfo.InvariantCulture, "turn_time {0:0.0} s, turn {1:0.0} s", turn["wheels_turn_time"], turn["wheels_turn_s"]))
                     : turn["error"],
                 craft.WheelPitch, craft.WheelYaw, craft.RcsPitch, craft.RcsYaw, craft.RcsUsable ? "" : " (no monoprop)", craft.MoiPitch, craft.MoiYaw));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:LOWCHARGE</c> (#942, ADR 0014): what low charge does to a <c>reentry</c> with the periapsis in the air (<see cref="BlockCalls.LowCharge"/>),
+        /// pure. Called every physics tick, so its time is logged at most once a second (guardrail 6). The block reads every key: a failure (logged by Guarded) answers as full charge, so it neither acts nor aborts.
+        /// </summary>
+        private Lexicon LowChargeCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> low = null;
+            var answer = Guarded("LOWCHARGE", () =>
+            {
+                low = BlockCalls.LowCharge(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(low);
+            }, () => string.Format(CultureInfo.InvariantCulture, "carry on {0}, step {1}", low["carry_on"], low["step"]), 1);
+            return low != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.LowCharge(null));
         }
 
         /// <summary>
@@ -799,11 +883,17 @@ namespace ClaudiaKerman.KOS
             {
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
-                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask));
+                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId());
                 found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody), craft);
-                MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.bodyName));
+                MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.bodyName), vessel);
                 return KosValues.FromPlain(found);
             }, () => Landing(found) + CraftLine(craft) + PlanLine(found));
+        }
+
+        /// <summary>The part running this script, whose side of a docking is the Mission's own (#926); null when the call has no processor.</summary>
+        private uint? CoreId()
+        {
+            return shared.KSPPart == null ? (uint?)null : shared.KSPPart.persistentId;
         }
 
         private Lexicon ReentryImpact(Lexicon input)
@@ -817,7 +907,8 @@ namespace ClaudiaKerman.KOS
                 // Given a path round another body (return's, with the craft still at the moon), that body's air (#793).
                 object named;
                 ask.TryGetValue("orbit_body", out named);
-                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask));
+                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId());
+                UnityEngine.Debug.Log(ClaudiaKerman.Core.ModInfo.LogTag + " REENTRYIMPACT read: " + craft.Diagnosis());
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
                     new ReentryAir(BodyNamed(named as string) ?? vessel.mainBody), craft);
                 return KosValues.FromPlain(landing);

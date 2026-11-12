@@ -8,7 +8,7 @@ namespace ClaudiaKerman.Core.Missions
 {
     /// <summary>
     /// What an Entry drops, from its Entry Shield (ADR 0018): the parts on the far side of it from home. It fires nothing (ADR 0014): the
-    /// <c>reentry</c> block fires the decouplers. A decoupler stays with the part above it, so the one next to the shield is not the stack;
+    /// <c>reentry</c> block fires the decouplers. A decoupler is not the stack, but it may go with it: <see cref="Leaves"/> has it when its firing lets go of the part above it (#924);
     /// a heat shield is never the decoupler that drops one (#516).
     /// </summary>
     public sealed class EntryStack
@@ -48,6 +48,41 @@ namespace ClaudiaKerman.Core.Missions
         public readonly List<SnapshotPart> Gone = new List<SnapshotPart>();
         /// <summary>Stack parts with no decoupler between them and the shield: the Entry can't drop them.</summary>
         public readonly List<SnapshotPart> Stuck = new List<SnapshotPart>();
+        /// <summary>Those of <see cref="Decouplers"/> whose firing lets go of the part above them (<see cref="SnapshotPart.Releases"/>, #924): they go with the stack. A TD-12 lets go of what is on its top node.</summary>
+        private readonly List<SnapshotPart> _goingDecouplers = new List<SnapshotPart>();
+        /// <summary>Parts tagged landing_leg stand on the home side of the shield (#940).</summary>
+        public bool LegsAbove;
+        /// <summary>The decoupler between the shield and the part above it (#940), never another shield; null for none. <c>reentry</c> fires it first (<c>ENTRYDROP</c>'s <c>jettison_first</c>): the shield's own omni module would leave it on the engine.</summary>
+        public SnapshotPart DecouplerAbove;
+        /// <summary><see cref="DecouplerAbove"/> lets go of the part above it, so it leaves with the shield.</summary>
+        public bool DecouplerAboveGoes;
+        /// <summary>The decouplers from the shield toward home, through decouplers only, when that walk reaches an engine (#948); empty otherwise. A tank in between ends the walk: it isn't this case.</summary>
+        public readonly List<SnapshotPart> DecouplersToEngine = new List<SnapshotPart>();
+        /// <summary>The engine <see cref="DecouplersToEngine"/> reach; null for none.</summary>
+        public SnapshotPart EngineAbove;
+        /// <summary>Those of <see cref="DecouplersToEngine"/> that don't let go of the part above them (#948): they stay under the engine when the shield goes.</summary>
+        public readonly List<SnapshotPart> StayingToEngine = new List<SnapshotPart>();
+
+        /// <summary>Whether the stack takes the root or the part running the script (<paramref name="core"/>, null when not known): <c>reentry</c> won't drop those.</summary>
+        public bool TakesCore(uint? core)
+        {
+            return Gone.Any(p => p.ParentId == null || p.Id == core);
+        }
+
+        /// <summary>
+        /// Whether this stack drops even on a powered finish (#940, ADR 0020): a landing drops everything below its legs, as <c>land</c> does its Underhang. It needs
+        /// legs above the shield and a stack the Entry can drop: one it can't (<see cref="Stuck"/>, or <see cref="TakesCore"/>) is kept, as with no legs.
+        /// </summary>
+        public bool DropsBelowLegs(uint? core)
+        {
+            return LegsAbove && Parts.Count > 0 && Stuck.Count == 0 && !TakesCore(core);
+        }
+
+        /// <summary>Everything that leaves the craft when the Entry drops its stack: <see cref="Gone"/> and the decouplers that go with it (#924). The one rule for the craft that enters.</summary>
+        public IEnumerable<SnapshotPart> Leaves
+        {
+            get { return Gone.Concat(_goingDecouplers); }
+        }
 
         /// <summary>
         /// The stack of <paramref name="parts"/> for shield number <paramref name="number"/> counted from <paramref name="home"/> (the part the
@@ -66,7 +101,32 @@ namespace ClaudiaKerman.Core.Missions
             var walker = new Walker(byId, anchor, PartTree.TowardHome(parts, home));
             var seen = new HashSet<uint>();
             foreach (var part in parts)
-                if (part.Id != anchor) stack.Classify(part, walker.Up(part), seen);
+            {
+                if (part.Id == anchor) continue;
+                var way = walker.Up(part);
+                stack.Classify(part, way, seen);
+                if (!way.Under && part.Tags.Contains("landing_leg")) stack.LegsAbove = true;
+            }
+            stack._goingDecouplers.AddRange(stack.Decouplers.Where(walker.LetsGoAbove));
+            var above = walker.Parent(stack.Shield);
+            if (above != null && above.Tags.Contains("decoupler") && !above.Tags.Contains("heat_shield"))
+            {
+                stack.DecouplerAbove = above;
+                stack.DecouplerAboveGoes = walker.LetsGoAbove(above);
+                var chain = new List<SnapshotPart>();
+                var cur = above;
+                while (cur != null && cur.Tags.Contains("decoupler") && !cur.Tags.Contains("heat_shield"))
+                {
+                    chain.Add(cur);
+                    cur = walker.Parent(cur);
+                }
+                if (cur != null && cur.Tags.Contains("engine"))
+                {
+                    stack.EngineAbove = cur;
+                    stack.DecouplersToEngine.AddRange(chain);
+                    stack.StayingToEngine.AddRange(chain.Where(d => d.Releases.Count > 0 && !walker.LetsGoAbove(d)));
+                }
+            }
             return stack;
         }
 
@@ -176,7 +236,15 @@ namespace ClaudiaKerman.Core.Missions
                 return new Walk();
             }
 
-            private SnapshotPart Parent(SnapshotPart part)
+            /// <summary>Whether firing <paramref name="decoupler"/> lets go of its neighbour toward home.</summary>
+            public bool LetsGoAbove(SnapshotPart decoupler)
+            {
+                uint? next;
+                return _toward.TryGetValue(decoupler.Id, out next) && next.HasValue && decoupler.Releases.Contains(next.Value);
+            }
+
+            /// <summary>The neighbour of <paramref name="part"/> toward home; null at home.</summary>
+            public SnapshotPart Parent(SnapshotPart part)
             {
                 SnapshotPart parent;
                 uint? next;

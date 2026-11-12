@@ -207,6 +207,39 @@ namespace ClaudiaKerman.Core.Missions
             return findings;
         }
 
+        /// <summary>
+        /// The Craft Check's Warning (#948): the Mission Goal has an Entry and the decouplers between its Entry Shield and an engine toward home can't
+        /// all leave with the shield: one doesn't let go of the part above it (wrong way up), or there is more than one. The engine would be left with a
+        /// decoupler under it whatever the firing order. A tank between decoupler and engine ends the walk and says nothing.
+        /// </summary>
+        public static IList<MarginFinding> DecouplerUnderEngine(GameSnapshot snapshot, IList<PlannedSequence> legs)
+        {
+            var findings = new List<MarginFinding>();
+            var entries = Find(snapshot, legs, 0);
+            if (entries.Count == 0) return findings;
+            var tail = BurnsAfter(legs, entries[entries.Count - 1].Step, BurnsInWords) ? 1 : 0;
+            var rule = CraftCheckRules.Find(CraftCheckRules.DecouplerUnderEngine);
+            var said = new HashSet<uint>();
+            for (var number = 1 + tail; number <= entries.Count + tail; number++)
+            {
+                var stack = EntryStack.Of(snapshot.Craft.Parts, null, number);
+                if (stack.EngineAbove == null) continue;
+                var wrong = stack.StayingToEngine.Count > 0;
+                if (!wrong && stack.DecouplersToEngine.Count < 2) continue;
+                var named = wrong ? stack.StayingToEngine[0] : stack.DecouplersToEngine[stack.DecouplersToEngine.Count - 1];
+                if (!said.Add(named.Id)) continue;
+                findings.Add(new MarginFinding
+                {
+                    Code = rule.Code, Severity = rule.Severity, Title = rule.Title,
+                    Explanation = wrong
+                        ? "Decoupler " + named.Name + " between the Entry Shield and engine " + stack.EngineAbove.Name + " doesn't let go of the part above it, so it stays under the engine when the shield drops"
+                        : stack.DecouplersToEngine.Count + " decouplers (" + string.Join(", ", EntryStack.Names(stack.DecouplersToEngine).ToArray()) + ") sit between the Entry Shield and engine "
+                            + stack.EngineAbove.Name + ", so one stays under the engine when the shield drops",
+                });
+            }
+            return findings;
+        }
+
         private static bool IsHot(Entry entry, PlannedSequence leg)
         {
             return HotBodies.Contains(entry.Body) || SequenceWords.StraightIn.IsMatch(SequenceWords.Of(leg));

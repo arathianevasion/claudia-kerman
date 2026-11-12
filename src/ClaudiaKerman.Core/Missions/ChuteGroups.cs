@@ -290,24 +290,29 @@ namespace ClaudiaKerman.Core.Missions
             if (found.Count == 0) return groups;
             var tail = Missions.Entries.BurnsAfter(sequences, found[found.Count - 1].Step, burns) ? 1 : 0;
             var keeper = ChildVessels.Keeper(snapshot, remote, processorPartId);
-            var leaving = new HashSet<uint>(ChildVessels.Staging(snapshot, remote, processorPartId).Separations.SelectMany(s => s.PartIds));
-            var podMassKg = snapshot.Craft.Parts.Where(p => !leaving.Contains(p.Id)).Sum(p => p.MassT) * 1000;
             var aboard = groups.Chutes.ToList();
             var engines = new HashSet<uint>(snapshot.Craft.Parts.Where(p => p.Tags.Contains("engine")).Select(p => p.Id));
             for (var i = 0; i < found.Count; i++)
             {
                 var entry = new EntryChutes { Step = found[i].Step, Sequence = found[i].Sequence, Body = found[i].Body, Return = found[i].Return, Last = i == found.Count - 1 && tail == 0 };
-                var dropped = new HashSet<uint>(EntryStack.Of(snapshot.Craft.Parts, keeper, found.Count - i + tail).Gone.Select(p => p.Id));
+                var stack = EntryStack.Of(snapshot.Craft.Parts, keeper, found.Count - i + tail);
+                var dropped = new HashSet<uint>(stack.Gone.Select(p => p.Id));
                 var before = aboard.ToList();
                 aboard.RemoveAll(c => dropped.Contains(c.PartId));
                 entry.Chutes.AddRange(Choose(aboard, entry.Last));
                 aboard.RemoveAll(entry.Chutes.Contains);
-                entry.MassKg = entry.Return ? (podMassKg > 0 ? podMassKg : snapshot.Craft.MassTonnes * 1000)
-                    : MassAfter(snapshot, sequences.Skip(first).Take(entry.Step - first).Sum(s => Math.Max(0, s.DeltaV)));
+                // A landing drops everything below its legs, powered or not (#940): the engines left and the mass that comes down are the craft that stays.
+                var dropsBelowLegs = stack.DropsBelowLegs(processorPartId);
+                var number = found.Count - i + tail;
+                // A Return comes down as EntryCraft says (#930): what it keeps, less the Entry Shield when that jettisons, whichever part is the root.
+                var afterBurns = entry.Return ? 0 : MassAfter(snapshot, sequences.Skip(first).Take(entry.Step - first).Sum(s => Math.Max(0, s.DeltaV)));
+                entry.MassKg = entry.Return ? ReturnMassKg(snapshot, keeper, number, stack, remote, processorPartId)
+                    : dropsBelowLegs ? Math.Min(afterBurns, ReturnMassKg(snapshot, keeper, number, stack, remote, processorPartId))
+                    : afterBurns;
                 Judge(snapshot, entry);
-                // An entry that needs them keeps its stack, so it flies with that stack's chutes and engines, and so do the Entries after (ADR 0020).
-                entry.EngineFinish = entry.TouchdownSpeed > EntryFinish.ThresholdFor(entry.Body) && engines.Count > 0;
-                if (entry.EngineFinish && !entry.Return && before.Count != aboard.Count + entry.Chutes.Count)
+                // An entry that needs them keeps its stack, so it flies with that stack's chutes and engines, and so do the Entries after (ADR 0020); with legs above its shield only the engines that stay count.
+                entry.EngineFinish = entry.TouchdownSpeed > EntryFinish.ThresholdFor(entry.Body) && engines.Any(id => !dropsBelowLegs || !dropped.Contains(id));
+                if (entry.EngineFinish && !dropsBelowLegs && !entry.Return && before.Count != aboard.Count + entry.Chutes.Count)
                 {
                     aboard = before;
                     entry.Chutes.Clear();
@@ -315,12 +320,29 @@ namespace ClaudiaKerman.Core.Missions
                     aboard.RemoveAll(entry.Chutes.Contains);
                     Judge(snapshot, entry);
                 }
-                else if (!entry.EngineFinish) engines.ExceptWith(dropped);
+                else if (!entry.EngineFinish || dropsBelowLegs) engines.ExceptWith(dropped);
                 groups.Entries.Add(entry);
             }
             var home = groups.Return;
             groups.ReturnUncovered = home != null && home.PoweredFinish;
             return groups;
+        }
+
+        /// <summary>
+        /// The mass a Return touches down at: <see cref="EntryCraft"/>'s kept craft less its jettisoned shield; the whole craft's when that can't be read.
+        /// With no Entry Shield EntryCraft keeps the whole craft, launch stack included, so the craft that stays after Staging separates is the figure.
+        /// </summary>
+        private static double ReturnMassKg(GameSnapshot snapshot, uint? keeper, int number, EntryStack stack, bool remote, uint? processorPartId)
+        {
+            if (stack.Shield == null)
+            {
+                var leaving = new HashSet<uint>(ChildVessels.Staging(snapshot, remote, processorPartId).Separations.SelectMany(s => s.PartIds));
+                var stayingKg = snapshot.Craft.Parts.Where(p => !leaving.Contains(p.Id)).Sum(p => p.MassT) * 1000;
+                return stayingKg > 0 ? stayingKg : snapshot.Craft.MassTonnes * 1000;
+            }
+            var craft = EntryCraft.Of(snapshot, null, keeper, number, true, true, "auto", processorPartId);
+            var kg = (craft.KeptT - craft.ShieldLeaves.Sum(p => p.MassT)) * 1000;
+            return kg > 0 ? kg : snapshot.Craft.MassTonnes * 1000;
         }
 
         /// <summary>

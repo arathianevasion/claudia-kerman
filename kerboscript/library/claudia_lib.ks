@@ -451,6 +451,16 @@ function claudia_drop_holds_core {
   return false.
 }
 
+function claudia_drop_of {
+  parameter under, parts.
+  local plan is claudia_drop_plan(list()).
+  for p in parts {
+    if under:decouplers:contains(p:uid) { plan:decouplers:add(p). }
+    if under:gone:contains(p:uid) { plan:gone:add(p). }
+  }
+  return plan.
+}
+
 // What dropping the parts named in names (part names or tags) takes: lexicon("error", "" or why it
 // can't, "decouplers", the decouplers to fire, "gone", every part leaving with them). Fires nothing;
 // a name that can't be dropped makes the whole drop fail, so nothing goes.
@@ -570,13 +580,13 @@ function claudia_drop_refusal {
 
 // Fires a drop plan's decouplers, lets the parts leave, notes the names of those that really left in
 // ctx:dropped and takes the craft as it now is (a drop the block chose is not part loss). Returns ""
-// or why nothing fired: "nothing separated: the decouplers did not fire", or a refused drop (fires nothing).
+// or why nothing fired: "nothing separated: the decouplers did not fire", or a refused drop (fires nothing). guarded false (reentry, #944): the guard's reason is noted and the drop fires anyway.
 function claudia_fire_drop {
-  parameter ctx, plan.
+  parameter ctx, plan, guarded is true.
   local refused is claudia_drop_refusal(plan).
   if refused <> "" {
     addons:claudia:blocknote(ctx:block, lexicon("phase", "drop", "note", refused)).
-    return refused.
+    if guarded { return refused. }
   }
   local before is ship:parts:length.
   local gone_uids is claudia_drop_uids(plan).
@@ -1329,39 +1339,8 @@ function claudia_mean_anomaly {
 
 // ---- Burns ----
 
-// Seconds to burn dv (m/s) over the stages a burn uses, in burn order: each a lexicon dv (m/s it
-// has), duration (s to burn it all) and isp (s), as stock's delta-v gives them (claudia_burn_stages).
-// Each stage is burned out before the next; within the last one, the rocket equation from its full
-// mass (its duration over 1 - e^(-dv/ve)), or a straight share of its duration with no isp. A burn
-// past the last stage runs on at that stage's rate. -1 if no stage has delta-v. Pure: literals
-// rather than CONSTANT:G0 and CONSTANT:E (KSP's g0 is 9.80665).
-function claudia_staged_burn_time {
-  parameter dv, stages.
-  local left is dv.
-  local total is 0.
-  local last is 0.
-  for st in stages {
-    if st:dv > 0 and st:duration > 0 {
-      set last to st.
-      if left <= st:dv {
-        if st:isp <= 0 {
-          return total + st:duration * left / st:dv.
-        }
-        local ve is st:isp * 9.80665.
-        return total + st:duration * (1 - 2.718281828459045 ^ (-left / ve)) / (1 - 2.718281828459045 ^ (-st:dv / ve)).
-      }
-      set total to total + st:duration.
-      set left to left - st:dv.
-    }
-  }
-  if last:istype("Scalar") {
-    return -1.
-  }
-  return total + last:duration * left / last:dv.
-}
-
 // The stages a burn starting now can use, from the current one down to stage_limit, for
-// claudia_staged_burn_time: stock's vacuum delta-v and burn time for each, and the vacuum isp of the
+// claudia_burn_timing (Core's BURNTIME): stock's vacuum delta-v and burn time for each, and the vacuum isp of the
 // engines burning in it (lit by then and not yet dropped).
 function claudia_burn_stages {
   parameter stage_limit.
@@ -1385,15 +1364,17 @@ function claudia_burn_stages {
 
 // Burn timing for a node dv (m/s) node_eta s from now over stages (claudia_burn_stages):
 // lexicon("burn_time", s, "lead", s, "start_in", s from now). lead_opt: "half_burn" (start early by
-// the time to burn half the node's delta-v) or seconds before the node. burn_time -1: no thrust. Pure.
+// the time to burn half the node's delta-v) or seconds before the node. burn_time -1: no thrust. The
+// rule is Core's (BURNTIME): each stage burned out before the next, the last by the rocket equation,
+// a burn past the last at its rate.
 function claudia_burn_timing {
   parameter dv, stages, node_eta, lead_opt.
-  local burn is claudia_staged_burn_time(dv, stages).
+  local burn is addons:claudia:burntime(lexicon("dv", dv, "stages", stages)).
   local lead is lead_opt.
   if lead_opt:istype("String") {
-    set lead to max(0, claudia_staged_burn_time(dv / 2, stages)).
+    set lead to max(0, burn:half_burn).
   }
-  return lexicon("burn_time", burn, "lead", lead, "start_in", node_eta - lead).
+  return lexicon("burn_time", burn:burn_time, "lead", lead, "start_in", node_eta - lead).
 }
 
 // Aligned (GLOSSARY), the one test: within tol:aligned_deg of the steering target and turning under
@@ -1529,7 +1510,7 @@ function claudia_turn_to_burn {
   parameter ctx, nd, start_ut.
   local began is time:seconds.
   local reason is "".
-  // RCS Use: the turn has until start_ut, so RCS helps only if the wheels alone can't make it by then.
+  // RCS Use: the turn has until start_ut, so RCS helps only if the wheels alone can't make it by then. Once it has passed, turn_by stays until the burn ends: no time left, not no deadline (#933).
   set ctx:turn_by to start_ut.
   set ctx:burn_within_ut to -1.
   local aligned is claudia_aligned_to(ctx, nd).
@@ -1541,7 +1522,7 @@ function claudia_turn_to_burn {
     wait 0.
     set aligned to claudia_aligned_to(ctx, nd).
   }
-  set ctx:turn_by to 0.
+  set ctx:turn_by to choose 0 if aligned and time:seconds < start_ut else start_ut.
   local timed_out is reason = "" and time:seconds >= began + 120 and not aligned.
   if timed_out {
     print ctx:block + ": not aligned after 120 s, " + round(vang(ship:facing:forevector, nd:deltav), 1) + " deg off".
@@ -1781,11 +1762,6 @@ function claudia_rcs_decide {
   return lexicon("on", want, "reason", reason).
 }
 
-// Whether the craft is on the ground: LANDED, SPLASHED or PRELAUNCH.
-function claudia_on_ground {
-  return status = "LANDED" or status = "SPLASHED" or status = "PRELAUNCH".
-}
-
 // Whether the on-gate is checked this tick: the error (degrees) is over on_deg and either just crossed
 // it (was_above false) or it was last checked (checked_ut) a second or more ago. Pure.
 function claudia_rcs_gate_due {
@@ -1863,7 +1839,7 @@ function claudia_rcs_off {
 // fires RCS through holds), reads kOS state, steps a burst turn (#692, BURSTTURN: RCS on only in its two bursts,
 // kOS's steering tuned per phase) or applies claudia_rcs_decide, and reports each switch. TURNPLAN (the wheels'
 // time for this error, #408, and the burst turn) is asked only at the on-gate. Traces to KSP.log at most once a
-// second while RCS is on or the error is over on_deg.
+// second while RCS is on, the error is over on_deg or a burst turn flies (actuation per axis: KSP fires RCS only on an axis over 0.05).
 function claudia_rcs_tick {
   parameter ctx.
   if sas {
@@ -1889,6 +1865,13 @@ function claudia_rcs_tick {
   }
   set ctx:rcs_within_ut to claudia_within_ut(ctx:rcs_within_ut, steer_on and error < tol:aligned_deg, now).
   local left_s is choose max(0, ctx:turn_by - now) if ctx:turn_by > 0 else -1.
+  if (rcs or error > tol:on_deg or ctx:rcs_turn:istype("Lexicon")) and now >= ctx:rcs_trace_ut + 1 {
+    set ctx:rcs_trace_ut to now.
+    local act is steeringmanager:actuation.
+    local w is ship:angularvel * constant:radtodeg.
+    addons:claudia:blocknote(ctx:block, lexicon("phase", choose ctx:rcs_turn:phase if ctx:rcs_turn:istype("Lexicon") else "rcs", "error", round(error, 1), "rate", round(rate, 2), "rcs", rcs, "ec_pct", round(claudia_ec_pct(), 1),
+      "pitch_yaw_roll", round(vdot(w, ship:facing:starvector), 2) + "/" + round(vdot(w, ship:facing:topvector), 2) + "/" + round(vdot(w, ship:facing:forevector), 2), "actuation", round(act:x, 3) + "/" + round(act:y, 3) + "/" + round(act:z, 3))).
+  }
   if ctx:rcs_turn:istype("Lexicon") {
     if steer_on and not ctx:rcs_dry and not ctx:rcs_braking and not claudia_on_ground() {
       local t is addons:claudia:burstturn(ctx:rcs_turn, lexicon("ut", now, "error", error, "rate", rate, "monoprop", mono:amount,
@@ -1943,13 +1926,6 @@ function claudia_rcs_tick {
       set figures:coast_dps to round(plan:coast_rate, 2).
     }
     claudia_rcs_switch(decided["on"], decided:reason, figures).
-  }
-  if (rcs or error > tol:on_deg) and now >= ctx:rcs_trace_ut + 1 {
-    set ctx:rcs_trace_ut to now.
-    // Actuation per axis: KSP fires RCS only on an axis over 0.05.
-    local act is steeringmanager:actuation.
-    addons:claudia:blocknote(ctx:block, lexicon("phase", "rcs", "error", round(error, 1), "rate", round(rate, 2), "rcs", rcs,
-      "actuation", round(act:x, 3) + "/" + round(act:y, 3) + "/" + round(act:z, 3))).
   }
 }
 
@@ -2007,8 +1983,7 @@ function claudia_begin {
     "drop_key", "",
     "drop_scan", 0,
     "drop_mode", "full",
-    // RCS Use (claudia_rcs_tick): turn_by is the UT a turn must be done by (0: no deadline), set around a
-    // turn to a burn; while rcs_translating is true RCS stays on and the rule decides nothing; rcs_turn is a burst turn.
+    // RCS Use (claudia_rcs_tick): turn_by is the UT a turn to a burn must be done by (0: no deadline; past: no time left); while rcs_translating is true RCS stays on and the rule decides nothing; rcs_turn is a burst turn.
     "turn_by", 0,
     "rcs_turn", 0,
     "rcs_translating", false,
@@ -2051,7 +2026,7 @@ function claudia_dv_step {
 // means tset > 0. Delta-v credits the interval since the last tick at ctx:last_tset, the throttle then. Callers
 // passing tset 0 and no signal (return, transfer_to, science, the warp and wait loops) coast and never stage (#379).
 // Adds up delta-v used, auto-stages while burning, switches RCS by the RCS Use rule (claudia_rcs_tick) and
-// checks the common aborts. Returns "" or the reason the block must fail.
+// checks the common aborts (ctx:ec_tick, reentry's #942, acts on low charge and gives the charge min_ec_pct is to judge). Returns "" or the reason the block must fail.
 function claudia_tick {
   parameter ctx, tset, burning is "unsaid".
   claudia_rcs_tick(ctx).
@@ -2066,7 +2041,7 @@ function claudia_tick {
   }
   // Auto-staging may already have moved last_ut past now.
   set ctx:last_ut to max(now, ctx:last_ut).
-  return claudia_abort_reason(ctx:opt, claudia_ec_pct(), now - ctx:start_ut, max(0, ctx:parts - ship:parts:length)).
+  return claudia_abort_reason(ctx:opt, choose ctx:ec_tick:call() if ctx:haskey("ec_tick") else claudia_ec_pct(), now - ctx:start_ut, max(0, ctx:parts - ship:parts:length)).
 }
 
 // Ship Systems (#756): the lift-off cue, then until the mod reports them retracted, at most 10 s (Core's ShipSystemsStowWait).
@@ -2230,10 +2205,10 @@ function claudia_wrap_angle {
   return deg - 360 * floor(deg / 360).
 }
 
-// A craft whose engines aren't lit yet stages into them (within stage_limit). Returns "" once some
-// engine gives thrust, else why not: the staging reason, or "no thrust".
+// A craft whose engines aren't lit yet stages into them (within stage_limit). Returns "" once some engine gives thrust, else why not: the staging reason, or "no thrust".
+// clear (a start from the ground, #945): fires what is under an engine giving thrust (Core's LIFTOFFCLEAR), notes it and what stays stuck; a failed read does nothing.
 function claudia_stage_into_engines {
-  parameter ctx.
+  parameter ctx, clear is false.
   if ship:availablethrust <= 0 {
     local staged is claudia_autostage(ctx).
     if staged <> "" {
@@ -2242,6 +2217,13 @@ function claudia_stage_into_engines {
   }
   if ship:availablethrust <= 0 {
     return "no thrust".
+  }
+  local under is addons:claudia:liftoffclear(lexicon("core", core:part:uid, "ground", clear)).
+  if under:error <> "" { return "". }
+  local plan is claudia_drop_of(under, ship:parts).
+  local why is choose claudia_fire_drop(ctx, plan, false) if plan:decouplers:length > 0 else "".
+  if plan:decouplers:length > 0 or under:stuck:length > 0 {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "liftoff_clear", "note", "fired " + plan:decouplers:length + " " + why + " stuck: " + under:stuck:join(", "))).
   }
   return "".
 }

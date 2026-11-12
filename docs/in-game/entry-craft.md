@@ -32,3 +32,13 @@ Known limit (check 1): `return` reads `ENTRYCRAFT` once, before the ejection, so
 ## Check 4: who pays, read from the real stack (#870)
 
 The adapter's per-part resources and engine propellants have no unit test. On a staged `return` (a Mun return with a dropped stage), compare the `block call ENTRYCRAFT` line's `gone_prop` with the propellant actually in the dropped tanks (LiquidFuel and Oxidizer in t, not monopropellant or ore). With a flamed-out stage and the next one unstaged it should still be that stage's propellant, not 0. A RAPIER in air-breathing mode must not count Oxidizer.
+
+## Check 5: return reads the capsule reentry flies (#924)
+
+Two rules, with Core pinning each and only the game able to confirm the adapter's read. `EntryAttitude` holds the axis: the drag is read along the Entry's attitude, shield first (the shield's axis toward home, or home's up with no shield), never the control point. `EntryStack` holds the decoupler: `SnapshotPart.Releases` is the part across its explosive node; the TD-12 lets go of its top node, so it leaves with the stack and bares the shield.
+
+1. Repeat the Mun return to KSC that drops its stack, then `reentry`. In `KSP.log`, the `block call ENTRYCRAFT` line at the start of `return` gives the capsule's mass without the decoupler (1.415 t on the #924 craft, not 1.455 t).
+2. Every REENTRYIMPACT also logs one `REENTRYIMPACT read:` line (KSP.log only): `control <part>, axis <shield> to <home>, against home up <dot>, against control up <dot>; <part> <bare|-> <m² at Mach 2>, ...`. Pass: `axis` names the shield and the pod, `against home up` is about 1.000, the shield's or the decoupler's bared face carries about 2.2 m² of the craft's total, and `against control up` tells the cause (about -1 or 0 at the Mun on the #924 craft means the control point was the wrong axis).
+3. The `block call REENTRYIMPACT` lines give `craft <t> t, drag area <a> m² at Mach 2`. Pass: `return`'s line shows about 2.2 m² for the Mun capsule, not 0.11, and agrees with `reentry`'s on the mass and the drag area.
+4. Pass: `return`'s `predicted_geo` is within about 10 km of `reentry`'s, and the capsule comes down near KSC.
+5. Fly `tests/blocks/return_target` on #920's craft and apply steps 1 to 4. A decoupler built with its top node toward the stack stays on the shield, as before. If `return`'s area is still far from `reentry`'s, the parts listed on the `read` line show which face wasn't bared: that is the next lead. `deorbit` builds the same craft, so its `REENTRYIMPACT read:` line should name the same axis.

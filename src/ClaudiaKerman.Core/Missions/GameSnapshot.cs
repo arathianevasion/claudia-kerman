@@ -34,6 +34,8 @@ namespace ClaudiaKerman.Core.Missions
         /// heat_shield, antenna, electric_generator, reaction_wheel, rcs, aero_stabiliser, gimbal, engine, experiment, kos_processor, decoupler, docking_port.</summary>
         public List<string> Tags = new List<string>();
         public int CrewCapacity;
+        /// <summary>The kerbals aboard this part (#927); -1: not read (an older snapshot), when <see cref="PartTree.CommandPart"/> goes by seats. Written only to the capture, never to Claudia's facts.</summary>
+        public int Crew = -1;
         /// <summary>An antenna's power; 0 for other parts.</summary>
         public double AntennaPower;
         /// <summary>The boot file set on a kOS processor; "" for none.</summary>
@@ -52,6 +54,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool SurfaceAttached;
         /// <summary>The part's resources as the adapter reads them (<see cref="EntryCraft"/>'s who-pays count); empty when not read. Not in the JSON: the prompt doesn't carry it.</summary>
         public List<SnapshotPartResource> Resources = new List<SnapshotPartResource>();
+        /// <summary>A decoupler's neighbours its firing lets go of, by <see cref="Id"/> (#924): what is across its explosive node, or every neighbour of an omni decoupler. Empty when not read or not a decoupler. Not in the JSON: the prompt doesn't carry it.</summary>
+        public List<uint> Releases = new List<uint>();
         /// <summary>An engine's available thrust now (kN; 0 for a flamed-out or shut engine) and the resource names it burns. Not in the JSON: the prompt doesn't carry them.</summary>
         public double EngineAvailableThrustKn;
         public List<string> EnginePropellants = new List<string>();
@@ -432,6 +436,7 @@ namespace ClaudiaKerman.Core.Missions
                 if (part.ChargeMax > 0) json.Field("ec_max", part.ChargeMax);
                 if (part.PortSize.Length > 0) json.Field("port", part.PortSize);
                 if (withBodies && part.PortState.Length > 0) json.Field("port_state", part.PortState);
+                if (withBodies && part.Crew >= 0) json.Field("crew", part.Crew);
                 if (withBodies && part.Chute != null) WriteChute(json, part.Chute);
                 json.Name("tags").BeginArray();
                 foreach (var tag in part.Tags) json.String(tag);
@@ -706,6 +711,7 @@ namespace ClaudiaKerman.Core.Missions
                             HasKosProcessor = JsonNode.Bool(part["kos"]) ?? false,
                             Stage = (int)(JsonNode.Long(part["stage"]) ?? 0),
                             CrewCapacity = (int)(JsonNode.Long(part["seats"]) ?? 0),
+                            Crew = (int)(JsonNode.Long(part["crew"]) ?? -1),
                             AntennaPower = JsonNode.Double(part["antenna"]) ?? 0,
                             BootFile = JsonNode.Str(part["boot"]) ?? "",
                             PortSize = JsonNode.Str(part["port"]) ?? "",

@@ -29,6 +29,8 @@
     <None Include="launch_ascent_sim.ks" CopyToOutputDirectory="PreserveNewest" />
     <!-- transfer_to's scripted universe (#459), shared with the Core tests' TransferFlightTests. -->
     <Compile Include="../ClaudiaKerman.Core.Tests/TransferRig.cs" Link="TransferRig.cs" />
+    <!-- The addon's kOS value conversion (#942): it needs only kOS.Safe, and the addon project itself needs KSP. -->
+    <Compile Include="../../src/ClaudiaKerman.KOS/KosValues.cs" Link="KosValues.cs" />
   </ItemGroup>
 
   <ItemGroup>

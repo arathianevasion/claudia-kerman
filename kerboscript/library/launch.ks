@@ -9,7 +9,7 @@
 @lazyglobal off.
 
 //| launch(options): flies from the ground of a body with an atmosphere to a coast out of it; then circularize.
-//| It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap; follow it
+//| It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap (a stage too weak to coast and circularize burns on past it until it can, or the periapsis clears the air); follow it
 //| with circularize in the same Mission Script (one Maneuver Sequence, one Approval). A target_ap
 //| below the atmosphere top makes it a hop that ends at the top of the climb.
 //| Options:
@@ -35,15 +35,14 @@
 //|     waits: too slow to turn over without falling, the craft climbs as steeply as max_aoa lets it.
 //|   g, atm_height, surface_pressure ["body"]: the body's surface gravity (m/s^2), atmosphere top (m)
 //|     and surface pressure (Pa), to override what the game says.
-//|   max_duration ["auto"]: the wait on the pad plus 900 s.
+//|   max_duration ["auto"]: the pad wait + 900 s + burn-through.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 //| In thick air (over a tenth of surface pressure) the throttle never drops below the weight of the
 //| craft until cutoff, and the craft never steers more than max_aoa off the airflow. With no thrust (a
 //| hop's coast, between stages) only fins and reaction wheels hold it: a craft with neither tumbles in
 //| thick air. Engines are staged into from the pad, and launch clamps released.
-//| It traces the climb to the log (ADDONS:CLAUDIA:BLOCKTRACE) every 2 s and at each change of phase or stage.
 //| Extra results: ap_error (m, apoapsis minus target_ap when the block ended; a hop's shows drag
-//| loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at first engine cutoff), lan_actual (degrees, the orbit's LAN at the end).
+//| loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at the first coast), lan_actual (degrees, the orbit's LAN at the end).
 //| Fails with "launch starts on the ground", "no atmosphere on <body>: use ascend", "no thrust", a
 //| launch_at it can't use, "lost control: ..." (saying whether it was burning or
 //| coasting, the throttle, q and the nose's angle off the airflow), "fell back into the
@@ -345,16 +344,13 @@ function launch_apply_window {
 // Releases launch clamps still holding the craft, staging once (within stage_limit).
 function launch_release_clamps {
   parameter ctx.
-  for p in ship:parts {
-    if p:hasmodule("LaunchClamp") {
-      wait until stage:ready.
-      if stage:number > ctx:opt:stage_limit {
-        stage.
-        wait 0.5.
-        set ctx:parts to ship:parts:length.
-        claudia_restart_clock(ctx).
-      }
-      return.
+  if ship:modulesnamed("LaunchClamp"):length > 0 {
+    wait until stage:ready.
+    if stage:number > ctx:opt:stage_limit {
+      stage.
+      wait 0.5.
+      set ctx:parts to ship:parts:length.
+      claudia_restart_clock(ctx).
     }
   }
 }
@@ -389,7 +385,8 @@ function launch {
   if go:error <> "" {
     return claudia_finish(ctx, false, go:error, extra).
   }
-  if opt:max_duration:istype("String") {
+  local auto_limit is opt:max_duration:istype("String").
+  if auto_limit {
     set opt:max_duration to go:wait + 900.
   }
   if go:wait > 0 {
@@ -423,15 +420,16 @@ function launch {
   }
   // Light the engines.
   sas off.
-  local tset is 1.
+  local tset is choose 1 if ship:modulesnamed("LaunchClamp"):length > 0 else 0.
   lock throttle to tset.
   local aim is ship:up:vector.
   lock steering to aim.
-  local lit is claudia_stage_into_engines(ctx).
+  local lit is claudia_stage_into_engines(ctx, true).
   if lit <> "" {
     claudia_make_safe().
     return claudia_finish(ctx, false, lit, extra).
   }
+  set tset to 1.
   launch_release_clamps(ctx).
   local liftoff_ut is time:seconds.
 
@@ -442,6 +440,8 @@ function launch {
   local ramp is max(500, 0.02 * target_ap).
   local topup_tol is launch_topup_tol(target_ap).
   local coasting is false.
+  local burn_through is false.
+  local burn_figures is lexicon("due", 0).
   local off_since is -1.
   local q_max is 0.
   local reason is "".
@@ -459,6 +459,8 @@ function launch {
     set pass_gap to time:seconds - last_pass_ut.
     set last_pass_ut to time:seconds.
     set q_max to max(q_max, q_pa).
+    if burn_through and auto_limit { set opt:max_duration to opt:max_duration + pass_gap. } // A burn-through's own time doesn't count against "auto" (#932).
+    if gear and alt:radar > 100 and ship:verticalspeed > 0 { gear off. } // Launch starts on the ground: legs in once clear (#946).
     local spd is ship:velocity:surface:mag.
     local ap is ship:apoapsis.
     local ratio is 0.
@@ -491,10 +493,23 @@ function launch {
       set tset to 0.
     } else {
       local t_floor is launch_throttle_floor(ratio, ship:mass, body_values:g, ship:availablethrust).
-      set tset to launch_throttle(ap, target_ap, ramp, q_pa, max_q_pa, t_floor).
-      if tset = 0 {
-        set coasting to true.
+      // Burning through (#932), as if target_ap were far off: throttle_max_q and the thick-air floor still hold.
+      set tset to launch_throttle(ap, choose ap + 1e7 if burn_through else target_ap, ramp, q_pa, max_q_pa, t_floor).
+      if tset = 0 or burn_through {
+        // The first cutoff, and each tick of a burn-through until the coast works again (coast_ap set latches it): Core says whether this stage can coast to apoapsis and circularize there (#932; figures in KSP.log). Stages and turn only each second: stock's table is the costly part.
         if extra:coast_ap = 0 {
+          if time:seconds >= burn_figures:due {
+            set burn_figures to lexicon("due", time:seconds + 1, "stages", claudia_burn_stages(opt:stage_limit), "turn", addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime))).
+          }
+          local bt is addons:claudia:burnthrough(lexicon("burning", burn_through, "vspeed", ship:verticalspeed, "q", q_pa, "pe", ship:periapsis, "ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "altitude", altitude, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit), "stages", burn_figures:stages, "turn", burn_figures:turn)).
+          set burn_through to bt:burn_through.
+          set reason to bt:fail. // Core ends a burn-through whose periapsis clears the air (no reason) or that fell back into it (#936).
+          set done to bt:done.
+          if done { return. }
+        }
+        set tset to choose (choose tset if tset > 0 else 1) if burn_through else 0.
+        set coasting to not burn_through.
+        if extra:coast_ap = 0 and coasting {
           set extra:coast_ap to round(ap).
         }
       }
@@ -513,7 +528,7 @@ function launch {
     local thin is false.
     local want is ship:up:vector.
     local pitch is 90.
-    if not coasting {
+    if not coasting and not burn_through {
       if turn_start_alt >= 0 {
         set pitch to launch_pitch(altitude, turn_start_alt, turn_end, opt:turn_shape).
       }
@@ -527,7 +542,7 @@ function launch {
       }
       set want to heading(hdg, pitch):vector.
     } else if spd > 30 {
-      if hop or q_pa > 2 * launch_aero_q() {
+      if hop or (q_pa > 2 * launch_aero_q() and not burn_through) {
         set want to ship:srfprograde:vector.
       } else {
         set want to ship:prograde:vector.
@@ -540,7 +555,7 @@ function launch {
       local along is heading(hdg, 0):vector.
       local normal is vcrs(ship:up:vector, along).
       local off_plane is arcsin(min(1, abs(vdot(flow:normalized, normal)))).
-      if coasting {
+      if coasting or burn_through {
         set want to launch_limit_aoa(want, flow, allowed).
       } else if off_plane >= allowed {
         // Further out than allowed: turn from the airflow toward the plane (where the branch below starts).
@@ -554,7 +569,7 @@ function launch {
     set aim to want.
 
     // The trace, only when due: the checks are strings and numbers already to hand.
-    local phase is launch_phase(coasting, turn_start_alt >= 0, held, thin).
+    local phase is choose "burn_through" if burn_through else launch_phase(coasting, turn_start_alt >= 0, held, thin).
     local why is launch_trace_due(phase, last_phase, stage:number, last_stage, time:seconds, last_trace_ut).
     if why <> "" {
       set last_phase to phase.

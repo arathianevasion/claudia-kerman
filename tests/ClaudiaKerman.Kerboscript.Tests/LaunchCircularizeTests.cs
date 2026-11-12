@@ -291,8 +291,33 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var src = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "launch").Source, "\\s+", " ");
             Assert.Contains("launch_plane_pitch(pitch, arctan2(vdot(flow, ship:up:vector), vdot(flow, along)), off_plane, allowed)", src);
-            Assert.Contains("if coasting { set want to launch_limit_aoa(want, flow, allowed). }", src);
+            Assert.Contains("if coasting or burn_through { set want to launch_limit_aoa(want, flow, allowed). }", src);
             Assert.Contains("set want to launch_limit_aoa(vxcl(normal, flow), flow, allowed).", src);
+        }
+
+        // #932: while burning through, Core is asked again each tick (its stage figures at most a second old) until it says the coast works: coast_ap latches
+        // that end. The default max_duration grows with the burn-through's own time; one given by the caller doesn't.
+        [Fact]
+        public void A_burn_through_is_re_checked_each_tick_and_its_time_is_added_to_the_default_limit()
+        {
+            var src = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "launch").Source, "\\s+", " ");
+            Assert.Contains("if tset = 0 or burn_through { //", src);
+            Assert.Contains("if extra:coast_ap = 0 { if time:seconds >= burn_figures:due {", src);
+            Assert.Contains("lexicon(\"burning\", burn_through, \"vspeed\", ship:verticalspeed, \"q\", q_pa, \"pe\", ship:periapsis, \"ap\", ap,", src);
+            // #936: Core ends the burn-through (the periapsis clears the air, or it fell back into it, with a reason).
+            Assert.Contains("set reason to bt:fail.", src);
+            Assert.Contains("set done to bt:done. if done { return. }", src);
+            Assert.Contains("local auto_limit is opt:max_duration:istype(\"String\"). if auto_limit { set opt:max_duration to go:wait + 900. }", src);
+            Assert.Contains("if burn_through and auto_limit { set opt:max_duration to opt:max_duration + pass_gap. }", src);
+        }
+
+        // #937: a burn-through that runs out of fuel ends launch with claudia_tick's reason, through the one `ticked <> ""` path: no coast on.
+        [Fact]
+        public void A_burn_through_out_of_fuel_ends_launch_as_a_failure_not_a_coast()
+        {
+            var src = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "launch").Source, "\\s+", " ");
+            Assert.DoesNotContain("ticked:startswith(\"out of fuel\")", src);
+            Assert.Contains("local ticked is claudia_tick(ctx, tset, not coasting). if ticked <> \"\" { set reason to ticked. set done to true. }", src);
         }
 
         // ---- launch: losing control ----

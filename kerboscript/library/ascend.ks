@@ -229,7 +229,7 @@ function ascend {
       return claudia_finish(ctx, false, staged, extra).
     }
   }
-  local lit is claudia_stage_into_engines(ctx).
+  local lit is claudia_stage_into_engines(ctx, start = "ground").
   if lit <> "" {
     return claudia_finish(ctx, false, lit, extra).
   }
@@ -272,6 +272,9 @@ function ascend {
   until ship:verticalspeed >= 0 and ship:apoapsis >= aim {
     if ship:verticalspeed < 0 {
       set aim to ascend_climb_to(start, goal, altitude).
+    }
+    if start = "ground" and gear and alt:radar > 100 and ship:verticalspeed > 0 {
+      gear off. // Legs in once clear of the ground (#946).
     }
     local v_h is vxcl(ship:up:vector, ship:velocity:orbit):mag.
     local accel is ship:availablethrust / max(0.001, ship:mass).

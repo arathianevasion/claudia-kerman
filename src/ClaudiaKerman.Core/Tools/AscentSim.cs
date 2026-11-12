@@ -188,6 +188,8 @@ namespace ClaudiaKerman.Core.Tools
         public List<StageLighting> Lit = new List<StageLighting>();
         /// <summary>Apoapsis at the first engine cutoff (launch's coast_ap), m; 0 when it never cut off.</summary>
         public double CoastAp;
+        /// <summary>Steps of the coast to the circularize burn (#943: bounded however long the coast).</summary>
+        public int CoastSteps;
         /// <summary>The highest dynamic pressure, Pa.</summary>
         public double MaxQ;
         /// <summary>The highest apoapsis reached, m: ranks the shapes that fail.</summary>
@@ -239,8 +241,6 @@ namespace ClaudiaKerman.Core.Tools
         public const double G0 = 9.80665;
         /// <summary>launch's max_duration on the pad: a launch still climbing after this has failed.</summary>
         private const double MaxLaunchSeconds = 900;
-        /// <summary>The coast and circularization after launch ends.</summary>
-        private const double MaxOrbitSeconds = 3600;
 
         private readonly AscentOptions _o;
         private readonly IAscentAir _air;
@@ -253,6 +253,8 @@ namespace ClaudiaKerman.Core.Tools
         private double _mass;
         private double _t;
         private int _stage = -1;
+        /// <summary>launch's burn_through (#932, #934): <see cref="LaunchBurnThrough"/> said the first cutoff can't coast to a circularize, and no end has come yet.</summary>
+        private bool _burnThrough;
 
         private AscentSim(AscentOptions options, IAscentAir air, Func<double, double> dragArea, List<AscentStage> stages)
         {
@@ -511,10 +513,12 @@ namespace ClaudiaKerman.Core.Tools
             var coasting = false;
             var nextTrack = 1000.0;
             var dt = _o.Step;
+            var burnThroughSeconds = 0.0; // launch adds a burn-through's own time back onto an "auto" max_duration (#932).
 
             while (true)
             {
-                if (_t > MaxLaunchSeconds) return Fail("still climbing after " + MaxLaunchSeconds + " s");
+                if (_burnThrough) burnThroughSeconds += dt;
+                if (_t - burnThroughSeconds > MaxLaunchSeconds) return Fail("still climbing after " + MaxLaunchSeconds + " s");
                 double atm, density, sound, ap, pe, toAp, horizontal, vertical;
                 var h = Altitude;
                 _air.Air(h, out atm, out density, out sound);
@@ -546,11 +550,27 @@ namespace ClaudiaKerman.Core.Tools
                 double throttle = 0;
                 if (!coasting)
                 {
-                    throttle = Throttle(ap, target, ramp, q, _o.MaxQ, ThrottleFloor(ratio, _mass, g, thrust));
-                    if (throttle == 0)
+                    // Burning through, as if target_ap were far off (launch.ks, #932): the max-Q and thick-air floor still hold.
+                    throttle = Throttle(ap, _burnThrough ? ap + 1e7 : target, ramp, q, _o.MaxQ, ThrottleFloor(ratio, _mass, g, thrust));
+                    if (throttle == 0 || _burnThrough)
                     {
-                        coasting = true;
-                        if (_flight.CoastAp == 0) _flight.CoastAp = ap;
+                        // The first cutoff, and each step of a burn-through until the coast works again (CoastAp set latches it): Core decides, as launch does.
+                        if (_flight.CoastAp == 0)
+                        {
+                            var decision = BurnsThrough(ap, toAp, h, vertical, pe, q);
+                            if ((bool)decision["done"])
+                            {
+                                // launch.ks: Core ends a burn-through whose periapsis clears the air (no reason) or that fell back into it (#936, #939).
+                                var fail = (string)decision["fail"];
+                                if (fail != "") return Fail(fail);
+                                _flight.LaunchEndStage = stage != null ? stage.Number : -1;
+                                return Circularize();
+                            }
+                            _burnThrough = (bool)decision["burn_through"];
+                        }
+                        if (_burnThrough && throttle == 0) throttle = 1;
+                        coasting = !_burnThrough;
+                        if (coasting && _flight.CoastAp == 0) _flight.CoastAp = ap;
                     }
                 }
 
@@ -560,7 +580,7 @@ namespace ClaudiaKerman.Core.Tools
                 if (held) turnStartAlt = h;
                 var thin = false;
                 var pitch = 90.0;
-                if (!coasting)
+                if (!coasting && !_burnThrough)
                 {
                     if (turnStartAlt >= 0) pitch = LaunchPitch(h, turnStartAlt, turnEnd, _o.TurnShape);
                     if (spd > 30 && q <= AeroQ)
@@ -571,7 +591,8 @@ namespace ClaudiaKerman.Core.Tools
                 }
                 else if (spd > 30)
                 {
-                    pitch = prograde;
+                    // A burn-through steers on orbital prograde, as launch.ks does (ship:prograde); the coast keeps surface prograde.
+                    pitch = _burnThrough ? Math.Atan2(vertical, horizontal + _o.Spin * R / _o.Radius) * 180 / Math.PI : prograde;
                 }
                 if (q > AeroQ && spd > 30)
                 {
@@ -581,7 +602,7 @@ namespace ClaudiaKerman.Core.Tools
 
                 if (!coasting)
                 {
-                    if (vertical < 0 && h < top) return Fail("vertical speed fell below 0 while burning, under the atmosphere top");
+                    if (vertical < 0 && h < top && !_burnThrough) return Fail("vertical speed fell below 0 while burning, under the atmosphere top");
                     if (turnStartAlt >= 0 && h < top && _flight.Lit[_flight.Lit.Count - 1].Suborbital) _flight.MinVerticalSpeed = Math.Min(_flight.MinVerticalSpeed, vertical);
                     if (_o.Track && h >= nextTrack)
                     {
@@ -600,10 +621,50 @@ namespace ClaudiaKerman.Core.Tools
                 // claudia_tick's autostage: on flameout, the next stage, never below stage_limit.
                 if (!coasting && Current.EndMass >= _mass && !StageOn())
                 {
+                    // The same step can empty the last stage and clear the periapsis: launch's periapsis end comes first, so the next tick ends it.
+                    if (_burnThrough && _flight.CoastAp == 0)
+                    {
+                        double apAfter, peAfter, toApAfter;
+                        Orbit(out apAfter, out peAfter, out toApAfter);
+                        if (peAfter > top) continue;
+                    }
                     _mass = Current.EndMass;
                     return Fail("out of fuel" + (_o.StageLimit > 0 ? " at stage limit " + _o.StageLimit : ""));
                 }
             }
+        }
+
+        /// <summary>
+        /// Whether launch burns through at this step, and whether that burn-through is over (<c>done</c>, with a <c>fail</c> reason or none), from <see cref="LaunchBurnThrough"/>: the one decision, given launch's inputs from the sim's own orbit
+        /// (the stage table as <c>claudia_burn_stages</c> gives it, vacuum figures from the stage burning now down to stage_limit). The sim has no torque or
+        /// inertia data, so it gives no turn figures: the decision counts no turn time.
+        /// </summary>
+        private IDictionary<string, object> BurnsThrough(double ap, double toAp, double altitude, double vspeed, double pe, double q)
+        {
+            var energy = (_vx * _vx + _vy * _vy) / 2 - _o.Gm / R;
+            var stages = new List<object>();
+            var current = Current;
+            if (current != null)
+                stages.Add(Row(_mass > current.EndMass ? current.IspVac * G0 * Math.Log(_mass / current.EndMass) : 0, (_mass - current.EndMass) / current.Flow, current.IspVac));
+            for (var i = _stage + 1; i < _stages.Count; i++)
+            {
+                var stage = _stages[i];
+                if (stage.Number < _o.StageLimit) break;
+                if (stage.Burns) stages.Add(Row(stage.DeltaVVac, (stage.StartMass - stage.EndMass) / stage.Flow, stage.IspVac));
+            }
+            var answer = LaunchBurnThrough.Call(new Dictionary<string, object>
+            {
+                { "burning", _burnThrough }, { "ap", ap }, { "sma", energy < 0 ? -_o.Gm / (2 * energy) : -1.0 }, { "gm", _o.Gm }, { "radius", _o.Radius },
+                { "eta_ap", double.IsNaN(toAp) ? 0.0 : toAp }, { "altitude", altitude }, { "target_ap", _o.TargetAp }, { "atm_height", _o.AtmosphereHeight },
+                { "angle", 0.0 }, { "stages", stages },
+                { "vspeed", vspeed }, { "pe", pe }, { "q", q },
+            });
+            return answer;
+        }
+
+        private static Dictionary<string, object> Row(double dv, double duration, double isp)
+        {
+            return new Dictionary<string, object> { { "dv", dv }, { "duration", duration }, { "isp", isp } };
         }
 
         /// <summary>Vacuum delta-v left in the stages the launch may burn, from the one burning now.</summary>
@@ -681,6 +742,17 @@ namespace ClaudiaKerman.Core.Tools
         /// 0.1 m/s, once it overshoots, or once the eccentricity stops falling (circularize's stop, #532). Fails if the stages
         /// can't give it, run dry, or the craft sinks back where the air matters.
         /// </summary>
+        internal static double CircularizeBudget(double startIn, double burnTime)
+        {
+            // circularize's max_duration "auto" (exec_node.ks): start_in + 2 * burn_time + 300, so the budget grows with the coast (#943).
+            return Math.Round(Math.Max(0, startIn) + 2 * Math.Max(0, burnTime) + 300);
+        }
+
+        internal static string OutranBudget(string phase, double budget)
+        {
+            return "still " + phase + " after " + budget + " s";
+        }
+
         private AscentFlight Circularize()
         {
             double ap, pe, toAp;
@@ -696,12 +768,28 @@ namespace ClaudiaKerman.Core.Tools
             var startUt = _t + toAp - lead;
 
             var dt = 0.1;
-            var end = _t + MaxOrbitSeconds;
+            var budget = CircularizeBudget(startUt - _t, BurnTime(prograde));
+            var end = _t + budget;
             while (_t < startUt)
             {
-                if (_t > end) return Fail("still coasting after " + MaxOrbitSeconds + " s");
+                if (_t > end) return Fail(OutranBudget("coasting", budget));
                 if (InAirAgain()) return Fail("fell back into the atmosphere before circularizing");
-                StepInAir(Math.Max(dt, Math.Min(1, (startUt - _t) / 2)), 0, 0, 0);
+                var half = (startUt - _t) / 2;
+                if (half > 1 && Altitude >= _o.AtmosphereHeight)
+                {
+                    // Above the air a coast is the orbit it is on: jump half the time left along the conic, so a long coast costs ~log2(time) steps (#943).
+                    Vec3 r, v;
+                    Conic.FromState(_o.Gm, Position, Velocity, _t).State(_t + half, out r, out v);
+                    _px = r.X;
+                    _py = r.Y;
+                    _vx = v.X;
+                    _vy = v.Y;
+                    _t += half;
+                    _flight.CoastSteps++;
+                    continue;
+                }
+                _flight.CoastSteps++;
+                StepInAir(Math.Max(dt, Math.Min(1, half)), 0, 0, 0);
             }
             // exec_node_due_ut: the node at start + lead, or now + lead once a second late.
             var nodeUt = _t - startUt < 1 ? startUt + lead : _t + lead;
@@ -712,7 +800,7 @@ namespace ClaudiaKerman.Core.Tools
             var roundest = new PastMin();
             while (true)
             {
-                if (_t > end) return Fail("still circularizing after " + MaxOrbitSeconds + " s");
+                if (_t > end) return Fail(OutranBudget("circularizing", budget));
                 var left = target - VelocityAt(nodeUt);
                 if (Vec3.Dot(initial, left) < 0 || left.Length < 0.1)
                 {

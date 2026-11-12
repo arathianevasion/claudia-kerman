@@ -20,3 +20,16 @@ Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKerman/`, `de
 1. Fly a Mission with `launch` to 80 km at `target_inc` 0 from KSC, then `circularize` at `ap`.
 2. It succeeds: the orbit's inclination is within about 0.1 degree of 0 (KSC is at latitude -0.097, so the lowest reachable plane is near the equator).
 3. If the orbit is off by more than about 1 degree, copy the `launch trace` heading lines and the `launch heading:` reason (if any) from `KSP.log` into #475.
+
+## Check 4: a low-TWR upper stage burns through (#932)
+
+Fly `launch_low_twr` (`tests/blocks/launch_low_twr`), the block test for this, or the Duna ship of m20261108-220659-ac85. The craft file was written by hand and not loaded in KSP when this went in: if it doesn't load or lift off, say so on #932.
+
+1. Pick `launch_low_twr` and press **Run** (up to 1500 s).
+2. The engines stay on past `target_ap`: no coast. The weak stage takes over, and the `launch trace` lines in `KSP.log` read `phase burn_through`.
+3. `KSP.log` has a `block call BURNTHROUGH` line with `burn_through True`, then one every 30 s with the slowest re-check's time, and a `BURNTHROUGH ended it` line when it ends. Ended by the coast working again, the line gives its half burn, its turn (the angle at cutoff, not 190 degrees), the time left as `launch` ends at the atmosphere top, and the time to apoapsis less the climb that comes from. Ended by the periapsis clearing the air it reads `periapsis clear of the air, launch ends`; ended by a fall, `fell back, launch fails: ...`. Neither has a half burn or time left.
+4. The periapsis rises above 70 km without a coast (or the burn ends early on that second line and the craft coasts), `launch` ends with a positive `ap_error` (the overshoot), and `circularize` finishes with a small trim (by the Core flight model, the Duna ship ends at about 104 x 70 km).
+5. It passes (`PASS launch_low_twr`, every `ok` line).
+6. Fly `launch_orbit` too (Check 1): its `block call BURNTHROUGH` line reads `burn_through False` and it flies as before.
+7. The descent guard (#936): in step 4's flight, `launch` never returns a `fell back into the atmosphere: periapsis ...` reason: a healthy burn-through doesn't trip it. The failure case needs a stage too weak to hold its climb, and isn't required to be flown. If you do fly one (a stage that sinks back into thick air: descending, periapsis under 70 km, q over 8,000 Pa; not flown), `launch` returns with fuel left, the reason starting `fell back into the atmosphere: periapsis` and naming q, and the craft made safe.
+8. Out of fuel (#937): a burn-through that runs out of fuel, or of stages above `stage_limit`, fails `launch` with the usual `out of fuel ...` reason (no coast on; `plan_ascent` fails the same way). Not required to be flown; a healthy burn-through in step 4 still finishes.

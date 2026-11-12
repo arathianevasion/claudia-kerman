@@ -86,7 +86,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" }, { "separate", separate }, { "jettison_stage", jettisonStage } },
                     snapshot, legs, 0, "", id => Parts[(int)id - 1].Uid);
                 Func<string, string> list = key => "list(" + string.Join(", ", ((IEnumerable<object>)answer[key]).Select(u => "\"" + u + "\"")) + ")";
-                return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"jettison\", \"" + answer["jettison"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
+                return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"jettison\", \"" + answer["jettison"] + "\", \"jettison_first\", \"" + answer["jettison_first"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
                     + ", \"names\", " + list("names") + ", \"stuck\", " + list("stuck") + ").\n";
             }
 
@@ -202,7 +202,34 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("local shield is reentry_shield_modules(shield_uid, ship:parts).\n  local shield_gone is shield:length = 0.", body);
             var due = body.IndexOf("if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h, last_speed)) {", StringComparison.Ordinal);
             Assert.True(due > 0);
-            Assert.True(due < body.IndexOf("reentry_shield_drop(shield_uid, { return ship:parts. })", StringComparison.Ordinal));
+            Assert.True(due < body.IndexOf("reentry_shield_drop(shield_uid, { return ship:parts. }, below:jettison_first).", StringComparison.Ordinal));
+        }
+
+        /// <summary>The Duna ship (#940): the lander's aerospike, a TD-12, its shield, a second TD-12 and the stack.</summary>
+        private static Tree DunaShip()
+        {
+            var t = new Tree();
+            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+            var inner = t.Add("HeatShield1", pod, Shield, "s1");
+            var d1 = t.Add("Decoupler.1", inner, Decoupler, "d1");
+            var tank = t.Add("fuelTank", d1, None);
+            var aero = t.Add("toroidalAerospike", tank, new[] { "ModuleEnginesFX" }, "aero");
+            var ring = t.Add("Decoupler.1", aero, Decoupler, "ring");
+            var outer = t.Add("HeatShield1", ring, Shield, "s2");
+            var d2 = t.Add("Decoupler.1", outer, Decoupler, "d2");
+            t.Add("fuelTank.long", d2, None);
+            return t;
+        }
+
+        [Fact]
+        public void Entrydrops_answer_fires_the_decoupler_under_the_engine_before_the_shields_own_whatever_ship_parts_order()
+        {
+            var tree = DunaShip();
+            var printed = Run(tree, tree.Below("Duna", DunaThenKerbin)
+                + "print below:jettison. print below:jettison_first.\n"
+                + "reentry_shield_drop(below:jettison, { return list(p_6, p_7, p_5). }, below:jettison_first). print fired:join(\",\").\n");
+
+            Assert.Equal(new[] { "s2", "ring", "ring,s2,d2" }, printed);
         }
 
         [Fact]
@@ -329,9 +356,9 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private const string StartRead = "local below is addons:claudia:entrydrop(entry_ask).";
         private const string DropPoint = "if entry_in > below:lead {\n";
         private const string DropWait = "    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
-        private const string Trim = "  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_recounted(), \"isp\", claudia_engine_isp()))).\n";
-        private const string AirAgain = "    set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
-        private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop).";
+        private const string Trim = "  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"core\", entry_ask:core, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_recounted(), \"isp\", claudia_engine_isp()))).\n";
+        private const string AirAgain = "    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
+        private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop, false).";
 
         /// <summary>The wait to the drop point: from its if to the closing brace at the block's own indent.</summary>
         private static string DropPointWait(string body)
@@ -394,7 +421,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             foreach (var after in new[]
             {
                 "reentry_light(ship:engines, finish:engines).", "local drop is reentry_separation(opt:separate, below, ship:parts).", Fire,
-                "local group is reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", "addons:claudia:shipsystems(\"entry\").",
+                "set group to reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", "addons:claudia:shipsystems(\"entry\").",
                 "local shield_uid is below:jettison.", "addons:claudia:reentryimpact(",
             })
                 Assert.True(finish < At(body, after), after);
@@ -404,7 +431,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void An_engine_landing_and_a_craft_with_no_Entry_Shield_fire_nothing()
         {
             var body = Body();
-            Assert.Contains("if powered {\n    set opt:separate to \"none\".\n  }\n  local dropped is list().\n  if below:names:length > 0 and not claudia_on_ground() {", body);
+            Assert.Contains("if powered and finish:keeps_stack { set opt:separate to \"none\". }\n    }\n  }\n  local dropped is list().\n  if below:names:length > 0 and not claudia_on_ground() {", body);
             // No Entry Shield: ENTRYDROP names nothing, so "auto" fires nothing.
             var t = new Tree();
             t.Add("fuelTank", t.Add("Decoupler.1", t.Add("mk1pod.v2", -1, Command, "pod"), Decoupler), None);
@@ -431,9 +458,12 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var body = Body();
             var hold = At(body, "lock steering to srfretrograde.");
             Assert.True(At(body, Fire) < hold);
-            Assert.DoesNotContain("lock steering", body.Substring(0, hold));
-            // The wait for the air comes after the hold, on the orbit the drop left.
-            Assert.True(hold < At(body, "local waited is claudia_wait_until(ctx, time:seconds + reentry_entry_eta(ship:orbit:eccentricity"));
+            Assert.DoesNotContain("lock steering to", body.Substring(0, hold)); // #942's release, an unlock, is not a hold
+            // #941: the hold starts a turn time plus a margin before the air, after a first wait; the wait for the air comes after it.
+            Assert.True(At(body, "local waited is choose claudia_wait_until(ctx, hold_ut)") < hold);
+            Assert.True(hold < At(body, "set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds)"));
+            // Locked, the wait never warps: warp_end = air_ut - lead = now, so rails cannot freeze the turn. claudia_wait_until (30 s lead) would.
+            Assert.DoesNotContain("claudia_wait_until(ctx, air_ut)", body);
         }
 
         [Fact]
@@ -455,7 +485,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.True(before < At(body, Fire));
             Assert.Contains("if drop_error = \"\" { set dropped to list(pe_before, ship:periapsis, drop:gone[0]:ship). }", body);
             var note = At(body, "lexicon(\"phase\", \"stack_dropped\", \"pe_before\", round(dropped[0]), \"pe_after\", round(dropped[1]), \"stack_m\", choose -1 if dropped[2]:isdead else round(dropped[2]:distance))");
-            Assert.True(At(body, "reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly)).") < note);
+            Assert.True(At(body, "set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds)") < note);
             Assert.True(note < At(body, "local has_drogues is"));
         }
 

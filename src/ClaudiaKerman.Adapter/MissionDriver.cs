@@ -246,11 +246,11 @@ namespace ClaudiaKerman.Adapter
             if (Current != null) Current.Send(new ArrivalPlaneAimed(record));
         }
 
-        /// <summary>Core records where <c>return</c> or <c>deorbit</c> aims the landing; null when it aims at none.</summary>
-        public static void RecordLandingTarget(Core.Tools.LandingTarget target)
+        /// <summary>Core records where the calling vessel's <c>return</c> or <c>deorbit</c> aims the landing (#913); null when it aims at none.</summary>
+        public static void RecordLandingTarget(Core.Tools.LandingTarget target, Vessel vessel)
         {
             Core.Tools.BlockTestAim.Record(target);
-            if (Current != null) Current.Send(new LandingTargetAimed(target));
+            if (Current != null) Current.Send(new LandingTargetAimed(target, vessel.id.ToString("N")));
         }
         public static int CurrentSequence = -1;
 

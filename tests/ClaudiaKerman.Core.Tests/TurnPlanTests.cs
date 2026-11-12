@@ -122,6 +122,12 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData(9, 2, 0, false)]
         [InlineData(40, 300, 0, false)]
         [InlineData(40, -1, 0, false)]
+        [InlineData(9, -1, 0, false)]
+        // Burn Start passed (#933): no time left, not no deadline, so a big leftover may take a correction, at most twice.
+        [InlineData(40, 0, 0, true)]
+        [InlineData(40, 0, 1, true)]
+        [InlineData(40, 0, 2, false)]
+        [InlineData(9, 0, 0, false)]
         public void The_correction_rule_takes_a_burst_pair_for_a_big_leftover_and_never_more_than_two(double left, double leftS, int taken, bool expected)
         {
             Assert.Equal(expected, TurnPlan.Plan(E17d(), left, leftS, taken).Rcs);
@@ -134,6 +140,17 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False(plan.Rcs);
             Assert.True(plan.CoastRateDegS > 0);
             Assert.True(plan.TurnS <= Math.Min(plan.WheelsS, TurnPlan.MaxSeconds) * TurnPlan.QuickShare + 1e-6, plan.TurnS + " s");
+        }
+
+        [Fact]
+        public void A_pre_point_planned_after_its_Burn_Start_flies_the_quick_plan_not_the_fastest()
+        {
+            // land's pre-point can be planned once burn_start_ut has gone (left_s 0): it flies the same plan as no deadline (#933).
+            var passed = TurnPlan.Plan(E17d(), 142, 0);
+            var none = TurnPlan.Plan(E17d(), 142, -1);
+            Assert.Equal(none.CoastRateDegS, passed.CoastRateDegS, 6);
+            Assert.Equal(none.TurnS, passed.TurnS, 6);
+            Assert.True(passed.CoastRateDegS < Math.Sqrt(passed.AlphaDegS2 * (142 - passed.WheelsDeg)));
         }
 
         /// <summary>#754: a craft like the logged one (Mission m20261104-201248-6a57): wheels 8-10 s for 55-108 degrees.</summary>
@@ -315,6 +332,98 @@ namespace ClaudiaKerman.Core.Tests
             }
             // The first plan's rate stays the one reported.
             Assert.Equal(TurnPlan.Plan(craft, 142, 60).CoastRateDegS, (double)((IDictionary<string, object>)turn["report"])["coast_dps"], 6);
+        }
+
+        [Fact]
+        public void A_turn_past_its_Burn_Start_flies_the_same_quick_plan_as_one_with_no_deadline()
+        {
+            // #933: no time left only opens the correction rule. A deadline already missed can't be met by spending more monoprop.
+            var missed = TurnPlan.Plan(E17d(), 40, 0);
+            var none = TurnPlan.Plan(E17d(), 40, -1);
+            Assert.True(missed.CoastRateDegS > 0);
+            Assert.Equal(none.CoastRateDegS, missed.CoastRateDegS, 6);
+            Assert.Equal(none.TurnS, missed.TurnS, 6);
+            Assert.Equal(none.CoastRateDegS, TurnPlan.Plan(E17d(), 40, 0, 0).CoastRateDegS, 6);
+        }
+
+        [Fact]
+        public void A_stop_burst_past_its_Burn_Start_takes_at_most_two_corrections_for_a_big_leftover()
+        {
+            var craft = E17d();
+            IDictionary<string, object> turn = TurnPlan.Call(new Dictionary<string, object> { { "angle", 58.0 }, { "left_s", 0.0 } }, craft);
+            turn = TurnPlan.Step(turn, Now(0, 58, 0, 0), () => craft);
+            for (var pair = 1; pair <= 3; pair++)
+            {
+                var at = (Dictionary<string, object>)turn;
+                at["phase"] = "stop";
+                at["ut"] = 0.0;
+                turn = TurnPlan.Step(turn, Now(100, 40, 0, 0), () => craft);
+                Assert.Equal(pair < 3 ? "spin" : "settle", turn["phase"]);
+                if (pair < 3) Assert.Equal((double)pair, turn["corrections"]);
+                else Assert.Equal(2.0, ((IDictionary<string, object>)turn["report"])["corrections"]);
+            }
+        }
+
+        [Fact]
+        public void A_stop_burst_with_no_deadline_leaves_a_big_leftover_to_the_wheels()
+        {
+            var craft = E17d();
+            IDictionary<string, object> turn = TurnPlan.Call(new Dictionary<string, object> { { "angle", 58.0 }, { "left_s", -1.0 } }, craft);
+            turn = TurnPlan.Step(turn, Now(0, 58, 0, -1), () => craft);
+            ((Dictionary<string, object>)turn)["phase"] = "stop";
+            turn = TurnPlan.Step(turn, Now(100, 40, 0, -1), () => craft);
+            Assert.Equal("settle", turn["phase"]);
+            Assert.Equal(0.0, ((IDictionary<string, object>)turn["report"])["corrections"]);
+        }
+
+        /// <summary>A turn just into its coast, from a spin-up that reached the coast rate at <paramref name="error"/> degrees.</summary>
+        private static IDictionary<string, object> Coasting(TurnCraft craft, double error)
+        {
+            IDictionary<string, object> turn = TurnPlan.Call(new Dictionary<string, object> { { "angle", 142.0 }, { "left_s", 60.0 } }, craft);
+            turn = TurnPlan.Step(turn, Now(0, 142, 0, 60), () => craft);
+            turn = TurnPlan.Step(turn, Now(1, error, (double)turn["coast_rate"], 59), () => craft);
+            Assert.Equal("coast", turn["phase"]);
+            return turn;
+        }
+
+        [Fact]
+        public void A_coast_whose_error_grows_past_the_margin_stops_early()
+        {
+            var craft = E17d();
+            var turn = Coasting(craft, 100);
+            var next = TurnPlan.Step(turn, Now(2, 100 + TurnPlan.CoastLosingDeg + 0.1, 1, 58), () => craft);
+            Assert.Equal("stop", next["phase"]);
+            Assert.Equal(true, next["rcs_on"]);
+        }
+
+        [Fact]
+        public void A_coast_that_loses_ground_is_measured_from_where_it_began_not_from_where_the_turn_began()
+        {
+            var craft = E17d();
+            // Well under the turn's first 142 degrees, but past the margin over this coast's own start.
+            var turn = Coasting(craft, 30);
+            Assert.Equal("stop", TurnPlan.Step(turn, Now(2, 30 + TurnPlan.CoastLosingDeg + 0.1, 1, 58), () => craft)["phase"]);
+        }
+
+        [Theory]
+        // Closing as planned, or a wander inside the margin (a target that moves, leftover spin the wheels are still taking out).
+        [InlineData(95)]
+        [InlineData(100)]
+        [InlineData(108)]
+        public void A_normal_coast_is_not_cut(double error)
+        {
+            var craft = E17d();
+            var turn = Coasting(craft, 100);
+            Assert.Equal("coast", TurnPlan.Step(turn, Now(2, error, 1, 58), () => craft)["phase"]);
+        }
+
+        [Fact]
+        public void A_whole_turn_never_ends_its_coast_early()
+        {
+            IDictionary<string, object> report;
+            var ticks = Fly(142, 60, out report);
+            var coast = TurnPlan.Plan(E17d(), 142, 60).CoastS;
+            Assert.InRange(0.02 * ticks.FindAll(t => (string)t["phase"] == "coast").Count, coast - 0.5, coast + 0.5);
         }
 
         [Fact]

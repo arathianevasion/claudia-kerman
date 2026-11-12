@@ -581,6 +581,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).")]
         [InlineData("print addons:claudia:predictionmiss(lexicon(\"lat\", 0, \"lng\", 0)):km.")]
         [InlineData("print addons:claudia:turntime(lexicon()):turn_time.")]
+        [InlineData("print addons:claudia:lowcharge(lexicon()):carry_on.")]
         [InlineData("local t is addons:claudia:TurnTime@.\nprint t(lexicon(\"max_stopping_time\", 2)).")]
         [InlineData("local e is addons:claudia:ejectionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(e:ut, e:radial, e:normal, e:prograde).")]
         [InlineData("local c is addons:claudia.\nprint c:EjectionBurn(lexicon(\"target\", \"Minmus\", \"target_pe\", 20000, \"window\", \"next\")):dv.")]
@@ -603,12 +604,15 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("print addons:claudia:dockholdlevel(lexicon(\"level\", \"\")):changed.")]
         [InlineData("local c is addons:claudia.\nprint c:DockFuel(lexicon(\"distance\", 150)):error.")]
         [InlineData("print addons:claudia:burnworth(lexicon(\"block\", \"circularize\")):skip.")]
+        [InlineData("print addons:claudia:burnthrough(lexicon()):burn_through.")]
+        [InlineData("print addons:claudia:burntime(lexicon()):burn_time.")]
         [InlineData("print addons:claudia:returnmiss(lexicon(\"target_pe\", 35000, \"pe\", 36000)):error.")]
         [InlineData("print addons:claudia:turnplan(lexicon(\"angle\", 140, \"left_s\", 60)):coast_rate.")]
         [InlineData("print addons:claudia:burstturn(lexicon(), lexicon(\"error\", 40)):rcs_on.")]
         [InlineData("print addons:claudia:shipsystems(\"liftoff\"):done.")]
         [InlineData("addons:claudia:encounterwatch(lexicon()).")]
         [InlineData("print addons:claudia:encounterwatchdropped.")]
+        [InlineData("print addons:claudia:liftoffclear(lexicon(\"core\", \"1\")):decouplers.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);
@@ -1123,6 +1127,38 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             var result = _check.Check(CoreLibrary.Bundle("print \"hello\".\nkuniverse:quicksave()."));
             Assert.False(result.Passed);
             Assert.Contains("line 2: :QUICKSAVE (quicksave)", result.Forbidden);
+        }
+
+        // ---- Undefined calls (#928) ----
+
+        [Fact]
+        public void ACallToAFunctionNothingDefinesIsNamedWithItsLine()
+        {
+            var calls = KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle("print 1.\ndeorbit_ksc(lexicon()).\n"));
+            Assert.Equal(new[] { "line 2: deorbit_ksc" }, calls);
+        }
+
+        [Fact]
+        public void BuiltInsDelegatesLibraryAndScriptFunctionsAreNotUndefined()
+        {
+            var calls = KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle(
+                "function helper { parameter a. return a. }\n"
+                + "local d is helper@.\nd(1).\nd:call(1).\nlocal e is { parameter x. return x. }.\ne(2).\n"
+                + "set later to helper@.\nlater(3).\nhelper(4).\nlocal plan is lexicon(\"a\", 1).\nprint abs(-1).\ncircularize().\n"));
+            Assert.Empty(calls);
+        }
+
+        [Fact]
+        public void AParameterHoldingADelegateIsNotUndefined()
+        {
+            Assert.Empty(KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle("function run_it { parameter act. act(). }\nrun_it({ print 1. }).\n")));
+        }
+
+        [Fact]
+        public void TheFixtureFailsNamingDeorbitKscAtLine4()
+        {
+            var fixture = Path.Combine(RepoRoot(), "tools", "ClaudiaKerman.KsCompile", "fixtures", "undefined-call.ks");
+            Assert.Equal(new[] { "line 4: deorbit_ksc" }, KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle(File.ReadAllText(fixture))));
         }
 
         private static string RepoRoot()
