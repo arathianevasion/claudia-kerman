@@ -223,7 +223,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>#757: the rest of the Mission Plan judged against the Delta-v Map, as the margin recheck is told of it.</summary>
         private static string RecheckLegFacts(Mission mission, GameSnapshot snapshot)
         {
-            return PlanLegs.RecheckFacts(PlanLegs.Judge(snapshot, RestOfPlan(mission), mission.PlannedAscent));
+            return PlanLegs.RecheckFacts(PlanLegs.Judge(snapshot, RestOfPlan(mission), mission.PlannedAscent, true));
         }
 
         /// <summary>The mod's margin check of the craft as it is now against the rest of the Mission Plan; a manual stretch has no run's monopropellant to go by.</summary>
