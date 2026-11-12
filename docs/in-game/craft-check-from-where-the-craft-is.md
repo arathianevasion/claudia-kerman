@@ -9,7 +9,9 @@ Now the route starts where the craft is (the player's design, 2026-11-11):
 - **Landings** stay the Map's.
 - `launch:Kerbin` and the trips out of low Kerbin orbit are gone when the craft isn't at Kerbin.
 - **TWR:** the table is for the body the craft lifts off from and the goal's bodies, not Kerbin's system.
-- **The Mission Plan's per-leg check** (`leg_under_map`) judges the ascent and the first trip by the same figures.
+- **Only the first hop** is planned: with "Land on Minmus and return to Kerbin", the trip is the Mun to Minmus, and Minmus back to Kerbin is the Map's `return:Minmus`. There's no `return:Mun` line.
+- **The Mission Plan's per-leg check** (`leg_under_map`) judges the ascent and the first trip by the same figures. The planners run only when the route is priced: the Craft Check, its recheck and a proposed plan. In flight, the Margin check and the drop guard read the figure priced then (or the Map's), and never search.
+- **From Kerbin** with a Transfer Window picked, the Craft Check's trip row is plan_transfer's at that pick even when no window row is passed (a recheck), as the per-leg check judges it.
 
 The report's "257 m/s" was the Optimal row's ejection. With the 88 m/s capture into low Minmus orbit, the trip is 346. The route is then about 680 (Mun ascent) + 346 + 198 (Minmus landing at TWR 24.8) = 1,224 m/s, or 1,408 with the 15% margin. That passes against 1,518.
 
@@ -23,4 +25,5 @@ The report's "257 m/s" was the Optimal row's ejection. With the 88 m/s capture i
    - There's no `launch:Kerbin` line and no `transfer:Minmus:` line.
    - The thrust-over-weight line names "the body the craft lifts off from (Mun)", and its JSON has no Kerbin column.
 4. **Start a pad Mission to the Mun** ("Land on the Mun and return to Kerbin"). Its Craft Check request has the same Delta-v Map lines as before: launch:Kerbin, land:Kerbin, transfer:Mun, polar:Mun, land:Mun, ascend:Mun, return:Mun. None says plan_transfer or estimate.
-5. **Report on #998:** the Craft Check verdict and summary, the `ascend:Mun` and `transfer:Mun>Minmus` lines, and whether the first Mission Plan's card shows a `leg_under_map` Warning (with what figures).
+5. **From the Mun again, goal "Land on Minmus and return to Kerbin".** Its request has `transfer:Mun>Minmus` and `return:Minmus`, and no `return:Mun` or `launch:Kerbin` line.
+6. **Report on #998:** the Craft Check verdict and summary, the `ascend:Mun` and `transfer:Mun>Minmus` lines, and whether the first Mission Plan's card shows a `leg_under_map` Warning (with what figures).
