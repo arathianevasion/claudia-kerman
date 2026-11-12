@@ -150,11 +150,13 @@ namespace ClaudiaKerman.Core.Tests
             var result = Run(Strong(), "{\"target_ap\":80000}");
             Assert.True(result.GetProperty("reaches_orbit").GetBoolean());
             Assert.Equal(80000, result.GetProperty("target_ap").GetDouble());
-            Assert.Equal(new[] { 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8 }, Tried(result));
+            Assert.Equal(new[] { 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8 }, Tried(result));
             var shape = result.GetProperty("turn_shape").GetDouble();
             var best = result.GetProperty("tried").EnumerateArray().Where(t => t.TryGetProperty("dv_left", out _)).Max(t => t.GetProperty("dv_left").GetDouble());
             Assert.Equal(best, result.GetProperty("dv_left").GetDouble());
             Assert.Equal(best, result.GetProperty("tried").EnumerateArray().Single(t => t.GetProperty("turn_shape").GetDouble() == shape).GetProperty("dv_left").GetDouble());
+            // #978: 0.05 to 0.25 all leave the most (max_aoa holds the turn); the tie goes to the gentlest of them.
+            Assert.Equal(0.25, shape);
             // Delta-v to orbit is Kerbin's few thousand m/s; the margin is the fraction left.
             var toOrbit = result.GetProperty("dv_to_orbit").GetDouble();
             Assert.InRange(toOrbit, 3000, 4200);

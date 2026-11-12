@@ -1,0 +1,11 @@
+# A science-only step rides the next sequence's script (#983)
+
+A Mission Plan step that is only science, 0 m/s, right before an ascent of the same craft (a crew report between "Land at Duna" and "Ascend from Duna") is no Maneuver Sequence of its own. Science before any other step (an orbital departure, a plane change) stays a sequence of its own, as do EVA reports and samples. When it is the next step to fly, the Sequence Plan request carries one line: `Step N "Crew report at Duna" is science only, 0 m/s, where step N+1 "Ascend from Duna" starts: fly it as the first lines of step N+1's script (plan_step N+1), not as a sequence of its own.` Core tests cover when the line is sent (`ScienceFoldTests`, `MissionDebriefTests`); this check needs the game, for what Claudia does with it. Install and where to look are as in `phase-3-gate.md`.
+
+## Check 1: the next Duna round trip has no separate crew-report sequence, and the report runs landed
+
+1. Fly a Duna round trip with the goal "Fly to Duna in the optimal window. Land in the equator and send a crew report. Then return to kerbin in the soonest window." (mission m20261110-203402-45d1's goal). Auto Mode on is fine.
+2. If the Mission Plan has a "Crew report at Duna" step at 0 m/s before "Ascend from Duna", then once the landing is debriefed (or a revised plan landed at Duna is approved), the newest request in the Mission's request dump has the "is science only" line naming those two steps. If the Mission Plan has no crew-report step at all, say so on the ticket: the line is not sent and nothing more is checked.
+3. No Sequence Plan named "Crew report at Duna" (or any other science-only plan) is offered. In `plans.jsonl` the plan after the landing is the ascent, with `"science": 1` in its `blocks` beside `launch`, and its `plan_step` is the ascent's step number in the Mission Plan.
+4. The ascent's script has the `science(...)` call before `launch(...)`. In the ascent's run report, the crewReport result reads `"detail":"SrfLanded at ..."`: it ran landed, before lift-off. The plan bar passes over the crew-report step to the ascent, and the ascent's Debrief ticks the Mission Goal's crew-report step.
+5. Tell the ticket the number of Sequence Plans and Debriefs between the landing and the ascent (expected: none), and the Mission's total cost against m20261110-203402-45d1's.

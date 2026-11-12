@@ -17,6 +17,19 @@ namespace ClaudiaKerman.Core.Missions
         public static readonly Regex Landing = new Regex(@"\b(land(s|ed|ing)?|touch ?down)\b", RegexOptions.IgnoreCase);
         public static readonly Regex Ascent = new Regex(@"\b(ascen(d|ds|t|ding)|lift ?off|take ?off|launch(es|ing)?)\b", RegexOptions.IgnoreCase);
         public static readonly Regex Reentry = new Regex(@"\b(re-?ent(er|ry|ers|ering)|splash ?down)\b", RegexOptions.IgnoreCase);
+        /// <summary>Leaving orbit to come down (#979).</summary>
+        public static readonly Regex Deorbit = new Regex(@"\bde-?orbit(s|ed|ing)?\b", RegexOptions.IgnoreCase);
+        /// <summary>Coming down to a surface: "descend", "descent" (#979).</summary>
+        public static readonly Regex Descent = new Regex(@"\bdescen(d|ds|ded|ding|t|ts)\b", RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// True when <paramref name="before"/>, the text before a body, names it as where a return comes from ("return from the", "come home
+        /// from") (#979). A bare "from" doesn't: "deorbit from Mun orbit" comes down on the Mun.
+        /// </summary>
+        public static bool ReturnsFromBefore(string before)
+        {
+            return ReturnsFrom.IsMatch(before);
+        }
         /// <summary>
         /// The return to the home planet (#689): a return that names Kerbin, or "come/return/go/head home", "back home" and "fly home"
         /// (inflected where natural), whole words. "home in on" and "home stretch" are not returns.
@@ -55,7 +68,7 @@ namespace ClaudiaKerman.Core.Missions
             return Acts(sequence.Name) ? sequence.Name : sequence.Intent;
         }
 
-        private static bool Acts(string words)
+        internal static bool Acts(string words)
         {
             return Surface.IsMatch(words) || Trip.IsMatch(words) || ReturnHome.IsMatch(words) || Capture.IsMatch(words) || Reentry.IsMatch(words) || Aero.IsMatch(words) || Flyby.IsMatch(words);
         }

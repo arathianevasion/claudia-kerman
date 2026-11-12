@@ -34,6 +34,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
                 "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
+            AddSuffix("LAUNCHPITCH", new OneArgsSuffix<Lexicon, Lexicon>(LaunchPitch,
+                "Core Library only (launch, each tick of the climb): the turn's pitch from alt, start_alt, end_alt, shape, speed, prograde, q, ratio, accel and g_net; lexicon error, pitch (degrees above the horizon), thin"));
             AddSuffix("BURNTHROUGH", new OneArgsSuffix<Lexicon, Lexicon>(BurnThrough,
                 "Core Library only (launch, at its first cutoff and each tick of a burn-through): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, altitude, target_ap, atm_height, angle, stages, turn and burning; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap, climb, time_left"));
             AddSuffix("BURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(BurnTimeCall,
@@ -114,6 +116,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (launch, ascend): the decouplers under the engines that give thrust, from core and home; lexicon error, decouplers, gone, stuck"));
             AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
                 "Core Library only (drop_parts, deorbit, reentry): whether a drop taking the craft from before to left m/s of delta-v takes what the Mission Plan still needs; lexicon error, refused, reason, taken, need"));
+            AddSuffix("AUTODROPFREE", new NoArgsSuffix<Lexicon>(AutoDropFreeCall,
+                "Core Library only (drop_empty auto, each look): the part kinds that may leave with an empty tank, from the Mission Plan; lexicon error, free"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
                 "Core Library only (land, each braking tick): the path guard on alt against path_alt, and near the site the straight-down fallback; lexicon verdict (fly, vertical or abort), error, why, over, and the fallback's al, cr, up, vv, ..."));
             AddSuffix("LANDSTEER", new OneArgsSuffix<Lexicon, Lexicon>(LandSteerTick,
@@ -121,7 +125,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("KEEPCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(KeepClearCall,
                 "Core Library only (land): the site lat, lng moved clear_m clear of keep_lat, keep_lng (straight away, else toward ahead_lat, ahead_lng) by up to max_divert on a body of radius; lexicon lat, lng, dist, moved"));
             AddSuffix("BURNWORTH", new OneArgsSuffix<Lexicon, Lexicon>(BurnWorthCall,
-                "Core Library only (circularize, tune_pe, a Course Correction): whether a burn is worth its turn when the tolerance was defaulted, and tune_pe's default tolerance; for a correction, its max_throttle and done_dv; lexicon safe_height, tolerance, skip, note, ..."));
+                "Core Library only (circularize, tune_pe, a Course Correction): whether a burn is worth its turn when the tolerance was defaulted, and tune_pe's default tolerance; for a correction or tune_pe's burn, its max_throttle and done_dv; lexicon safe_height, tolerance, skip, note, ..."));
             AddSuffix("SHIPSYSTEMS", new OneArgsSuffix<Lexicon, StringValue>(ShipSystemsCall,
                 "Core Library only (launch, ascend, land, deorbit, reentry): a Ship Systems cue (liftoff, final_descent, entry) or stowing to ask after the lift-off stow; lexicon done, capped, note"));
         }
@@ -530,6 +534,23 @@ namespace ClaudiaKerman.KOS
             }, () => verdict["error"] as string == "" ? (bool)verdict["refused"] ? "refused: " + verdict["reason"] : "allowed" : (string)verdict["error"]);
         }
 
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:AUTODROPFREE</c> (#979, ADR 0014): what may leave with an empty tank (<see cref="BlockCalls.AutoDropFree"/>). drop_empty asks
+        /// every look, twice a second, so its time is logged at most once a second (guardrail 6); it reads the plan's words only, no snapshot. A failure
+        /// answers as with no plan (a shield only), which the block reads as it reads an answer.
+        /// </summary>
+        private Lexicon AutoDropFreeCall()
+        {
+            System.Collections.Generic.IDictionary<string, object> found = null;
+            var answer = (Lexicon)Guarded("AUTODROPFREE", () =>
+            {
+                found = BlockCalls.AutoDropFree(MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence);
+                return KosValues.FromPlain(found);
+            }, () => "free " + string.Join(", ", ((System.Collections.IList)found["free"]).Cast<object>().Select(k => k.ToString()).ToArray()), 1);
+            // Guarded's error lexicon has no free, wherever the call threw: the block reads free unguarded.
+            return answer.ContainsKey(new StringValue("free")) ? answer : (Lexicon)KosValues.FromPlain(BlockCalls.AutoDropFree(null, -1));
+        }
+
         /// <summary><c>ADDONS:CLAUDIA:LANDINGTARGET</c> (#790, ADR 0014): the landing target default (<see cref="BlockCalls.LandingTarget"/>).</summary>
         private Lexicon LandingTargetCall(Lexicon input)
         {
@@ -805,6 +826,19 @@ namespace ClaudiaKerman.KOS
             }, () => heading["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "heading {0:0.00}", heading["heading"])
                 : (string)heading["error"], 2);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:LAUNCHPITCH</c> (#978, ADR 0014): launch's turn law (<see cref="LaunchTurn.Call"/>), pure, every tick of the climb; its log line every 2 s, with the slowest call's time.</summary>
+        private Lexicon LaunchPitch(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> turn = null;
+            return (Lexicon)Guarded("LAUNCHPITCH", () =>
+            {
+                turn = LaunchTurn.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(turn);
+            }, () => turn["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "pitch {0:0.00}{1}", turn["pitch"], (bool)turn["thin"] ? " (thin air)" : "")
+                : (string)turn["error"], 2);
         }
 
         /// <summary>

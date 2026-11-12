@@ -18,8 +18,8 @@ gives (the Craft Check's, or a new call if the craft or target_ap changed).
 max_aoa [5]: most degrees the nose may be off the airflow while the air is thick enough to matter
 (over 500 Pa dynamic pressure), all the way up and through the coast; above 8000 Pa the angle
 allowed falls in proportion to q (a tenth of max_aoa at the least).
-In thin air (under 500 Pa) the nose is held no more than 3 degrees below the prograde, so the
-upper turn follows the trajectory instead of the pitch program.
+In thin air (under 500 Pa) the nose is held no more than 3 degrees below the prograde, but a
+strong craft low down may go lower, as long as it still climbs.
 throttle_max_q ["none"]: Pa of dynamic pressure to throttle back at (to 5% at most; in thick
 air never below the craft's weight). While it holds the throttle back in thick air the turn
 waits: too slow to turn over without falling, the craft climbs as steeply as max_aoa lets it.

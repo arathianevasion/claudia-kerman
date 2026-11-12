@@ -153,6 +153,40 @@ namespace ClaudiaKerman.Core.Missions
             return now(aimedKey) == now(flownKey);
         }
 
+        /// <summary>
+        /// #981: the least share of its full Ablator the Last Entry's shield must hold for a direct entry. No ablator use has been measured: a Duna return enters
+        /// Kerbin's air at up to about 3.4 km/s (<see cref="Tools.HomeLanding.DirectEntryExcessLimit"/>), some 1.13 times the heat load (speed squared) of the 3.2 km/s Mun
+        /// return <c>return</c> flies on the same shield, so half a shield is a stated margin, not a measured figure, until a flight measures what is left.
+        /// </summary>
+        internal const double AblatorShareNeeded = 0.5;
+
+        /// <summary>
+        /// #981: whether the craft as it is can enter <paramref name="body"/>'s air and come down on what stays, so a trip home needs no capture first. It takes the
+        /// Last Entry's shield (number 1 from the part the craft keeps, <see cref="ChildVessels.Keeper"/>) holding <see cref="AblatorShareNeeded"/> of its Ablator (when
+        /// the parts' resources were read), and a chute <see cref="ChuteGroups.Usable"/> counts (stowed or armed; the adapter reads a cut chute as no chute) on a part
+        /// that neither the Entry's stack nor any staging takes away. Where a kept stack is dangerous (<see cref="Entries.KeepsStackDangerous"/>: Kerbin, Eve, Laythe)
+        /// that is all; elsewhere a powered finish counts too, on an engine that stays, is fuelled and will light (<see cref="EntryFinish.WillLight"/>). Known limit: any
+        /// decoupler aboard counts as staging still to come, so a chute behind one kept for Kerbin reads as gone and the craft keeps the capture.
+        /// </summary>
+        public static bool CanEnter(GameSnapshot snapshot, string body)
+        {
+            if (snapshot == null || snapshot.Craft == null) return false;
+            var lastEntry = EntryStack.Of(snapshot.Craft.Parts, ChildVessels.Keeper(snapshot, false, null), 1);
+            if (lastEntry.Shield == null || !AblatorLeft(lastEntry.Shield)) return false;
+            var gone = new HashSet<uint>(lastEntry.Leaves.Select(p => p.Id));
+            if (ChuteGroups.Usable(snapshot).Any(c => c.LeavesAtStage == null && !gone.Contains(c.PartId))) return true;
+            var staged = new HashSet<uint>(ChildVessels.Staging(snapshot, false, null).Separations.SelectMany(s => s.PartIds));
+            return !Entries.KeepsStackDangerous(body) && snapshot.Craft.Parts.Any(p => !gone.Contains(p.Id) && !staged.Contains(p.Id)
+                && p.Tags.Contains("engine") && p.EngineFuelled && EntryFinish.WillLight(snapshot, p));
+        }
+
+        /// <summary>Whether <paramref name="shield"/> holds <see cref="AblatorShareNeeded"/> of its Ablator; true when that wasn't read (an older recording).</summary>
+        private static bool AblatorLeft(SnapshotPart shield)
+        {
+            var ablator = shield.Resources.FirstOrDefault(r => r.Name == "Ablator");
+            return ablator == null || !(ablator.Max > 0) || ablator.Amount >= AblatorShareNeeded * ablator.Max;
+        }
+
         /// <summary>The craft in a few words for the log, with its mass.</summary>
         public string Describe()
         {

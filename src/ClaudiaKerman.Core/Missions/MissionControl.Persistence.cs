@@ -832,6 +832,7 @@ namespace ClaudiaKerman.Core.Missions
                 mission.SequencesProposed = state.SequencesProposed;
                 mission.PlanStep = state.PlanStep;
                 mission.PlanStepBefore = state.PlanStepBefore;
+                ResolvePlanStep(mission, reply.SequencePlan);
                 OfferSequencePlan(mission, reply.SequencePlan);
                 var rebuilt = mission.LogRebuilt ? mission.Log.LastOrDefault(e => e.Kind == LogKind.SequencePlan) : null;
                 if (rebuilt != null) rebuilt.Text = MissionCards.SequencePlanBody(reply.SequencePlan, mission.VesselName, _ut, _config);
