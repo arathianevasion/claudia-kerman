@@ -226,6 +226,12 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(Figure(Line(text, "land:Minmus")), legs[2].Figure, 0);
             // A budget at the planner's figure is not under it.
             Assert.False(legs[1].Under);
+
+            // The plan's proposal prices again: the row the Craft Check showed serves it, with no new search.
+            RoutePlanners.Searches = 0;
+            var priced = PlanLegs.Judge(snapshot, legs.Select(l => l.Sequence).ToList(), "", true);
+            Assert.Equal(0, RoutePlanners.Searches);
+            Assert.Equal(legs[1].Figure, priced[1].Figure, 6);
         }
 
         [Fact]

@@ -173,6 +173,8 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>A trip came here with its capture still to pay, from <see cref="_origin"/>.</summary>
             private bool _captureOwed;
             private SnapshotBody _origin;
+            /// <summary>#998: the owed capture of a trip the planner priced; null for the Map's.</summary>
+            private double? _owedArrival;
             /// <summary>#866: the trip in to a planet whose next trip goes on to its moon, and that trip, by the planet's high orbit (<see cref="DeltaVMap.HighRouteLegs"/>); null otherwise.</summary>
             private DeltaVLeg[] _high;
             /// <summary>The delta-v the walk has spent, for the stages a leg will burn.</summary>
@@ -317,6 +319,8 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     _captureOwed = true;
                     _origin = _at;
+                    // A planned trip's capture is the planner's, paid later.
+                    _owedArrival = planned != null ? trip.Arrival : (double?)null;
                 }
                 else if (captured) figure += trip.Arrival;
                 Add(id, figure);
@@ -375,7 +379,7 @@ namespace ClaudiaKerman.Core.Missions
                 var high = _high != null && _high[0].Bodies[1] == body.Name ? _high[0] : null;
                 var trip = owed && _origin != null ? high ?? _map.Trip(_origin.Name, body.Name) : high;
                 var leg = _map.Leg("capture:" + body.Name);
-                var figure = trip != null ? trip.Arrival : leg != null ? leg.DeltaV : 0;
+                var figure = owed && _owedArrival.HasValue ? _owedArrival.Value : trip != null ? trip.Arrival : leg != null ? leg.DeltaV : 0;
                 if (figure > 0) Add("capture:" + body.Name, figure);
             }
 

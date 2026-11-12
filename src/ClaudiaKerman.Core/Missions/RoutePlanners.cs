@@ -88,7 +88,8 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public static PlannedFigure Ascent(GameSnapshot snapshot, out string refusal, bool price)
         {
-            var key = "ascent|" + Save(snapshot) + "|" + snapshot.Body;
+            // The site to 10 degrees of latitude: another landing on the body later isn't read this one's ascent.
+            var key = "ascent|" + Save(snapshot) + "|" + snapshot.Body + "|" + Math.Round(snapshot.Latitude / 10);
             var detail = snapshot.Situation + "|" + Math.Round(snapshot.Latitude) + "|" + Math.Round(snapshot.Altitude / 100) + "|" + snapshot.Craft.NoseDrag.Count + "|"
                 + string.Join(",", snapshot.Stages.Select(s => s.Number + ":" + Math.Round(s.DeltaVVac) + ":" + Math.Round(s.ThrustVacKn)).ToArray());
             return Find(key, detail, snapshot.Ut, price, out refusal, () =>
@@ -179,7 +180,8 @@ namespace ClaudiaKerman.Core.Missions
                 refusal = answer == null ? "not priced" : answer.Refusal;
                 return answer == null ? null : answer.Figure;
             }
-            if (answer == null || answer.Detail != detail || answer.Day != Day(ut) || (answer.Figure != null && ut >= answer.Figure.DepartureUt))
+            // The player's row (plan_transfer's own answer) serves any pricing at its pick until it departs.
+            if (answer == null || (answer.Detail != detail && answer.Detail != "row") || answer.Day != Day(ut) || (answer.Figure != null && ut >= answer.Figure.DepartureUt))
             {
                 Searches++;
                 var got = work();
