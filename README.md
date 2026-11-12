@@ -92,7 +92,7 @@ Sandbox, Science and Career all work.
 
 Claudia uses the Claude API with your own key. Each Mission has its own **Spending Cap**, $10 by default, which you can raise later; the mod never sends a request that could go over it. When the cap has no room, the Mission is **Paused** until you raise it.
 
-The start form shows an estimate. As a rough guide, a Mun landing and return costs about $2.40 on Sonnet 5.5, about $0.12 on Haiku 5.5 (the default). Failed and retried legs cost the most, so a clean flight costs less.
+The start form shows an estimate. As a rough guide, a biome-specific Mun landing and return costs about $2.40 on Sonnet 5.5, about $0.12 on Haiku 5.5 (the default). Failed and retried legs cost the most, so a clean flight costs less.
 
 The key is stored as **plain text** in `~/Library/Application Support/ClaudiaKerman/`, readable only by you. If the `ANTHROPIC_API_KEY` environment variable is set, it is used instead. The key is never written to logs, saves or Mission records, and never placed under GameData.
 
