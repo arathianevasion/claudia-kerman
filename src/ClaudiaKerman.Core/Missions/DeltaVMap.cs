@@ -412,8 +412,8 @@ namespace ClaudiaKerman.Core.Missions
         public string ToText(IList<SnapshotBody> named, GameSnapshot snapshot = null, WindowRow window = null)
         {
             var start = RoutePlanners.Start(snapshot);
-            // Round the star (between planets), the trips are priced as before.
-            var away = start != null && start.Name != Home && !string.IsNullOrEmpty(start.Parent);
+            // Round the star (between planets) or escaping, the trips are priced as before.
+            var away = RoutePlanners.Away(snapshot, Home) != null;
             var legs = LegsFor(named, !away);
             // In flight at home, the launch is flown (#998: launch:Home only when the craft is on the ground there).
             if (snapshot != null && start != null && start.Name == Home && !snapshot.IsGrounded) legs = legs.Where(l => l.Id != "launch:" + Home).ToList();
@@ -421,6 +421,15 @@ namespace ClaudiaKerman.Core.Missions
             var planned = new Dictionary<DeltaVLeg, string>();
             var windowUsed = false;
             if (away) legs = FromStart(legs, named, snapshot, start, window, planned, out windowUsed);
+            // From home with no row passed, the player's pick is plan_transfer's figure, as PlanLegs judges it (#998).
+            if (window == null && snapshot != null && start != null && start.Name == Home && !snapshot.WindowPick.IsNone)
+            {
+                var to = snapshot.Bodies.FirstOrDefault(b => snapshot.WindowPick.IsFor(b.Name));
+                string why;
+                var figure = to == null || !RoutePlanners.PlansTrip(snapshot, start, to, Home) ? null : RoutePlanners.Transfer(snapshot, to, null, snapshot.MarginPercent, out why, true);
+                var row = figure == null ? null : new WindowRow { Kind = snapshot.WindowPick.Kind, From = Home, Body = to.Name, TotalDv = figure.DeltaV, CaptureDv = figure.Capture };
+                if (row != null && legs.Any(l => row.Budgets(l.Id))) window = row;
+            }
             var windowLeg = window == null || away ? null : legs.FirstOrDefault(l => window.Budgets(l.Id));
             var text = new StringBuilder();
             // Spent before the first landing: the launch (or the start's rows) and the trips in, the last hop to a named body included.
@@ -466,9 +475,9 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// #998, the route from a <paramref name="start"/> away from home (<see cref="RoutePlanners"/>): from the ground, the ascent by plan_ascent; then for
-        /// each named body the trip to it (or to the body on its way, <see cref="HopTo"/>), the Map's from a planet to its own moon or a moon to its planet,
-        /// else plan_transfer's. A planner's refusal gives the Map's figure, called an estimate. The rows they replace go: home's launch, the trips out of
+        /// #998, the route from a <paramref name="start"/> away from home (<see cref="RoutePlanners"/>): from the ground, the ascent by plan_ascent; then the
+        /// trip to the first named body other than the start, home last (or to the body on its way, <see cref="HopTo"/>), the Map's from a planet to its
+        /// own moon or a moon to its planet, else plan_transfer's; the trips on from there are the Map's. A planner's refusal gives the Map's figure, called an estimate. The rows they replace go: home's launch, the trips out of
         /// home's low orbit, and the start's own capture. Each new row's note goes in <paramref name="planned"/>.
         /// </summary>
         private List<DeltaVLeg> FromStart(List<DeltaVLeg> legs, IList<SnapshotBody> named, GameSnapshot snapshot, SnapshotBody start, WindowRow window,
@@ -480,7 +489,7 @@ namespace ClaudiaKerman.Core.Missions
             if (snapshot.IsGrounded)
             {
                 var map = Leg("ascend:" + start.Name);
-                var ascent = RoutePlanners.Ascent(snapshot, out why);
+                var ascent = RoutePlanners.Ascent(snapshot, out why, true);
                 if (ascent != null)
                     Plan(first, planned, Copy(map, "ascend:" + start.Name, "Surface of " + start.Name + " to a low orbit", ascent.DeltaV), " (" + ascent.Source + ")");
                 else if (map != null)
@@ -489,11 +498,13 @@ namespace ClaudiaKerman.Core.Missions
                     Plan(first, planned, Copy(map, map.Id, map.Description, figure), Estimate(why));
                 }
             }
-            foreach (var body in named)
+            // Only the hop from the start: the trips on from there are the Map's, as from any body. Home, named with another, is where the route ends.
+            var to = HopTo(start, named.Where(b => b.Name != start.Name).OrderBy(b => b.Name == Home ? 1 : 0).FirstOrDefault());
+            if (to != null)
             {
-                var to = HopTo(start, body);
-                if (to == null || first.Any(l => l.Bodies.Length == 2 && l.Bodies[1] == to.Name)) continue;
                 var home = to.Name == Home;
+                // The window's trip is this row, whatever plan_transfer said: no second line for it.
+                windowUsed = window != null && window.Body == to.Name;
                 var id = home ? "return:" + start.Name : "transfer:" + start.Name + ">" + to.Name;
                 var description = "Low " + start.Name + " orbit to low " + to.Name + " orbit (departure, plane change and capture)";
                 var trip = home ? Leg(id) : Trip(start, to);
@@ -501,19 +512,18 @@ namespace ClaudiaKerman.Core.Missions
                 if (RoutePlanners.IsMapTrip(start, to))
                 {
                     if (trip != null) Plan(first, planned, trip, "");
-                    continue;
                 }
-                var figure = RoutePlanners.Transfer(snapshot, to, window, snapshot.MarginPercent, out why);
-                if (figure != null)
+                else
                 {
-                    windowUsed |= window != null && window.Body == to.Name;
-                    Plan(first, planned, new DeltaVLeg
-                    {
-                        Id = id, Description = trip != null ? trip.Description : description, DeltaV = figure.DeltaV, Departure = figure.DeltaV - figure.Capture,
-                        Arrival = figure.Capture, Bodies = new[] { start.Name, to.Name },
-                    }, " (" + figure.Source + ")");
+                    var figure = RoutePlanners.Transfer(snapshot, to, window, snapshot.MarginPercent, out why, true);
+                    if (figure != null)
+                        Plan(first, planned, new DeltaVLeg
+                        {
+                            Id = id, Description = trip != null ? trip.Description : description, DeltaV = figure.DeltaV, Departure = figure.DeltaV - figure.Capture,
+                            Arrival = figure.Capture, Bodies = new[] { start.Name, to.Name },
+                        }, " (" + figure.Source + ")");
+                    else if (trip != null) Plan(first, planned, trip, Estimate(why));
                 }
-                else if (trip != null) Plan(first, planned, trip, Estimate(why));
             }
             var replaced = new HashSet<string>(first.Select(l => l.Id)) { "launch:" + Home, "capture:" + start.Name };
             return first.Concat(legs.Where(l => !replaced.Contains(l.Id) && !(l.Id.StartsWith("transfer:", StringComparison.Ordinal) && l.Bodies[0] == Home))).ToList();

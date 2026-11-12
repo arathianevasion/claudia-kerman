@@ -236,14 +236,194 @@ namespace ClaudiaKerman.Core.Tests
             var optimal = Pick(snapshot, goal, "Duna", WindowKind.Optimal);
             snapshot.WindowPick = new WindowPick("Duna", WindowKind.Optimal);
 
-            var legs = PlanLegs.Judge(snapshot, new List<PlannedSequence>
+            snapshot.CraftPersistentId = 9981;
+            var plan = new List<PlannedSequence>
             {
                 new PlannedSequence { Name = "Launch to orbit", DeltaV = 3400 },
                 new PlannedSequence { Name = "Transfer to Duna and capture", DeltaV = 2000 },
-            }, "");
+            };
 
+            // Priced as the plan is proposed; in flight, the figure priced then.
+            var legs = PlanLegs.Judge(snapshot, plan, "", true);
             Assert.Equal("transfer:Duna", legs[1].Legs);
             Assert.Equal(optimal.TotalDv, legs[1].Figure, 0);
+            Assert.Equal(legs[1].Figure, PlanLegs.Judge(snapshot, plan, "")[1].Figure, 6);
+        }
+
+        private static readonly List<PlannedSequence> DunaPlan = new List<PlannedSequence>
+        {
+            new PlannedSequence { Name = "Transfer to Duna and capture", DeltaV = 2000 },
+            new PlannedSequence { Name = "Land on Duna", DeltaV = 300 },
+        };
+
+        private static GameSnapshot InKerbinOrbitForDuna(uint id)
+        {
+            var snapshot = GameSnapshot.Parse(Fixture("mun-shot-v2-kerbin-orbit.json"));
+            snapshot.CraftPersistentId = id;
+            snapshot.Stages[0].DeltaVVac = 9000;
+            snapshot.WindowPick = new WindowPick("Duna", WindowKind.Optimal);
+            return snapshot;
+        }
+
+        [Fact]
+        public void InFlightPlanLegsAndTheDropGuardReadThePricedFigureAndNeverSearch()
+        {
+            // A pad Mission to Duna after launch: every Margin check and drop judged the plan, each a search (the sma and dv kept changing).
+            var snapshot = InKerbinOrbitForDuna(9982);
+            RoutePlanners.Searches = 0;
+            var first = PlanLegs.Judge(snapshot, DunaPlan, "");
+            snapshot.Orbit.SemiMajorAxis += 2000;
+            snapshot.Stages[0].DeltaVVac -= 50;
+            var second = PlanLegs.Judge(snapshot, DunaPlan, "");
+            DropGuard.Check(snapshot, DunaPlan, -1, 5000, 4000);
+            Assert.Equal(0, RoutePlanners.Searches);
+            // Nothing priced yet: the Map's figure.
+            var map = DeltaVMap.Compute(snapshot.Bodies, "Kerbin");
+            Assert.Equal(map.Trip("Kerbin", "Duna").DeltaV, first[0].Figure, 0);
+            Assert.Equal(first[0].Figure, second[0].Figure, 6);
+
+            // Priced once (the plan's proposal): one search, and the checks in flight read it, with no more.
+            var priced = PlanLegs.Judge(snapshot, DunaPlan, "", true);
+            Assert.Equal(1, RoutePlanners.Searches);
+            snapshot.Orbit.SemiMajorAxis += 2000;
+            Assert.Equal(priced[0].Figure, PlanLegs.Judge(snapshot, DunaPlan, "")[0].Figure, 6);
+            Assert.Equal(PlanLegs.Need(priced), DropGuard.Check(snapshot, DunaPlan, -1, 5000, 1000).Need, 6);
+            Assert.Equal(1, RoutePlanners.Searches);
+            Assert.NotEqual(map.Trip("Kerbin", "Duna").DeltaV, priced[0].Figure, 2);
+
+            // Another save's craft (another persistent id, the same body table) has no priced figure.
+            Assert.Equal(first[0].Figure, PlanLegs.Judge(InKerbinOrbitForDuna(9983), DunaPlan, "")[0].Figure, 6);
+        }
+
+        [Fact]
+        public void FromKerbinOrbitWithThePickAndNoRowTheCraftCheckAndPlanLegsAgree()
+        {
+            var snapshot = InKerbinOrbitForDuna(9984);
+            var text = CraftCheckPrompts.Facts("Land on Duna", snapshot, 15, null);
+            var row = Line(text, "transfer:Duna");
+            Assert.Contains("plan_transfer, Optimal pick", row);
+            Assert.Equal(Figure(row), Math.Round(PlanLegs.Judge(snapshot, DunaPlan, "")[0].Figure), 0);
+            Assert.Equal(Figure(row), Math.Round(PlanLegs.Judge(snapshot, DunaPlan, "", true)[0].Figure), 0);
+        }
+
+        [Fact]
+        public void LandedOnTheMunAGoalThatReturnsHomePlansOnlyTheHopFromTheStart()
+        {
+            var snapshot = OnTheMun();
+            const string goal = "Land on Minmus and return to Kerbin";
+            var text = CraftCheckPrompts.Facts(goal, snapshot, 15, null);
+            var alone = CraftCheckPrompts.Facts(MinmusGoal, snapshot, 15, null);
+            var map = DeltaVMap.Compute(snapshot.Bodies, "Kerbin");
+
+            Assert.False(HasLine(text, "return:Mun"));
+            Assert.False(HasLine(text, "launch:Kerbin"));
+            Assert.True(HasLine(text, "transfer:Mun>Minmus"));
+            // The trips on from Minmus are the Map's.
+            Assert.Equal(map.Leg("return:Minmus").DeltaV, Figure(Line(text, "return:Minmus")), 0);
+            // Nothing extra was spent before the Minmus landing: its gravity loss is as for the goal that names Minmus alone.
+            Assert.Equal(Figure(Line(alone, "land:Minmus")), Figure(Line(text, "land:Minmus")), 0);
+            var route = new[] { "ascend:Mun", "transfer:Mun>Minmus", "land:Minmus", "ascend:Minmus", "return:Minmus" }.Sum(id => Figure(Line(text, id)));
+            var all = text.Split('\n').Where(l => l.StartsWith("- ", StringComparison.Ordinal) && !l.StartsWith("- land:Kerbin", StringComparison.Ordinal)
+                && !l.StartsWith("- polar:", StringComparison.Ordinal)).Sum(l => Figure(l));
+            Assert.Equal(route, all, 0);
+        }
+
+        private static GameSnapshot RoundTheMun(double eccentricity)
+        {
+            var snapshot = OnTheMun();
+            snapshot.Situation = eccentricity < 1 ? "ORBITING" : "ESCAPING";
+            snapshot.Orbit.Eccentricity = eccentricity;
+            snapshot.Orbit.SemiMajorAxis = eccentricity < 1 ? 230000 : -400000;
+            snapshot.Orbit.Periapsis = 30000;
+            snapshot.Orbit.Apoapsis = eccentricity < 1 ? 30000 : -1;
+            snapshot.Altitude = 30000;
+            return snapshot;
+        }
+
+        [Fact]
+        public void OrbitingTheMunTheTripToMinmusIsPlanTransfersAndNoAscent()
+        {
+            var snapshot = RoundTheMun(0);
+            var text = CraftCheckPrompts.Facts(MinmusGoal, snapshot, 15, null);
+
+            Assert.False(HasLine(text, "launch:Kerbin"));
+            Assert.False(HasLine(text, "ascend:Mun"));
+            Assert.False(HasLine(text, "transfer:Minmus"));
+            Assert.Contains("plan_transfer", Line(text, "transfer:Mun>Minmus"));
+            Assert.Contains("on Mun, which the craft orbits,", text);
+        }
+
+        private static List<string> Rows(string text)
+        {
+            return text.Split('\n').Where(l => l.StartsWith("- ", StringComparison.Ordinal)).Select(l => l.Substring(2, l.IndexOf(": ", StringComparison.Ordinal) - 2)).ToList();
+        }
+
+        [Fact]
+        public void EscapingTheMunOrRoundTheSunTheRouteIsPricedAsBefore()
+        {
+            var escaping = RoundTheMun(1.3);
+            var sun = RoundTheMun(0.1);
+            sun.Orbit.Body = "Sun";
+            sun.Body = "Sun";
+            sun.Orbit.SemiMajorAxis = 14000000000;
+            foreach (var snapshot in new[] { escaping, sun })
+            {
+                var named = MissionPrompts.GoalBodies(snapshot, MinmusGoal);
+                var text = CraftCheckPrompts.Facts(MinmusGoal, snapshot, 15, null);
+                Assert.Equal(Rows(DeltaVMap.Compute(snapshot.Bodies, "Kerbin").ToText(named)), Rows(text));
+                var map = text.Substring(0, text.IndexOf("Craft facts", StringComparison.Ordinal));
+                Assert.DoesNotContain("plan_", map);
+                Assert.DoesNotContain("estimate", map);
+                Assert.Contains("on each body of the Kerbin system", text);
+            }
+        }
+
+        [Fact]
+        public void APlannerRefusalWithAWindowPassedAddsNoSecondWindowLine()
+        {
+            var snapshot = OnTheMun();
+            var stale = new WindowRow { Kind = WindowKind.Soonest, From = "Kerbin", Body = "Duna", TotalDv = 1700, CaptureDv = 600, DepartureUt = snapshot.Ut + 1e6 };
+            var text = CraftCheckPrompts.Facts("Land on Duna", snapshot, 15, null, false, stale);
+
+            Assert.Contains("estimate", Line(text, "transfer:Mun>Duna"));
+            Assert.DoesNotContain("the player's Soonest window", text);
+            Assert.Single(text.Split('\n'), l => l.Contains(">Duna:"));
+        }
+
+        [Fact]
+        public void ASoonestWindowThatHasDepartedIsSearchedAgainTheSameGameDay()
+        {
+            // In low Mun orbit, so a window can depart within hours of the pricing.
+            var snapshot = RoundTheMun(0);
+            snapshot.CraftPersistentId = 9985;
+            snapshot.WindowPick = new WindowPick("Minmus", WindowKind.Soonest);
+            var minmus = snapshot.Bodies.Single(b => b.Name == "Minmus");
+            string why;
+            RoutePlanners.Searches = 0;
+            var found = RoutePlanners.Transfer(snapshot, minmus, null, 15, out why, true);
+            Assert.True(found != null, why);
+            Assert.Equal(1, RoutePlanners.Searches);
+            Assert.True(found.DepartureUt > snapshot.Ut && !double.IsInfinity(found.DepartureUt));
+            // Priced again before it departs, the same game day: the kept answer.
+            RoutePlanners.Transfer(snapshot, minmus, null, 15, out why, true);
+            Assert.Equal(1, RoutePlanners.Searches);
+
+            // Priced shortly before the window departs, then again just after it, the same game day: searched again.
+            PlannedFigure day = null;
+            var seen = "";
+            foreach (var before in new[] { 600.0, 1800, 3600, 7200, 14400 })
+            {
+                snapshot.Ut = found.DepartureUt - before;
+                day = RoutePlanners.Transfer(snapshot, minmus, null, 15, out why, true);
+                seen += " " + snapshot.Ut + ">" + (day == null ? why : day.DepartureUt.ToString());
+                if (day != null && day.DepartureUt > snapshot.Ut && Math.Floor(snapshot.Ut / 21600) == Math.Floor((day.DepartureUt + 1) / 21600)) break;
+                day = null;
+            }
+            Assert.True(day != null, "no window departs the day it is priced" + seen);
+            var searched = RoutePlanners.Searches;
+            snapshot.Ut = day.DepartureUt + 1;
+            RoutePlanners.Transfer(snapshot, minmus, null, 15, out why, true);
+            Assert.Equal(searched + 1, RoutePlanners.Searches);
         }
     }
 }

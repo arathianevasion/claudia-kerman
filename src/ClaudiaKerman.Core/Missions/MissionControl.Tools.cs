@@ -207,7 +207,7 @@ namespace ClaudiaKerman.Core.Missions
             var firstUnflown = MissionCards.LegInHand(StepsBegun(mission), mission.SequenceCounted);
             var plannedAscent = mission.PlannedAscent;
             var wantedPercent = _config.CraftCheckMarginPercent;
-            Func<MissionPlan, string> legNote = plan => snapshot == null ? "" : PlanLegs.Note(snapshot, PlanLegs.Judge(snapshot, plan.Sequences.Skip(firstUnflown).ToList(), plannedAscent), wantedPercent);
+            Func<MissionPlan, string> legNote = plan => snapshot == null ? "" : PlanLegs.Note(snapshot, PlanLegs.Judge(snapshot, plan.Sequences.Skip(firstUnflown).ToList(), plannedAscent, true), wantedPercent);
             Func<ToolUseBlock, ToolOutcome> answer = use => use.Name != ProposedPlans.ToolName ? null
                 : plans > 1 ? ProposedPlans.OnePerReply()
                 : ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal, goalStands, legNote);
