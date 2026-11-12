@@ -175,6 +175,17 @@ namespace ClaudiaKerman.Core.Tests
             var third = transport.Requests[2];
             Assert.Contains("Keep it to one sequence.", third.Body);
             Assert.Equal(1, NoteCount(third));
+            // #955: the note and the mod notice are both there, the notice still last, and the order is one the API accepts.
+            Assert.Empty(transport.OrderViolations);
+            using (var doc = System.Text.Json.JsonDocument.Parse(third.Body))
+            {
+                var messages = doc.RootElement.GetProperty("messages").EnumerateArray().ToList();
+                var last = messages[messages.Count - 1];
+                Assert.Equal("system", last.GetProperty("role").GetString());
+                Assert.Contains(Note, last.ToString());
+                Assert.Equal("user", messages[messages.Count - 2].GetProperty("role").GetString());
+                Assert.Contains("Keep it to one sequence.", messages[messages.Count - 2].ToString());
+            }
             Assert.Equal(new[] { "medium" }, Efforts(third));
         }
 

@@ -402,9 +402,24 @@ namespace ClaudiaKerman.Core.Tools
         /// anything else is an error); <c>leave_out</c> (<see cref="LeftOut"/>) is for the adapter's <paramref name="craft"/>. Gives <c>error</c> "", <c>burn_ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, and the landing: <c>lat</c>, <c>lng</c>, <c>error_km</c>, <c>landing_ut</c>. A best burn
         /// outside the accuracy gives its <c>error</c> with the landing; a search that could not run, only <c>error</c>.
+        /// #974: with <c>max_wait</c> a number and the target within accuracy_km of one of find_landing_site's recent sites (<see cref="SitePasses.Shared"/>),
+        /// the search flies that site's pass; <c>pass_note</c> says why when it flew another, or, with Daylight landing on, that the target matched no site.
         /// </summary>
         public static IDictionary<string, object> DeorbitBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body,
             IReentryAir air, IReentryCraft craft)
+        {
+            return DeorbitBurn(input, snapshot, body, air, craft, SitePasses.Shared);
+        }
+
+        /// <summary>#974: forgets find_landing_site's passes recorded after <paramref name="ut"/>, for the adapter when a flight resumes there: a quickload or revert discarded their timeline.</summary>
+        public static void ForgetSitePassesAfter(double ut)
+        {
+            SitePasses.Shared.ForgetAfter(ut);
+        }
+
+        /// <summary>The same, following the sites recorded in <paramref name="sites"/>.</summary>
+        internal static IDictionary<string, object> DeorbitBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body,
+            IReentryAir air, IReentryCraft craft, SitePasses sites)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             bool chutes;
@@ -418,6 +433,8 @@ namespace ClaudiaKerman.Core.Tools
             BodyFrame frame;
             var problem = Reentry(snapshot, body, null, out at, out orbit, out frame);
             if (problem != null) return Error(problem);
+            var waitGiven = ask.ContainsKey("max_wait") && ask["max_wait"] is double;
+            var site = waitGiven ? sites.Of(snapshot.Craft.VesselId, at.Name, at.Radius, Number(ask, "lat", 0), Number(ask, "lng", 0), Number(ask, "accuracy_km", 5)) : null;
             var plan = Tools.DeorbitBurn.Find(at, orbit, new DeorbitAsk
             {
                 TargetLatitude = Number(ask, "lat", 0),
@@ -432,10 +449,17 @@ namespace ClaudiaKerman.Core.Tools
                 MaxDv = Number(ask, "max_dv", 0),
                 DeltaVLeft = Number(ask, "dv_left", 0),
                 LaterLegsDv = snapshot.LaterLegsDv ?? 0,
+                Daylight = snapshot.DaylightLandingDefault,
+                SunAt = ut => body.SunElevation(at.Name, Number(ask, "lat", 0), Number(ask, "lng", 0), ut),
+                Site = site,
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
             var result = Landing(plan.Landing, plan.ErrorKm);
             result["error"] = plan.Error ?? "";
+            // A max_wait given as a number is find_landing_site's max_wait_s as a rule: a target none of its sites matched says so, not silently.
+            if (plan.Note == null && site == null && waitGiven && snapshot.DaylightLandingDefault && plan.Error == null)
+                plan.Note = "the target is not one of find_landing_site's sites: flew deorbit's own choice, the cheapest lit pass, the earliest of a tie";
+            if (plan.Note != null) result["pass_note"] = plan.Note;
             result["burn_ut"] = plan.BurnUt;
             result["prograde"] = plan.Prograde;
             result["normal"] = plan.Normal;
@@ -1640,7 +1664,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:ENTRYCRAFT</c> (#814), for <c>return</c> and <c>deorbit</c> at block start: the craft the Entry ahead will fly
         /// (<see cref="EntryCraft"/>), read once and passed on as it is in each landing prediction's <c>craft</c>. The Entry Shield and
-        /// Last Entry are as <see cref="EntryDropCall"/> has them; <c>reentry</c>'s <c>separate</c> is taken as "auto" and its chutes as opening.
+        /// Last Entry are as <see cref="EntryDropCall"/> has them; <c>reentry</c>'s <c>separate</c> and <c>jettison_stage</c> are the running Mission Script's
+        /// (<see cref="GameSnapshot.ScriptReentry"/>, #970; "auto" with none, and <c>jettison_stage</c> given here wins), and its chutes are taken as opening.
         /// Takes <c>home</c> (as <see cref="EntryDropCall"/>; with <c>core</c> instead, Core finds it), <c>leave_out</c> (kOS UIDs the block drops itself first) and <c>body</c> (where the
         /// Entry is, when not where the craft is: a return's planet). Gives <c>error</c> "", <c>leave_out</c> and <c>shield_drop</c> (kOS UIDs, as
         /// <see cref="LeftOut"/> and <see cref="ShieldDrop"/>), <c>whole</c>, <c>kept</c> and <c>gone_prop</c> (t) and <c>burners_kept</c> (who pays a
@@ -1661,7 +1686,9 @@ namespace ClaudiaKerman.Core.Tools
             }
             var dropped = new HashSet<string>(Uids(input, "leave_out"));
             var own = snapshot.Craft.Parts.Where(p => dropped.Contains(uidOf(p.Id) ?? "")).Select(p => p.Id).ToList();
-            var craft = EntryCraft.Of(snapshot, own, Home(input, snapshot, uidOf), Entries.ShieldNumber(snapshot, legs, step, child), true, true, JettisonStage(input), CoreId(input, snapshot, uidOf));
+            var reentry = snapshot.ScriptReentry ?? ScriptReentry.Auto;
+            var jettison = input.ContainsKey("jettison_stage") ? JettisonStage(input) : reentry.JettisonStage;
+            var craft = EntryCraft.Of(snapshot, own, Home(input, snapshot, uidOf), Entries.ShieldNumber(snapshot, legs, step, child), true, !reentry.KeepsStack, jettison, CoreId(input, snapshot, uidOf));
             if (aimed != null) aimed(craft.Key, craft.Describe());
             var gone = craft.LeftOut.Concat(craft.ShieldLeaves);
             var reserve = LandingReserve.Of(snapshot, gone, (int)Number(input, "stage_limit", 0), Home(input, snapshot, uidOf));

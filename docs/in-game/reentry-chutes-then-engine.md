@@ -1,0 +1,51 @@
+# reentry flies chutes first, engines last on a powered finish
+
+In-game check for #954 (flight m20261109-140705-ae3a braked at 1.7 km under chutes still opening and tumbled; ADR 0020's dated note has the sequence). Core's `BRAKEHEIGHTS` and `BRAKETICK` decide when braking starts and guard the throttle; `reentry` flies it. The agent run that wrote this did not launch KSP.
+
+**Block migration:** the brake height, the stopping distance, `reentry_brake_due`, the last-resort height and the throttle guard are in Core (`ReentryBrake`), behind `BRAKEHEIGHTS` and `BRAKETICK`; the parity test against the Kerboscript was deleted with it (ADR 0014). `reentry_duna_powered` flies with `chutes: "none"`, so it can't check this.
+
+## Fly: `tests/blocks/reentry_duna_chutes_then_engine` (the last resort, from an orbit)
+
+The same craft (Mk16 at its default deploy altitude, an LV-T45 with a gimbal) in an 80 km orbit with the entry as before. It is slick and heavy, so it is still at about 650 m/s at 1,500 m AGL: the Mk16 stays `armed` and the last resort burns. Pass lines: `touchdown_speed` under 3, `powered_dv` over 5, a chute opened, `gimbal_locked` false. The harness reads result fields only, so it can't see the blocknotes: `powered_dv > 5` stands in for "the last resort fired", and the spin rule is not checked by the harness. A human reads `KSP.log`:
+
+1. A blocknote `phase braking` reads `last resort`, at the last-resort height (not before), with the chute `armed` and counted as failed.
+2. Thrust is zero while the chute opens (`zero_why` `chute opening`), and a spin over 20 deg/s makes `zero_why` read `spinning` with the throttle at 0 (the spin rule). Note the `rate_deg` before and after the cut.
+3. It lands under 3 m/s.
+
+**Since #969, the pause, the cut and the late burn.** After the last resort has slowed it and the chute is fully open and settled:
+
+4. A blocknote `phase thrust_stopped` (`why` `last resort`, `wait` `final burn wait`, with `agl`, `speed` and `final_h`), and the trace's throttle reads 0 with `zero_why` `final burn wait` from then on. No low-throttle burn under the canopy: note it if the trace shows thrust between that note and the cut.
+5. A blocknote `phase final_cut` (`agl`, `final_h`, `rate_deg`, `up_deg`, `turn_s`), then `phase chutes_cut`, `why` `final burn`, naming the Mk16, at about that `final_h` (tens of metres at the canopy's speed), then the burn to the ground on surface retrograde with the gimbal free. Record `rate_deg` and `up_deg` at the cut, and `turn_s`, the seconds the final height left for the wheels to stop the turn (0 with no turn; never over 6). The `final_h` in `final_cut` is with the turn; the `final_h` in step 4's `thrust_stopped` is usually without it (the craft is read only within the capped turn's reach of the final height, so a wait that begins that low already counts it). They differ by design; the turn adds no more than 200 m. If the craft is more than 30° off upright there, tipping over 20 deg/s, or turning faster than its wheels can stop in 6 s or within those 200 m, the trace reads `tipped, cut held` until that passes; say so on #969 with the angle and rate, and whether it then burned with the chute still on. Through the final burn the trace's off-aim should stay under 30°: say on #969 if `zero_why` ever reads `off aim` (or `spinning`) after the cut.
+6. `powered_dv` should be lower than before #969 (the last resort plus a short final burn). The pass lines don't change.
+
+## Fly: `tests/blocks/reentry_duna_hop_chutes_then_engine` (chutes first)
+
+It has the Mk16 (its deploy altitude set to 3,000 m) and an LV-T45 (with a gimbal) from `reentry_duna_powered`, flown on `reentry`'s defaults. It starts as a near-vertical hop from 8 km over Duna (see the evidence below for why not an orbit; `test.cfg` has the numbers). Results are in `KSP.log`.
+
+0. Before anything else: the speed at 1,500 m AGL. It should read under 250 m/s (free fall alone bounds it at 209 m/s, with the ground at sea level or above). If the craft spawned under the ground, or a different part of Duna is high, say so.
+
+1. Blocknotes `phase chutes` appear as the chute goes through `armed`, `semi` and `deployed`, one for each change. The engine stays at zero throttle from the first `armed` note until the note reads `deployed` and the speed settles or about 8 s have passed.
+2. A blocknote `phase braking` says why: `chutes open`. Its height should be a few tens of metres at about 12 m/s. Since #969 the chute is cut there (`phase chutes_cut`, `why` `final burn`) and the burn flies without it. **If it says `last resort` with a healthy chute, say so on #954**: only a cut, missing or still-packed chute may fire it.
+3. It burns only the last stretch: `powered_dv` in the tens of m/s, not hundreds, and `touchdown_speed` under 5 m/s, standing on its legs.
+4. The rate stays low: no tumbling, the craft holding surface retrograde on the wheels with RCS off. Below about 3 m/s it holds straight up. No site correction.
+5. Trace lines (`phase braking`) once a second give `throttle`, `off_deg`, `rate_deg` and `zero_why`. `rate_deg` is the tipping rate only, measured as `land` does: a craft rolling about its thrust axis reads low and keeps its thrust. Throttle reads 0 while `zero_why` is set: `chute opening`, `chutes unreadable`, `spinning` (tipping over 20 deg/s) or `off aim` (over 30).
+6. The result's `gimbal_locked` is false, and the LV-T45 gimbals for the next flight (a craft relaunched after this lands has its gimbal back).
+
+**Terrain caveat:** the block-test harness has no longitude key, so where the hop lands is not fixed. The test reads the ground height under the craft at the start (log line `reentry hop test: ground under the hop ... m above sea level`, and the result's `ground_m`) and fails on `ground_ok` if it is above about 1,000 m, so it cannot quietly become a second last-resort test. If it fails that way, the run says nothing about chutes first: note the height on #954 and fly again from another spawn. The 209 m/s bound and the chute heights assume ground near sea level.
+
+## Evidence: the orbital scenario (2026-11-09, install 211d22f5): the last resort and the spin rule worked
+
+The player's run of the orbital version landed at 1.7 m/s, but `powered_dv` was 299 against the pass line of under 120. The craft was at 1,459 m AGL doing 655 m/s: the Mk16 stayed `armed` (it opens under 250 m/s), counted as failed after 1 s, and the last resort burned about 6.5 s at full thrust. Thrust was then zero for 11 s while the chute opened, and the spin rule cut thrust once, at 26.7 deg/s, after relighting under the open canopy. So the last resort and the spin rule worked as built; the scenario never tested chutes first, because this slick, heavy craft falls at about its terminal speed and an orbital entry cannot slow it by 1,500 m. The orbital scenario now tests that last-resort path (its pass line is under 3 m/s and a burn, not `powered_dv` under 120); the chutes-first path is the hop above. Not shown without flying: that the new hop keeps `powered_dv` under 120, or has the chute full and settled before the last-resort height. If it still burns the last resort, say so on #954 with the speed at 1,500 m.
+
+## Watch
+
+- **Spin-up under the open canopy (kept from the 2026-11-09 run):** thrust was relit under the open canopy and the craft spun to 26.7 deg/s before the spin rule cut it. Note the `rate_deg` the trace shows after any relight under a canopy, and whether one cut is enough.
+- With a chute that never opens (cut, gone, or still packed 1 s after its call), the burn starts at the last-resort height with nothing filling: the note reads `last resort`. A later set being called (the mains, after failed drogues) does not stop that burn, even as it opens; note what the craft does under it. If the chute that counted as failed opens after all, the throttle goes to 0 until it settles. The tipping and 30° rules stay on throughout.
+- If the addon can't read the chute states for about a second on a powered finish (never seen yet, so look for `BRAKETICK failed` in the log), the note reads `phase chutes`, `states unreadable`, then `phase chutes_cut`, `why unreadable`, and no chute is called after that, the abort included: it lands on the engine with its gimbals free. The thrust is 0 for that second, even in a burn already under way: note it if that second costs the landing. A chute armed but not yet out has nothing to cut and may still open later; note it if one does. A chute-only descent reads no states and is unaffected.
+- With healthy chutes the engine can't help a fast fall: a stop from 140 m/s takes about 1,080 m with Duna's gravity, and there is no burn while a canopy fills. The player accepts this.
+- The 30° guard has no hysteresis: thrust may chatter when `off_deg` sits near 30, or drop to 0 for a moment at the 3 and 5 m/s aim flips. Note it if the trace shows the throttle going in and out.
+- The 20 deg/s limit is unflown (`ReentryBrake.MaxSpinDeg`, one constant to tune from the log): note the `rate_deg` the trace shows if thrust stays off when the craft could have used it, or if it pulses.
+- A chute that reads `armed` for over a second counts as failed, though it may only be waiting for thicker air (the player's call: this stays): the last resort can then fire, and if the canopy opens after all the throttle goes back to 0 until it settles. Note any `last resort` with an `armed` chute that opens later.
+- A chute that sits `semi` for a long time holds the engine off: it is healthy, opening fully at its deploy altitude. Note any flight where one reads `semi` close to the ground.
+- How long a real canopy takes to fill is not measured: the 8 s comes from the part's `deploymentSpeed` of 0.12. Compare the `deployed` note with the speed in the log.
+- A `chutes: "none"` flight (`reentry_duna_powered`) brakes as before and opens nothing.

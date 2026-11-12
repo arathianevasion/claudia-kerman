@@ -186,7 +186,7 @@ namespace ClaudiaKerman.Core.Missions
                 var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
                 snapshot.DaylightLandingDefault = settings.DaylightLanding;
                 snapshot.TimeCapHours = settings.TimeCapHours;
-                snapshot.StampMission(settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+                snapshot.StampMission(settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
                 snapshot.LaterLegsDv = LaterLegsDv(mission);
                 // A Sequence Plan in hand was counted as begun, so a rewrite of it plans the step before the count (#828).
                 snapshot.LastEntryPlanned = mission.Plan != null && Entries.IsLastEntry(snapshot, mission.Plan.Sequences, MissionCards.LegInHand(StepsBegun(mission), mission.SequenceCounted));

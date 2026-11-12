@@ -40,11 +40,11 @@ namespace ClaudiaKerman.ScriptCheck
             _forCoreLibrary = forCoreLibrary;
         }
 
-        public ScriptCheckResult Check(string script)
+        public ScriptCheckResult Check(string script, string customScriptReason = null)
         {
             try
             {
-                return Run(script ?? "", _forToolTests, _forCoreLibrary);
+                return Run(script ?? "", customScriptReason, _forToolTests, _forCoreLibrary);
             }
             catch (Exception e)
             {
@@ -54,7 +54,7 @@ namespace ClaudiaKerman.ScriptCheck
 
         // Kept apart so a missing kOS.Safe fails inside Check's try, not when Check is compiled.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static ScriptCheckResult Run(string script, bool forToolTests, bool forCoreLibrary)
+        private static ScriptCheckResult Run(string script, string customScriptReason, bool forToolTests, bool forCoreLibrary)
         {
             // Inside KSP kOS has set its logger; outside it (CI, tests) the compiler needs one.
             if (SafeHouse.Logger == null) SafeHouse.Logger = new QuietLogger();
@@ -78,11 +78,12 @@ namespace ClaudiaKerman.ScriptCheck
                 sections.Add(part.MainCode);
             }
             var warnings = new List<string>(ScriptLints.Warnings(script));
-            warnings.AddRange(StackDropLint.Warnings(script));
+            warnings.AddRange(StackDropLint.Warnings(script, customScriptReason));
             warnings.AddRange(DropBeforeReentryLint.Warnings(script));
             if (!forToolTests && !forCoreLibrary) warnings.AddRange(DescentLoopLint.Warnings(script));
             // A block test (tests/tools) or a library file may pass a block an option it refuses, to test the refusal.
-            var blockOptions = forToolTests || forCoreLibrary ? new List<string>() : BlockOptionCheck.Problems(script);
+            var blockOptions = forToolTests || forCoreLibrary ? new List<string>() : new List<string>(BlockOptionCheck.Problems(script));
+            if (!forToolTests && !forCoreLibrary) blockOptions.AddRange(StackDropLint.Refusals(script, customScriptReason));
             return new ScriptCheckResult(null, OpcodeReader.Read(sections, forToolTests, forCoreLibrary ? 1 : CoreLibrary.LibraryStartLine(script)))
             {
                 Warnings = warnings,

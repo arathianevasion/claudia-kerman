@@ -410,6 +410,26 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AWarpToTheDueTimeIsNoneForTheDueTimeARepickMovesTo()
+        {
+            // #967: the warp is tied to the plan and its Due Time; the same plan with a new Due Time waits for the player.
+            var mission = Control(new StreamingFakeTransport(HomePlan("Ascend from Duna", "Return to Kerbin"), AscentPlan()));
+            ToDeparture(mission, Landed("Duna", NewGame, 20000));
+            mission.Send(new SetAutoMode(true));
+            mission.Send(new ChooseWindow(WindowKind.Optimal));
+            mission.Send(new WarpToDueTime());
+            Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
+            mission.Send(new ChooseWindow(WindowKind.Soonest));
+            var soonest = SolvedFor("Duna", NewGame, WindowKind.Soonest).DueUt.Value;
+            Assert.Equal(soonest, mission.View.DueTime.Ut, 0);
+            mission.Send(new UtAdvanced(soonest + 1));
+            _background.Drain();
+
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+        }
+
+        [Fact]
         public void InABlackoutTheDepartureWaitsForThePickAndThePickWaitsForTheLink()
         {
             var mission = Control(new StreamingFakeTransport(HomePlan("Return to Kerbin", "Reentry"), DepartPlan()));

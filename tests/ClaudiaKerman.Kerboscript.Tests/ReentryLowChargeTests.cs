@@ -174,14 +174,21 @@ namespace ClaudiaKerman.Kerboscript.Tests
         // ---- Where it is asked ----
 
         [Fact]
-        public void Only_reentry_sets_the_watch_and_after_its_trim_so_a_trim_burn_keeps_its_steering()
+        public void Only_reentry_sets_the_watch_for_its_waits_and_the_trim_burn_runs_on_exec_nodes_own_ctx_without_it()
         {
             var setters = CoreLibrary.Files.Where(f => f.Source.Contains("set ctx:ec_tick")).Select(f => f.Name).ToArray();
             Assert.Equal(new[] { "reentry" }, setters);
             var body = Body();
             var watch = At(body, "set ctx:ec_tick to {");
-            Assert.True(At(body, "claudia_fly_correction(ctx, addons:claudia:entrytrim(") < watch);
-            Assert.True(watch < At(body, "claudia_wait_until(ctx, time:seconds + entry_in - below:lead)"), "set before the first wait");
+            // Set before the trim's wait (#952), so a day from the air low charge is judged as in the drop's wait.
+            Assert.True(watch < At(body, "claudia_wait_until(ctx, time:seconds + trim:wait)"), "set before the first wait");
+            // The trim burn is exec_node's: it ticks a ctx of its own, which never has the watch, so it keeps its steering and its own min_ec_pct abort fails that burn alone.
+            var execNode = CoreLibrary.Files.Single(f => f.Name == "exec_node").Source;
+            Assert.Contains("local ctx is claudia_begin(\"exec_node\", options, exec_node_defaults(), \"auto\").", execNode);
+            Assert.DoesNotContain("ec_tick", execNode);
+            var lib = Lib();
+            var begin = At(lib, "function claudia_begin {");
+            Assert.DoesNotContain("ec_tick", lib.Substring(begin, lib.IndexOf("\n}\n", begin, StringComparison.Ordinal) - begin));
         }
 
         [Fact]
@@ -191,8 +198,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
             // The lock is only for a craft still held; the wait for the air stands either way, so a release during the first wait doesn't start the fall early.
             Assert.Contains("if waited = \"\" { if held { lock steering to srfretrograde. } set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds)", body);
             Assert.Contains("low:carry_on and not braking { set held to false. unlock steering. sas off. claudia_rcs_off(\"low charge\"). }", body);
-            Assert.Equal(2, body.Split("lock steering to").Length - 1);
-            // The only other lock is the braking burn's own, which keeps pointing the engine.
+            Assert.Equal(4, body.Split("lock steering to").Length - 1);
+            // The other locks are the braking burn's own, which keeps pointing the engine, #954's hold under the chutes of a powered finish, and #958's hold for a craft gone over to its engine, taken only while held; the release above lets go of them too.
             Assert.True(At(body, "if fell = \"\" and braking and not claudia_on_ground() {") < At(body, "lock steering to steer."));
         }
 

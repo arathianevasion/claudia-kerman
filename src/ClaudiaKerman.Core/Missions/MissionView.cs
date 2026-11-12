@@ -451,6 +451,8 @@ namespace ClaudiaKerman.Core.Missions
         public WindowPick WindowPick = WindowPick.None;
         /// <summary>The window the running <c>return</c> was planned for (#887), for <see cref="Stamp"/>; null for none.</summary>
         public double? ReturnWindowUt;
+        /// <summary>The running Mission Script's <c>reentry</c> call (#970), for <see cref="Stamp"/>; <see cref="Missions.ScriptReentry.Auto"/> when none runs.</summary>
+        public ScriptReentry ScriptReentry = ScriptReentry.Auto;
 
         /// <summary>The Mission Settings in force.</summary>
         public MissionSettingsValues Settings = new MissionSettingsValues();
@@ -465,6 +467,8 @@ namespace ClaudiaKerman.Core.Missions
             if (view != null && view.Stage != MissionStage.None)
             {
                 snapshot.StampMission(view.Settings.TimeVersusDeltaV, view.MarginPercent, view.WindowPick);
+                // The Daylight landing setting (#957): a block's deorbit and find_landing_site read it, as the planning snapshot does.
+                snapshot.DaylightLandingDefault = view.Settings.DaylightLanding;
                 // What the arrival plane reads (#788): the legs from the one in hand on, the site picked, and what transfer_to recorded for capture.
                 snapshot.LegsAhead = view.PlanLegs != null ? System.Linq.Enumerable.ToList(System.Linq.Enumerable.Skip(view.PlanLegs, System.Math.Max(0, view.CurrentSequence))) : null;
                 // What the legs after the one in hand need (#832), kept back by a block's reserve: CurrentSequence is the leg in hand, counted as begun.
@@ -472,6 +476,7 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.LaterLegsDv = view.PlanLegs == null ? (double?)null : MissionCards.LaterLegsDv(view.PlanLegs, view.CurrentSequence + 1, true, view.CraftName, view.RunningChild);
                 snapshot.PickedSite = view.PickedSite;
                 snapshot.ReturnWindowUt = view.ReturnWindowUt;
+                snapshot.ScriptReentry = view.ScriptReentry;
                 snapshot.RecordedPlane = view.ArrivalPlane;
                 // Each vessel reads only the landing it aimed (#913).
                 snapshot.LandingTarget = view.LandingTargets.Of(snapshot.Craft.VesselId);

@@ -83,6 +83,8 @@ namespace ClaudiaKerman.Core.Tools
                 pick = found.Error == null ? TransferWindows.Pick(found, snapshot) : null;
             }
             if (found.Error != null) return Fail(found.Error.Replace("found no transfer window: ", ""));
+            // #966: a held window that has gone is never traded for a later one, here or in the wait for it.
+            if (found.HeldMissed) return Fail(TransferWindows.HeldMissedWhy(target));
 
             // The window's v-infinity: the Lambert arc round the parent less the craft's planet (or moon) there.
             var tof = pick.ArrivalUt - pick.DepartureUt;

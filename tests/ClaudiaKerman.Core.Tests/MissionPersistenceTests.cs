@@ -33,6 +33,7 @@ namespace ClaudiaKerman.Core.Tests
             // Let any request left in flight by a "crashed" Mission finish into a queue nobody drains.
             foreach (var response in _gates) response.Gate.Set();
             _save.Dispose();
+            ClaudiaKerman.Core.Tools.SitePasses.Shared.Load("{\"saved_ut\":0,\"calls\":[]}", 0);
         }
 
         /// <summary>
@@ -188,6 +189,72 @@ namespace ClaudiaKerman.Core.Tests
         private static IList<MissionSaveState> Saved(MissionControl mission)
         {
             return mission.ExportStates();
+        }
+
+        // ---- #975: find_landing_site's answers are saved with the game, not with a Mission ----
+
+        private static void Answer(double ut, double lat)
+        {
+            ClaudiaKerman.Core.Tools.SitePasses.Shared.Record("v1", "Duna", ut, new[]
+            {
+                new ClaudiaKerman.Core.Tools.LandingSite { Latitude = lat, Longitude = 20, PassUt = ut + 100, LandingUt = ut + 1300, SunElevationDeg = 40 },
+            });
+        }
+
+        private static bool Remembers(double lat)
+        {
+            return ClaudiaKerman.Core.Tools.SitePasses.Shared.Of("v1", "Duna", 320000, lat, 20, 0.5) != null;
+        }
+
+        private MissionControl ControlAt(double ut)
+        {
+            var mission = Control(new StreamingFakeTransport());
+            mission.Send(new UtAdvanced(ut));
+            return mission;
+        }
+
+        [Fact]
+        public void TheRecordedSitePassesComeBackFromASaveWhateverMissionsItHolds()
+        {
+            var mission = ControlAt(500);
+            Answer(100, 10);
+            var saved = mission.ExportSitePasses();
+            ClaudiaKerman.Core.Tools.SitePasses.Shared.Load("", -1);
+            Assert.False(Remembers(10));
+            mission.Send(new MissionsRestored(_save.Path, new List<MissionSaveState>(), saved));
+            Assert.True(Remembers(10));
+        }
+
+        [Fact]
+        public void ASaveMadeBelowAnAnswersUtDropsItOnLoad()
+        {
+            var mission = ControlAt(150);
+            Answer(100, 10);
+            Answer(300, -30);
+            var saved = mission.ExportSitePasses();
+            mission.Send(new UtAdvanced(1000));
+            mission.Send(new MissionsRestored(_save.Path, new List<MissionSaveState>(), saved));
+            Assert.True(Remembers(10));
+            Assert.False(Remembers(-30));
+        }
+
+        [Fact]
+        public void ASaveWithoutTheRecordKeepsEarlierAnswersAndDropsLaterOnes()
+        {
+            var mission = ControlAt(200);
+            Answer(100, 10);
+            Answer(300, -30);
+            mission.Send(new MissionsRestored(_save.Path, new List<MissionSaveState>(), null));
+            Assert.True(Remembers(10));
+            Assert.False(Remembers(-30));
+        }
+
+        [Fact]
+        public void AnOldSavesMissionStateWithTheEarlierPerMissionValueStillLoads()
+        {
+            var values = new MissionSaveState { Id = "m1" }.ToValues();
+            values["sitePasses"] = "[]";
+            Assert.Equal("m1", MissionSaveState.FromValues(values).Id);
         }
 
         // ---- The save-state as plain data ----

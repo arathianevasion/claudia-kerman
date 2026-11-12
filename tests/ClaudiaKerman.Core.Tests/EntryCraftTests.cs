@@ -124,7 +124,7 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>In an 80 km circular equatorial orbit of Kerbin, crossing longitude 0 at UT 0, as <c>deorbit</c> starts.</summary>
         private static GameSnapshot AtKerbin(List<SnapshotPart> parts)
         {
-            var snapshot = new GameSnapshot { Ut = 0, Situation = "ORBITING", Body = "Kerbin" };
+            var snapshot = new GameSnapshot { Ut = 0, Situation = "ORBITING", Body = "Kerbin", DaylightLandingDefault = false };
             snapshot.Orbit = new SnapshotOrbit { SemiMajorAxis = Kerbin.Radius + 80000, Eccentricity = 0, Body = "Kerbin", Periapsis = 80000, Apoapsis = 80000, Epoch = 0 };
             snapshot.Bodies.AddRange(new[] { Sun, Kerbin });
             return With(snapshot, parts);
@@ -486,6 +486,27 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(Uids(Shield), Uids(answer["shield_drop"]));
             Assert.Equal(1.45, D(answer, "kept"), 6);
             Assert.Equal(3.2, D(answer, "whole"), 6);
+        }
+
+        /// <summary>
+        /// #970: flight m20261109-200745-96f6's reentry kept its stack (separate "none") while deorbit aimed for the craft without it, and landed 95 km off.
+        /// With the running script's reentry on the snapshot, deorbit aims for the craft reentry flies, and reentry finds the same craft at its drop point.
+        /// </summary>
+        [Fact]
+        public void Deorbit_aims_for_the_craft_the_scripts_reentry_flies()
+        {
+            var snapshot = AtKerbin(Parts(Shape.Drops));
+            Assert.Equal(Uids(Tank, Engine), Uids(Read(snapshot)["leave_out"]));
+            snapshot.ScriptReentry = ScriptReentry.Of("set res to reentry(lexicon(\"separate\", \"none\", \"jettison_stage\", \"none\")).");
+            var aimed = "";
+            var kept = BlockCalls.EntryCraftCall(new Dictionary<string, object> { { "home", Uid(Pod) } }, snapshot, null, 0, "", Uid, (key, why) => aimed = key);
+            Assert.Empty(Uids(kept["leave_out"]));
+            Assert.Empty(Uids(kept["shield_drop"]));
+            Assert.Equal(D(kept, "whole"), D(kept, "kept"), 6);
+            Assert.StartsWith("as it is, its stack kept, shield kept, 3.20 t", (string)kept["why"]);
+            var finish = BlockCalls.EntryFinishCall(new Dictionary<string, object> { { "home", Uid(Pod) }, { "chutes", true }, { "drop", false }, { "jettison_stage", "none" } },
+                snapshot, null, 0, "", Uid, aimed, "aimed");
+            Assert.DoesNotContain("the landing was aimed for", (string)finish["why"]);
         }
 
         /// <summary>A shield with no decoupler of its own (reentry_shield_modules' rule): with a decoupler beside it, it jettisons; with none on or beside it, it stays on.</summary>

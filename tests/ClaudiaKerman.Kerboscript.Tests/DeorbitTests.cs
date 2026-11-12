@@ -111,11 +111,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal("|12.5|-30", One("claudia_target_site(lexicon(\"lat\", 12.5, \"lng\", -30), \"Duna\"):values:join(\"|\")"));
         }
 
+        /// <summary>
+        /// #974: max_wait goes to the search as given, so Core tells "auto" (one turn of the body, DeorbitBurnTests) from find_landing_site's
+        /// max_wait_s; the search's pass_note (another pass flown than the site's) reaches the result.
+        /// </summary>
         [Fact]
-        public void Max_wait_auto_is_one_turn_of_the_body()
+        public void Max_wait_goes_to_the_search_as_given_and_its_pass_note_reaches_the_result()
         {
-            Assert.Equal("21549.425", One("deorbit_max_wait(\"auto\", 21549.425)"));
-            Assert.Equal("3600", One("deorbit_max_wait(3600, 21549.425)"));
+            var deorbit = CoreLibrary.Blocks.Single(b => b.Name == "deorbit").Source;
+            Assert.Contains("deorbit_query(site, time:seconds + deorbit_lead_s(), opt:max_wait,", deorbit);
+            Assert.Contains("if found:haskey(\"pass_note\") { set extra:pass_note to found:pass_note. }", deorbit);
+            Assert.Equal("auto", One("deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, \"auto\", 0, 5, 0, lexicon(), \"auto\", 0):max_wait"));
         }
 
         [Fact]

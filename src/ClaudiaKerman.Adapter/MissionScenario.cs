@@ -16,6 +16,7 @@ namespace ClaudiaKerman.Adapter
     public class MissionScenario : ScenarioModule
     {
         public const string MissionNode = "MISSION";
+        public const string SitePassesKey = "sitePasses";
 
         private ConfigNode _loaded;
 
@@ -33,11 +34,15 @@ namespace ClaudiaKerman.Adapter
                 if (_loaded == null) return;
                 var kept = ReadSavedAgencyFlag(_loaded);
                 if (kept != null) node.AddValue(ClaudiaFlagKeeper.SavedAgencyFlagKey, kept);
+                var keptPasses = ReadSitePasses(_loaded);
+                if (keptPasses != null) node.AddValue(SitePassesKey, keptPasses);
                 foreach (var mission in _loaded.GetNodes(MissionNode)) node.AddNode(mission);
                 return;
             }
             // Save-level, not a Mission's: the player's agency flag while the Claudia Flag flies in its place (#642).
             if (driver.SavedAgencyFlag != null) node.AddValue(ClaudiaFlagKeeper.SavedAgencyFlagKey, driver.SavedAgencyFlag);
+            // #975: find_landing_site's answers are the game's, not a Mission's.
+            node.AddValue(SitePassesKey, driver.ExportSitePasses());
             foreach (var state in driver.ExportStates())
             {
                 var mission = node.AddNode(MissionNode);
@@ -51,6 +56,14 @@ namespace ClaudiaKerman.Adapter
             if (scenario == null) return null;
             var flag = scenario.GetValue(ClaudiaFlagKeeper.SavedAgencyFlagKey);
             return string.IsNullOrEmpty(flag) ? null : flag;
+        }
+
+        /// <summary>find_landing_site's saved record in a scenario module's node (#975); null when none.</summary>
+        public static string ReadSitePasses(ConfigNode scenario)
+        {
+            if (scenario == null) return null;
+            var passes = scenario.GetValue(SitePassesKey);
+            return string.IsNullOrEmpty(passes) ? null : passes;
         }
 
         /// <summary>The Mission snapshots in a scenario module's node, as saved.</summary>

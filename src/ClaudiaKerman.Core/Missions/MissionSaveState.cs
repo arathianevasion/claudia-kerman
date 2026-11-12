@@ -66,12 +66,18 @@ namespace ClaudiaKerman.Core.Missions
         public bool WindowPickNeeded;
         public bool WindowPickUnsaid;
         public double? WindowOwnDue;
+        /// <summary>#966: the held window's anchor (the departure picked, never moved while it holds); the revised plan in hand carries the held pick; a pick was spent by its ejection. Null, false and false in older saves.</summary>
+        public double? WindowPickDepartureUt;
+        public bool WindowPickCarried;
+        public bool WindowPickSpent;
         /// <summary>The Mission is remote: Claudia is at Mission Control, not aboard. A save from before this existed reads as crewed.</summary>
         public bool Remote;
         /// <summary>The Mission is in Auto Mode: the player's Approval is given in advance. A save from before this existed reads as off.</summary>
         public bool AutoMode;
         /// <summary>The player has approved a Mission Plan (#661), so a revision is never the first one. A save from before this existed reads as not.</summary>
         public bool MissionPlanApproved;
+        /// <summary>#967: the Due Time of the Sequence Plan in hand that the player pressed Warp to Due Time for with Auto Mode on; null for none, and in older saves.</summary>
+        public double? DueWarp;
         /// <summary>While Paused for EVA science: what the player is to do by hand; "" otherwise.</summary>
         public string EvaScience = "";
         /// <summary>In Manual Control (or its Hand back Debrief): the stretch was planned, so its Debrief is judged against the target.</summary>
@@ -238,6 +244,7 @@ namespace ClaudiaKerman.Core.Missions
             if (RecheckSince != 0) values["recheckSince"] = RecheckSince.ToString(CultureInfo.InvariantCulture);
             if (TargetChange.Length > 0) values["targetChange"] = TargetChange;
             if (MissionPlanApproved) values["missionPlanApproved"] = "true";
+            if (DueWarp.HasValue) values["dueWarp"] = DueWarp.Value.ToString("R", CultureInfo.InvariantCulture);
             if (PendingNotice.Length > 0) values["pendingNotice"] = PendingNotice;
             if (PausedCannotFly) values["pausedCannotFly"] = "true";
             if (PausedForCap) values["pausedForCap"] = "true";
@@ -267,6 +274,9 @@ namespace ClaudiaKerman.Core.Missions
             if (WindowPickNeeded) values["windowPickNeeded"] = "true";
             if (WindowPickUnsaid) values["windowPickUnsaid"] = "true";
             if (WindowOwnDue.HasValue) values["windowOwnDue"] = WindowOwnDue.Value.ToString("R", CultureInfo.InvariantCulture);
+            if (WindowPickDepartureUt.HasValue) values["windowPickDepartureUt"] = WindowPickDepartureUt.Value.ToString("R", CultureInfo.InvariantCulture);
+            if (WindowPickCarried) values["windowPickCarried"] = "true";
+            if (WindowPickSpent) values["windowPickSpent"] = "true";
             if (ReturnWindowUt.HasValue) values["returnWindowUt"] = ReturnWindowUt.Value.ToString("R", CultureInfo.InvariantCulture);
             foreach (var setting in Settings) values[SettingPrefix + setting.Key] = setting.Value;
             for (var i = 0; i < UnsafeProblems.Count; i++) values[UnsafeProblemPrefix + i.ToString(CultureInfo.InvariantCulture)] = UnsafeProblems[i];
@@ -337,6 +347,8 @@ namespace ClaudiaKerman.Core.Missions
                     : new WindowPick(Get(values, "windowPickBody"), Get(values, "windowPickKind") == WindowKind.Optimal.ToString() ? WindowKind.Optimal : WindowKind.Soonest),
                 WindowPickNeeded = Get(values, "windowPickNeeded") == "true",
                 WindowPickUnsaid = Get(values, "windowPickUnsaid") == "true",
+                WindowPickCarried = Get(values, "windowPickCarried") == "true",
+                WindowPickSpent = Get(values, "windowPickSpent") == "true",
             };
             double runStart;
             if (double.TryParse(Get(values, "runStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out runStart)) state.RunStartUt = runStart;
@@ -362,7 +374,9 @@ namespace ClaudiaKerman.Core.Missions
                 state.WindowDeltaV = windowDv;
             }
             if (double.TryParse(Get(values, "windowOwnDue"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.WindowOwnDue = reading;
+            if (double.TryParse(Get(values, "windowPickDepartureUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.WindowPickDepartureUt = reading;
             if (double.TryParse(Get(values, "returnWindowUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.ReturnWindowUt = reading;
+            if (double.TryParse(Get(values, "dueWarp"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.DueWarp = reading;
             decimal cap;
             if (decimal.TryParse(Get(values, "spendingCap"), NumberStyles.Number, CultureInfo.InvariantCulture, out cap)) state.SpendingCap = cap;
             int number;
@@ -522,6 +536,7 @@ namespace ClaudiaKerman.Core.Missions
                 json.Field("custom_script", sequence.CustomScript).Field("custom_script_reason", sequence.CustomScriptReason)
                     .Field("script", sequence.Script).Field("due_time_ut", sequence.DueTimeUt)
                     .Field("window_closes_ut", sequence.WindowClosesUt).Field("late_window_dv", sequence.LateWindowDeltaV).Field("manual", sequence.Manual).Field("vessel", sequence.Vessel);
+                if (sequence.ReasonGiven.Length > 0) json.Field("reason_given", sequence.ReasonGiven);
                 if (sequence.CoastCheckpoint.Length > 0) json.Field("coast_checkpoint", sequence.CoastCheckpoint);
                 json.EndObject();
             }
@@ -544,9 +559,12 @@ namespace ClaudiaKerman.Core.Missions
     {
         public readonly string SaveDirectory;
         public readonly IList<MissionSaveState> States;
+        /// <summary>The game's saved find_landing_site record (<see cref="MissionControl.ExportSitePasses"/>, #975); null when the save has none.</summary>
+        public readonly string SitePasses;
 
-        public MissionsRestored(string saveDirectory, IList<MissionSaveState> states)
+        public MissionsRestored(string saveDirectory, IList<MissionSaveState> states, string sitePasses = null)
         {
+            SitePasses = sitePasses;
             SaveDirectory = saveDirectory;
             States = states ?? new List<MissionSaveState>();
         }

@@ -151,6 +151,76 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(DeorbitLint)));
         }
 
+        // ---- The kept-stack rule of the stack-drop lint (#959): reentry with separate "none" ----
+
+        private const string KeptStackLint = "keeps the whole stack";
+
+        [Fact]
+        public void The_stack_drop_lint_warns_on_a_reentry_with_separate_none_and_the_script_still_passes()
+        {
+            var result = _check.Check(CoreLibrary.Bundle("local res is reentry(lexicon(\"separate\", \"none\", \"jettison_stage\", \"none\")).\naddons:claudia:report(res)."));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            var lint = Assert.Single(result.Warnings, w => w.Contains(KeptStackLint));
+            Assert.StartsWith("line 1: ", lint);
+            Assert.Contains("mass", lint);
+            Assert.Contains("engine", lint);
+            Assert.Contains("above the shield", lint);
+        }
+
+        [Theory]
+        [InlineData("local res is reentry().\n", false)]
+        [InlineData("local res is reentry(lexicon(\"separate\", \"auto\")).\n", false)]
+        [InlineData("local res is reentry(lexicon(\"separate\", 2)).\n", false)]
+        [InlineData("local res is reentry(lexicon(\"chutes\", \"none\")).\n", false)]
+        [InlineData("// reentry(lexicon(\"separate\", \"none\"))\nlocal res is reentry().\n", false)]
+        [InlineData("local res is reentry(lexicon(\"separate\", \"none\")).\n", true)]
+        [InlineData("local res is reentry(lexicon(\"hold\", \"none\", \"separate\", \"NONE\")).\n", true)]
+        public void The_stack_drop_lint_warns_only_on_a_reentry_whose_separate_is_none(string script, bool fires)
+        {
+            Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(KeptStackLint)));
+        }
+
+        // ---- #971: reentry with separate "none" is refused unless the plan gives a custom_script_reason ----
+
+        private const string KeepNone = "local res is reentry(lexicon(\"separate\", \"none\")).\naddons:claudia:report(res).";
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void A_reentry_with_separate_none_and_no_reason_is_refused_and_says_what_to_do(string reason)
+        {
+            var result = _check.Check(CoreLibrary.Bundle(KeepNone), reason);
+            Assert.False(result.Passed);
+            var refusal = Assert.Single(result.Problems);
+            Assert.StartsWith("line 1: ", refusal);
+            Assert.Contains("separate \"none\"", refusal);
+            Assert.Contains("drop the stack: leave separate off or set it to \"auto\"", refusal);
+            Assert.Contains("custom_script_reason", refusal);
+        }
+
+        [Fact]
+        public void A_reentry_with_separate_none_and_a_reason_passes_with_the_warning()
+        {
+            var result = _check.Check(CoreLibrary.Bundle(KeepNone), "The Dart stage lands and lifts off.");
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            Assert.Single(result.Warnings, w => w.Contains(KeptStackLint));
+        }
+
+        [Theory]
+        [InlineData("local res is reentry().\n")]
+        [InlineData("local res is reentry(lexicon(\"separate\", \"auto\")).\n")]
+        [InlineData("local res is reentry(lexicon(\"separate\", 2)).\n")]
+        public void A_reentry_without_separate_none_passes_with_no_reason(string script)
+        {
+            Assert.True(_check.Check(script, "").Passed);
+        }
+
+        [Fact]
+        public void With_no_reason_asked_about_a_reentry_with_separate_none_only_warns()
+        {
+            Assert.True(_check.Check(CoreLibrary.Bundle(KeepNone)).Passed);
+        }
+
         // ---- The drop-before-reentry lint (#608): drop_parts as the block call just before reentry ----
 
         private const string DropLint = "drop_parts just before reentry";
@@ -582,6 +652,11 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("print addons:claudia:predictionmiss(lexicon(\"lat\", 0, \"lng\", 0)):km.")]
         [InlineData("print addons:claudia:turntime(lexicon()):turn_time.")]
         [InlineData("print addons:claudia:lowcharge(lexicon()):carry_on.")]
+        [InlineData("print addons:claudia:brakeheights(lexicon()):brake_h.")]
+        [InlineData("local t is addons:claudia:braketick(lexicon()).\nprint t:start.")]
+        [InlineData("print addons:claudia:entryloss(lexicon()):carry_on.")]
+        [InlineData("print addons:claudia:groundsettle(lexicon()):done.")]
+        [InlineData("print addons:claudia:entryskip(lexicon()):refusal.")]
         [InlineData("local t is addons:claudia:TurnTime@.\nprint t(lexicon(\"max_stopping_time\", 2)).")]
         [InlineData("local e is addons:claudia:ejectionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(e:ut, e:radial, e:normal, e:prograde).")]
         [InlineData("local c is addons:claudia.\nprint c:EjectionBurn(lexicon(\"target\", \"Minmus\", \"target_pe\", 20000, \"window\", \"next\")):dv.")]

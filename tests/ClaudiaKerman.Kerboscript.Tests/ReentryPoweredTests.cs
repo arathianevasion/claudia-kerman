@@ -15,6 +15,12 @@ namespace ClaudiaKerman.Kerboscript.Tests
     /// </summary>
     public class ReentryPoweredTests
     {
+        /// <summary>The simulation below asks Core as the block does, through <see cref="ReentryBrakeRigFunctions"/>: the Kerboscript heights moved there (#954).</summary>
+        public ReentryPoweredTests()
+        {
+            KosHarness.Register(typeof(ReentryBrakeRigFunctions));
+        }
+
         private static string[] Run(string script)
         {
             return KosHarness.Run(CoreLibrary.Bundle(script)).ToArray();
@@ -32,7 +38,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             Assert.Equal(new[] { "auto", "", "True", "False" },
                 Run("local d is reentry_defaults(). print d:chutes. print reentry_unreadable(d).\n"
-                    + "print reentry_touchdown_ok(14.9). print reentry_touchdown_ok(15.1).\n"));
+                    + "print 14.9 <= reentry_touchdown_limit(). print 15.1 <= reentry_touchdown_limit().\n"));
         }
 
         [Theory]
@@ -64,14 +70,16 @@ namespace ClaudiaKerman.Kerboscript.Tests
         /// <summary>Fake engines, uid and whether lit: lit logs each one activated, and a stage firing would need the stage command, which the block's source never has.</summary>
         private const string Engines =
             "local activated is list().\n"
+            + "global ship is lexicon(\"control\", lexicon(\"pilotmainthrottle\", 1)).\n"
             + "function eng {\n parameter uid, ignition.\n"
-            + "  return lexicon(\"uid\", uid, \"ignition\", ignition, \"activate\", { activated:add(uid). }).\n}\n"
+            + "  return lexicon(\"uid\", uid, \"ignition\", ignition, \"activate\", { activated:add(uid + \"@\" + ship:control:pilotmainthrottle). }).\n}\n"
             + "local engs is list(eng(\"low\", false), eng(\"high\", false), eng(\"high2\", false), eng(\"lit\", true)).\n";
 
         [Fact]
         public void Only_the_engines_Core_chose_are_lit_part_by_part_and_a_lit_one_is_left()
         {
-            Assert.Equal(new[] { "high,high2", "high,high2" },
+            // Each at zero throttle (#963): lit in the air, none burns before BRAKETICK's word.
+            Assert.Equal(new[] { "high@0,high2@0", "high@0,high2@0" },
                 Run(Engines + "reentry_light(engs, list(\"high\", \"high2\", \"lit\")). print activated:join(\",\").\n"
                     + "for e in engs { if e:uid:startswith(\"high\") { set e:ignition to true. } }\n"
                     + "reentry_light(engs, list(\"high\", \"high2\")). print activated:join(\",\").\n"));
@@ -92,7 +100,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). }", body);
             // Braking ticks don't autostage, and running dry isn't an abort: burning false, and only the touchdown's speed fails it.
             Assert.Contains("claudia_tick(ctx, tset, false)", body);
-            Assert.Contains("if not reentry_touchdown_ok(last_speed) {", body);
+            Assert.Contains("if last_speed > reentry_touchdown_limit() {", body);
         }
 
         /// <summary>
@@ -271,37 +279,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.DoesNotContain("chutegroup()", source);
         }
 
-        // ---- The stopping distance ----
-
-        [Fact]
-        public void With_no_drag_the_stopping_distance_is_the_kinematic_one()
-        {
-            // (100^2 - 2^2) / (2 x 10) = 499.8 m, over twenty 50 m steps.
-            Assert.Equal("499.8", One("round(reentry_stop_distance(100, 10, list(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0), 50, 2), 2)"));
-        }
-
-        [Fact]
-        public void With_even_drag_the_stopping_distance_is_the_closed_form_one()
-        {
-            // net 10 m/s^2, k 1e-3 /m from 100 m/s to 0: ln(1 + k v^2 / net) / (2 k) = 500 ln 2 = 346.57 m.
-            Assert.Equal("346.57", One("round(reentry_stop_distance(100, 10, list(1e-3,1e-3,1e-3,1e-3,1e-3,1e-3,1e-3,1e-3,1e-3,1e-3), 100, 0), 2)"));
-        }
-
-        [Fact]
-        public void A_fall_the_engines_cant_stop_in_the_height_left_is_minus_one_so_braking_starts_once_the_air_has_done_its_work()
-        {
-            Assert.Equal(new[] { "-1", "-1", "True", "False", "True", "True", "False" },
-                Run("print reentry_stop_distance(100, -1, list(0,0,0,0), 50, 2).\n"
-                    + "print reentry_brake_height(300, 12, 2.94, list(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0), 1000).\n"
-                    + "print reentry_brake_due(1000, -1, 300).\n"
-                    // High on a shallow path at orbital speed: not yet. Then under the shield's speed, or under its height, or simply within the stopping distance.
-                    + "print reentry_brake_due(40000, -1, 1200).\n"
-                    + "print reentry_brake_due(40000, -1, 390).\n"
-                    + "print reentry_brake_due(900, 1000, 1200).\n"
-                    + "print reentry_brake_due(1100, 1000, 300).\n"));
-        }
-
-        [Fact]
+                [Fact]
         public void Drag_steps_scale_half_the_drag_now_by_the_pressure_below()
         {
             // 10 m/s^2 at 100 m/s: k = 0.5 x 10 / 100^2 = 5e-4 /m now, times the pressure at each 100 m step's middle over the
@@ -337,10 +315,10 @@ function sim {
       if t >= next_sample {
         local here is y.
         local ks is reentry_drag_steps(abs(drag), abs(v), p, radar, { parameter d. return p0 * e ^ (-(here + com - d) / h_scale). }).
-        set brake_h to reentry_brake_height(v, a_max, g, ks, radar).
+        set brake_h to test_brake_heights(lexicon(""v_down"", v, ""a_up"", a_max, ""g"", g, ""ks"", ks, ""radar"", radar, ""soft"", reentry_powered_soft(), ""end"", reentry_powered_end())):brake_h.
         set next_sample to t + 0.25.
       }
-      if reentry_brake_due(radar, brake_h, v) { set braking to true. set brake_at to radar. }
+      if test_brake_tick(lexicon(""radar"", radar, ""speed"", v, ""brake_h"", brake_h, ""shield_speed"", reentry_shield_speed(), ""shield_agl"", reentry_shield_last_agl(), ""chutes"", list())):start { set braking to true. set brake_at to radar. }
     }
     if braking { set tset to reentry_brake_throttle(radar, v, a_max, g). }
     if used >= fuel { set tset to 0. }
@@ -350,7 +328,7 @@ function sim {
     set used to used + tset * a_max * dt.
     set t to t + dt.
   }
-  print round(last, 2). print round(brake_at). print round(used). print reentry_touchdown_ok(last).
+  print round(last, 2). print round(brake_at). print round(used). print last <= reentry_touchdown_limit().
 }
 ";
 

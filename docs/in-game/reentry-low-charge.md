@@ -11,7 +11,7 @@ Its craft is `reentry_duna_powered`'s at 1.3% charge, on an 80 by 15 km Duna ent
 3. No `lock steering` hold: the craft doesn't turn to retrograde and RCS stays off. The next `lock steering` is the braking burn's, if this flight lands on the engine.
 4. **Watch:** the armed chute does not tear off at speed. It should wait for safe conditions by itself; the `.cfg` shows `minAirPressureToOpen` and `deployAltitude`, not that behaviour. If it does tear off, note the speed and altitude.
 5. **Watch:** whether the unheld craft keeps its shield forward through the heating.
-6. **Watch, on the powered path:** the engine is unheld until braking starts, and `reentry_powered_lag` allows only 1 s for the turn. Check that the braking burn still points the engine retrograde. If it burns off-axis, note how far off and for how long.
+6. **Watch, on the powered path:** the engine is unheld until braking starts, and `reentry_brake_height` allows only 1 s for the turn. Check that the braking burn still points the engine retrograde. If it burns off-axis, note how far off and for how long.
 7. The chute opens and the craft comes down (`landed_or_splashed` true).
 
 ## Check: a flight in between

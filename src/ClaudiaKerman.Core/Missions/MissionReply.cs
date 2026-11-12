@@ -76,6 +76,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool CustomScript;
         /// <summary>Why no Building Block fits, for the Custom Script badge; "" otherwise.</summary>
         public string CustomScriptReason = "";
+        /// <summary>The custom_script_reason Claudia gave, trimmed, whatever the badge shows (#971: Script Check asks for it when a reentry keeps its stack); "" when she gave none.</summary>
+        public string ReasonGiven = "";
         /// <summary>The earliest UT the sequence may start (a wait that needs the player comes first); null when it can start right away (ADR 0004).</summary>
         public double? DueTimeUt;
         /// <summary>The UT after which the planned window is missed; null when the plan has no window to miss.</summary>
@@ -87,7 +89,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The vessel it flies: "" or "craft" for the Mission's craft, otherwise a Child Vessel's name from the Mission Plan.</summary>
         public string Vessel = "";
         /// <summary>
-        /// The resume token of the mod's own plan at a Coast Checkpoint (#775); "" for any plan Claudia wrote. Its Due Time is soft, and it is the only kind Auto Mode may stand in at.
+        /// The resume token of the mod's own plan at a Coast Checkpoint (#775); "" for any plan Claudia wrote. Its Due Time is soft (ADR 0004 has where else Auto Mode stands in at a Due Time).
         /// </summary>
         public string CoastCheckpoint = "";
     }
@@ -409,6 +411,8 @@ namespace ClaudiaKerman.Core.Missions
                     Vessel = (JsonNode.Str(sequence["vessel"]) ?? "").Trim(),
                     // The mod's own mark, read back from a save; Claudia's plans have it cleared as they are offered.
                     CoastCheckpoint = JsonNode.Str(sequence["coast_checkpoint"]) ?? "",
+                    // A save writes it as reason_given (the badge's text isn't hers); a reply has only custom_script_reason.
+                    ReasonGiven = (JsonNode.Str(sequence["reason_given"]) ?? JsonNode.Str(sequence["custom_script_reason"]) ?? "").Trim(),
                 };
                 // The badge is read from the script, not taken from a custom_script field (older transcripts and saved plans may still carry one; it is ignored); her reason text is kept when it is custom.
                 var proposed = reply.SequencePlan;

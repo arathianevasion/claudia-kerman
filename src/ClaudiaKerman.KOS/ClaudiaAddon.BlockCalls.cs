@@ -50,10 +50,20 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (deorbit, return): where the orbit as it is now, or the one given as orbit_sma, orbit_ecc, ..., comes down, held retrograde; lexicon error, lat, lng, landing_ut, error_km"));
             AddSuffix("PREDICTIONMISS", new OneArgsSuffix<Lexicon, Lexicon>(PredictionMissCall,
                 "Core Library only (reentry): the great-circle km on a body of radius (m) between lat, lng and actual_lat, actual_lng; lexicon km"));
-            AddSuffix("TURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(TurnTime,
+            AddSuffix("GROUNDSETTLE", new OneArgsSuffix<Lexicon, Lexicon>(GroundSettleCall,
+                "Core Library only (reentry, each tick after touchdown): whether the craft has stayed on the ground for 2 s (or 30 s have passed since first touch), from on_ground, now, since, first; lexicon since, first, done"));
+            AddSuffix("TURNTIME",new OneArgsSuffix<Lexicon, Lexicon>(TurnTime,
                 "Core Library only (a block that turns to a burn): the time to leave for a 190 degree turn on the wheels and RCS (if the craft has monoprop, on or off), given max_stopping_time; lexicon error, turn_time, turn_s, top_rate, and wheels_turn_time, wheels_turn_s on the wheels alone (-1: no wheel torque)"));
             AddSuffix("LOWCHARGE", new OneArgsSuffix<Lexicon, Lexicon>(LowChargeCall,
                 "Core Library only (reentry, each tick): what low charge does with the periapsis in the air, from ec_pct, min_ec_pct, pe, air_top; lexicon error, carry_on, step (0 nothing, 1 steering released, 2 chutes armed), abort_pct (the charge min_ec_pct is to judge)"));
+            AddSuffix("BRAKEHEIGHTS", new OneArgsSuffix<Lexicon, Lexicon>(BrakeHeightsCall,
+                "Core Library only (reentry, every 0.25 s of a powered fall): the heights it brakes by, from v_down, a_up, g, ks, radar, soft, end; lexicon error, brake_h, last_h (-1 for a fall the engines can't stop)"));
+            AddSuffix("BRAKETICK", new OneArgsSuffix<Lexicon, Lexicon>(BrakeTickCall,
+                "Core Library only (reentry, each tick of a powered finish): whether braking may start, the guarded throttle and the cut for the final burn, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg, rate_deg, up_deg, v_down, a_up, g, soft, end, drogues_called, mains_called, brake_why; lexicon error, start, why, open, chutes, throttle, zero_why, rate_deg, cut, cut_why, trace"));
+            AddSuffix("ENTRYLOSS", new OneArgsSuffix<Lexicon, Lexicon>(EntryLossCall,
+                "Core Library only (reentry, a part count that fell): whether it carries on through a part loss in the air, from lost, altitude, air_top, on_ground, powered, thrust, uids, chute_mode, mode, entry, group; lexicon error, carry_on, powered, to_engines, regroup, light, chute_mode, finish, group, why"));
+            AddSuffix("ENTRYSKIP", new OneArgsSuffix<Lexicon, Lexicon>(EntrySkipCall,
+                "Core Library only (reentry, after a skip-out): whether it flies another pass, from passes, pe, air_top, entry_in, auto, max_duration, elapsed; lexicon error, refusal, max_duration"));
             AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
                 "Core Library only (RCS Use, once per turn): the burst turn through angle (deg) with left_s to the deadline (-1: none), or after a stop burst with corrections taken; lexicon error, rcs, wheels_s, coast_rate, spin_s, coast_s, stop_s, stop_deg, wheels_deg, turn_s, alpha, and spin, coast, stop (kOS's t, kp, ki)"));
             AddSuffix("BURSTTURN", new TwoArgsSuffix<Lexicon, Lexicon, Lexicon>(BurstTurnCall,
@@ -199,6 +209,17 @@ namespace ClaudiaKerman.KOS
                 miss = PredictionMiss.Call(KosValues.ToDictionary(input));
                 return KosValues.FromPlain(miss);
             }, () => string.Format(CultureInfo.InvariantCulture, "{0:0.00} km between the predicted and the actual landing", miss["km"]));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:GROUNDSETTLE</c> (#968, ADR 0014): reentry's wait on the ground (<see cref="GroundSettle.Call"/>), pure.</summary>
+        private Lexicon GroundSettleCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> settled = null;
+            return (Lexicon)Guarded("GROUNDSETTLE", () =>
+            {
+                settled = GroundSettle.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(settled);
+            }, () => string.Format(CultureInfo.InvariantCulture, "settled {0}", settled["done"]), 1);
         }
 
         private Lexicon KeepClearCall(Lexicon input)
@@ -367,14 +388,7 @@ namespace ClaudiaKerman.KOS
             // The group and why, so a reentry's chutes can be read back from KSP.log.
             return (Lexicon)Guarded("CHUTEGROUP", () =>
             {
-                var vessel = shared.Vessel;
-                var uids = new System.Collections.Generic.Dictionary<uint, string>();
-                foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                set = BlockCalls.ChuteGroupCall(SnapshotReader.ReadForMission(vessel), MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
-                    id => uids.ContainsKey(id) ? uids[id] : null, KosValues.ToDictionary(input));
-                // Nothing can land the craft, said above the air (#827): the Mission window's events and the Debrief, never an Alert.
-                var warning = set["error"] as string == "" ? (string)set["warning"] : "";
-                if (warning.Length > 0 && MissionDriver.Current != null) MissionDriver.Current.Send(new ChuteWarning(warning));
+                set = ReadChuteGroup(KosValues.ToDictionary(input));
                 return KosValues.FromPlain(set);
             }, () => set["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "{0}: {1}{2}", (bool)set["last"] ? "Last Entry, every chute aboard" : "stage " + set["stage"],
@@ -389,18 +403,67 @@ namespace ClaudiaKerman.KOS
             System.Collections.Generic.IDictionary<string, object> finish = null;
             return (Lexicon)Guarded("ENTRYFINISH", () =>
             {
-                var vessel = shared.Vessel;
-                var uids = new System.Collections.Generic.Dictionary<uint, string>();
-                foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                var snapshot = SnapshotReader.ReadForMission(vessel);
-                SnapshotReader.ReadEngineFuel(snapshot, vessel);
-                // Compared once, and only with this vessel's own aim: a later Entry with no aim of its own has nothing to compare.
-                string aimed;
-                var aimedKey = MissionDriver.AimedCraft.Take(vessel.persistentId, out aimed);
-                finish = BlockCalls.EntryFinishCall(KosValues.ToDictionary(input), snapshot, MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
-                    id => uids.ContainsKey(id) ? uids[id] : null, aimedKey, aimed);
+                finish = ReadEntryFinish(KosValues.ToDictionary(input));
                 return KosValues.FromPlain(finish);
             }, () => finish["error"] as string == "" ? (string)finish["why"] : (string)finish["error"]);
+        }
+
+        /// <summary><see cref="BlockCalls.ChuteGroupCall"/> for the craft as it now is, and any warning sent on; for <c>CHUTEGROUP</c> and <c>ENTRYLOSS</c>.</summary>
+        private System.Collections.Generic.IDictionary<string, object> ReadChuteGroup(System.Collections.Generic.IDictionary<string, object> ask)
+        {
+            var vessel = shared.Vessel;
+            var uids = new System.Collections.Generic.Dictionary<uint, string>();
+            foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+            var set = BlockCalls.ChuteGroupCall(SnapshotReader.ReadForMission(vessel), MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
+                id => uids.ContainsKey(id) ? uids[id] : null, ask);
+            // Nothing can land the craft, said above the air (#827): the Mission window's events and the Debrief, never an Alert.
+            var warning = set["error"] as string == "" ? (string)set["warning"] : "";
+            if (warning.Length > 0 && MissionDriver.Current != null) MissionDriver.Current.Send(new ChuteWarning(warning));
+            return set;
+        }
+
+        /// <summary><see cref="BlockCalls.EntryFinishCall"/> for the craft as it now is; for <c>ENTRYFINISH</c> and <c>ENTRYLOSS</c>.</summary>
+        private System.Collections.Generic.IDictionary<string, object> ReadEntryFinish(System.Collections.Generic.IDictionary<string, object> ask)
+        {
+            var vessel = shared.Vessel;
+            var uids = new System.Collections.Generic.Dictionary<uint, string>();
+            foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+            var snapshot = SnapshotReader.ReadForMission(vessel);
+            SnapshotReader.ReadEngineFuel(snapshot, vessel);
+            // Compared once, and only with this vessel's own aim: a later Entry with no aim of its own has nothing to compare.
+            string aimed;
+            var aimedKey = MissionDriver.AimedCraft.Take(vessel.persistentId, out aimed);
+            return BlockCalls.EntryFinishCall(ask, snapshot, MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
+                id => uids.ContainsKey(id) ? uids[id] : null, aimedKey, aimed);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:ENTRYLOSS</c> (#958, ADR 0014): <see cref="BlockCalls.EntryPartLoss"/> with the craft read now. Called only on a tick the part count fell. A failure (logged by Guarded) still answers, carrying on with what the block had: a falling craft must not abort on a failed read.</summary>
+        private Lexicon EntryLossCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> loss = null;
+            var answer = Guarded("ENTRYLOSS", () =>
+            {
+                var ask = KosValues.ToDictionary(input);
+                var uids = ask.ContainsKey("uids") && ask["uids"] is System.Collections.IEnumerable ? ((System.Collections.IEnumerable)ask["uids"]).Cast<object>().Select(u => Convert.ToString(u, CultureInfo.InvariantCulture)).ToList() : new System.Collections.Generic.List<string>();
+                ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
+                loss = BlockCalls.EntryPartLoss(ask, ReadEntryFinish, ReadChuteGroup);
+                // Gone over to its engines (#963): BRAKETICK starts fresh, so a canopy already out is waited for from now, never on what an earlier flight left.
+                if (loss.ContainsKey("to_engines") && (bool)loss["to_engines"]) HoldBrake(BlockCalls.EmptyBrakeHold());
+                return KosValues.FromPlain(loss);
+            }, () => string.Format(CultureInfo.InvariantCulture, "carry on {0}, {1}", loss["carry_on"], loss.ContainsKey("why") ? loss["why"] : ""));
+            return loss != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.EntryPartLoss(KosValues.ToDictionary(input), null, null));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:ENTRYSKIP</c> (#958, ADR 0014): <see cref="BlockCalls.EntrySkip"/>, pure. A failure refuses nothing and caps nothing, so the block flies on.</summary>
+        private Lexicon EntrySkipCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> skip = null;
+            var answer = Guarded("ENTRYSKIP", () =>
+            {
+                skip = BlockCalls.EntrySkip(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(skip);
+            }, () => skip["refusal"] as string);
+            return skip != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.EntrySkip(null));
         }
 
         /// <summary><c>ADDONS:CLAUDIA:ENTRYCRAFT</c> (#814): the craft the Entry ahead flies (<see cref="BlockCalls.EntryCraftCall"/>), recorded for <c>reentry</c> to compare.</summary>
@@ -704,7 +767,7 @@ namespace ClaudiaKerman.KOS
                 }
                 finally
                 {
-                    BlockTestAim.Clear(); // the one reentry trim has read it, or failed before it did (#892)
+                    if (fix == null || !(Convert.ToDouble(fix["wait"], CultureInfo.InvariantCulture) > 0)) BlockTestAim.Clear(); // the one reentry trim has read it, or failed before it did (#892); a "wait" asks again (#952)
                 }
             }, () => string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m{6}",
                 fix["ut"], fix["prograde"], fix["normal"], fix["radial"], fix["dv"], fix["pe_predicted"],
@@ -826,6 +889,164 @@ namespace ClaudiaKerman.KOS
             return low != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.LowCharge(null));
         }
 
+        /// <summary><c>ADDONS:CLAUDIA:BRAKEHEIGHTS</c> (#954, ADR 0014): <see cref="BlockCalls.BrakeHeights"/>, sampled 4 times a second, so its time is logged at most once a second (guardrail 6). A failure answers -1 for both heights, as the block reads both.</summary>
+        private Lexicon BrakeHeightsCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> heights = null;
+            var answer = Guarded("BRAKEHEIGHTS", () =>
+            {
+                heights = BlockCalls.BrakeHeights(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(heights);
+            }, () => string.Format(CultureInfo.InvariantCulture, "brake at {0:0} m, last resort at {1:0} m", heights["brake_h"], heights["last_h"]), 1);
+            return heights != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.BrakeHeights(null));
+        }
+
+        /// <summary>The time (UT, s) this processor's powered finish first read its called chutes all fully open, for <see cref="BrakeTickCall"/>; -1 while one is really opening or none is open, and kept through a called chute still packed.</summary>
+        private double brakeOpenUt = -1;
+
+        /// <summary>How many of this processor's chutes read fully open last tick, for <see cref="BrakeTickCall"/>: one more starts <see cref="brakeOpenUt"/> again.</summary>
+        private double brakeOpenCount;
+
+        /// <summary>This processor's powered finish has read its open chutes settled, for <see cref="BrakeTickCall"/>; held until a chute is really opening again.</summary>
+        private bool brakeSettled;
+
+        /// <summary>The open time and settled reading set aside while a chute reads semi, for <see cref="BrakeTickCall"/>: a chute that is then cut gives them back (#960).</summary>
+        private double brakeKeptUt = -1;
+        private bool brakeKeptSettled;
+        private double brakeKeptDrogues, brakeKeptMains;
+
+        /// <summary>The time (UT, s) each set of this processor's powered finish was first called, for <see cref="BrakeTickCall"/>; -1 while it isn't.</summary>
+        private double brakeDrogueCallUt = -1, brakeMainCallUt = -1;
+
+        /// <summary>The last sample of the fall's speed for <see cref="BrakeTickCall"/> (UT, s; -1 for none, and m/s) and the slowing worked out from it, m/s².</summary>
+        private double brakeSampleUt = -1, brakeSampleSpeed, brakeDecel;
+
+        /// <summary>When this processor's last resort first burned, when its chute states first failed to read and when the burn's next trace line is due (UT, s; -1 for none), for <see cref="BrakeTickCall"/>.</summary>
+        private double brakeLastResortUt = -1, brakeUnreadUt = -1, brakeTraceUt = -1;
+
+        /// <summary>When this processor's chutes all first read fully open (UT, s; -1 while one isn't), and whether its braking has begun the final wait under them, for <see cref="BrakeTickCall"/> (#969).</summary>
+        private double brakeAllOpenUt = -1;
+        private bool brakeFinal;
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:BRAKETICK</c> (#954, ADR 0014): <see cref="BlockCalls.BrakeTick"/> with the live state of the Chute Group's parachutes (<c>uids</c>), read here as Core has no game.
+        /// Called every physics tick, so its time is logged at most once a second (guardrail 6). A failure asks Core with <c>chutes_unread</c>: no burn and no thrust until it has failed for a second, then the chutes that are out are cut and the landing goes on the engine (#954; there is no braking by radar under a canopy).
+        /// The times the chutes first read fully open and each set was first called are held here between ticks; each goes back to -1 on any tick it no longer holds, so no flight inherits it from the last.
+        /// </summary>
+        private Lexicon BrakeTickCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> tick = null;
+            var answer = Guarded("BRAKETICK", () =>
+            {
+                var ask = BrakeAsk(input);
+                var uids = ask.ContainsKey("uids") ? ((System.Collections.Generic.IEnumerable<object>)ask["uids"]).Select(u => Convert.ToString(u, CultureInfo.InvariantCulture)).ToList() : new System.Collections.Generic.List<string>();
+                ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
+                tick = BlockCalls.BrakeTick(ask, BrakeTurnCraft);
+                HoldBrake(tick);
+                NoteBrake(tick);
+                return KosValues.FromPlain(tick);
+            }, () => string.Format(CultureInfo.InvariantCulture, "start {0} ({1}), chutes {2}, throttle {3:0.00} (zero: {4}), rate {5:0.0} deg/s", tick["start"], tick["why"], tick["chutes"], tick["throttle"], tick["zero_why"], tick["rate_deg"]), 1);
+            if (tick != null) return (Lexicon)answer;
+            var blind = BrakeAsk(input);
+            blind["chutes_unread"] = true;
+            tick = BlockCalls.BrakeTick(blind);
+            HoldBrake(tick);
+            return (Lexicon)KosValues.FromPlain(tick);
+        }
+
+        /// <summary>The craft's reading for <see cref="BrakeTurnCraft"/>, held while the final height counts (null if the read failed), whether it has been read, and the vessel and part count it was read on.</summary>
+        private TurnCraft brakeTurnCraft;
+        private bool brakeTurnRead;
+        private Vessel brakeTurnVessel;
+        private int brakeTurnParts;
+
+        /// <summary>
+        /// The craft's torque and moment of inertia, read as TURNTIME reads them (<see cref="TurnCraftReader"/>), for <see cref="BrakeTickCall"/>'s final height (#969): Core asks only when the craft is tipping near the cut.
+        /// Read once and held until the final height no longer counts (<see cref="HoldBrake"/>) or the vessel or its part count changes: with the thrust at zero under the chutes, the mass doesn't change.
+        /// Wheels that run out of charge during the wait keep the first reading's torque (#969's fix round: a read every tick walked every part twice).
+        /// A read that fails is logged once and answers null, so the final height stays as it was and the chute states, read apart, are not thought unreadable.
+        /// </summary>
+        private TurnCraft BrakeTurnCraft()
+        {
+            try
+            {
+                var vessel = shared.Vessel;
+                if (brakeTurnRead && vessel == brakeTurnVessel && vessel.parts.Count == brakeTurnParts) return brakeTurnCraft;
+                brakeTurnRead = true;
+                brakeTurnVessel = vessel;
+                brakeTurnParts = vessel.parts.Count;
+                brakeTurnCraft = TurnCraftReader.Read(vessel);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning(ModInfo.LogTag + " block call BRAKETICK couldn't read the craft's torque, so the final height leaves no time to stop its turn: " + e);
+                brakeTurnCraft = null;
+            }
+            return brakeTurnCraft;
+        }
+
+        /// <summary>The block's ask with the time and what this processor holds between ticks, for <see cref="BrakeTickCall"/>.</summary>
+        private System.Collections.Generic.IDictionary<string, object> BrakeAsk(Lexicon input)
+        {
+            var ask = KosValues.ToDictionary(input);
+            ask["now"] = Planetarium.GetUniversalTime();
+            ask["open_ut"] = brakeOpenUt;
+            ask["open_count"] = brakeOpenCount;
+            ask["settled"] = brakeSettled;
+            ask["kept_ut"] = brakeKeptUt;
+            ask["kept_settled"] = brakeKeptSettled;
+            ask["kept_drogues"] = brakeKeptDrogues;
+            ask["kept_mains"] = brakeKeptMains;
+            ask["drogue_call_ut"] = brakeDrogueCallUt;
+            ask["main_call_ut"] = brakeMainCallUt;
+            ask["sample_ut"] = brakeSampleUt;
+            ask["sample_speed"] = brakeSampleSpeed;
+            ask["decel"] = brakeDecel;
+            ask["last_resort_ut"] = brakeLastResortUt;
+            ask["unread_ut"] = brakeUnreadUt;
+            ask["trace_ut"] = brakeTraceUt;
+            ask["all_open_ut"] = brakeAllOpenUt;
+            ask["final"] = brakeFinal;
+            return ask;
+        }
+
+        /// <summary>Keeps the times and readings Core handed back for the next tick, for <see cref="BrakeTickCall"/>.</summary>
+        private void HoldBrake(System.Collections.Generic.IDictionary<string, object> tick)
+        {
+            brakeOpenUt = (double)tick["open_ut"];
+            brakeOpenCount = (double)tick["open_count"];
+            brakeSettled = (bool)tick["settled"];
+            brakeKeptUt = (double)tick["kept_ut"];
+            brakeKeptSettled = (bool)tick["kept_settled"];
+            brakeKeptDrogues = (double)tick["kept_drogues"];
+            brakeKeptMains = (double)tick["kept_mains"];
+            brakeDrogueCallUt = (double)tick["drogue_call_ut"];
+            brakeMainCallUt = (double)tick["main_call_ut"];
+            brakeSampleUt = (double)tick["sample_ut"];
+            brakeSampleSpeed = (double)tick["sample_speed"];
+            brakeDecel = (double)tick["decel"];
+            brakeLastResortUt = (double)tick["last_resort_ut"];
+            brakeUnreadUt = (double)tick["unread_ut"];
+            brakeTraceUt = (double)tick["trace_ut"];
+            brakeAllOpenUt = (double)tick["all_open_ut"];
+            brakeFinal = (bool)tick["final"];
+            // The craft's reading is held through the final stage and the settled chutes before it (where Core reads it; all_open_ut is -1 unless all are open), and read afresh after.
+            if (!brakeFinal && !(brakeAllOpenUt >= 0 && brakeSettled))
+            {
+                brakeTurnRead = false;
+                brakeTurnCraft = null;
+                brakeTurnVessel = null;
+            }
+        }
+
+        /// <summary>Notes for <c>reentry</c> what Core says changed this tick (#969: the thrust stopped for the final burn), as <c>BLOCKNOTE</c> would: KSP.log only. Written here, so the block spends no line on it.</summary>
+        private void NoteBrake(System.Collections.Generic.IDictionary<string, object> tick)
+        {
+            var note = tick["note"] as System.Collections.Generic.IDictionary<string, object>;
+            var bridge = KosBridge.Instance;
+            if (note != null && note.Count > 0 && shared.KSPPart != null && bridge != null) bridge.OnBlockTrace(shared.KSPPart.persistentId, "reentry", note, false);
+        }
+
         /// <summary>
         /// <c>ADDONS:CLAUDIA:TURNPLAN</c> (#692, ADR 0014): RCS Use's burst turn and correction rule (<see cref="TurnPlan.Call"/>) on
         /// the torque and moment of inertia read now. Called at the on-gate (at most once a second) and after each stop burst, so its
@@ -886,6 +1107,10 @@ namespace ClaudiaKerman.KOS
                 craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId());
                 found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody), craft);
                 MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.bodyName), vessel);
+                // #974: another pass flown than find_landing_site's is the block's note too, as the block itself would write it.
+                object passNote;
+                if (found.TryGetValue("pass_note", out passNote) && shared.KSPPart != null && KosBridge.Instance != null)
+                    KosBridge.Instance.OnBlockTrace(shared.KSPPart.persistentId, "deorbit", new System.Collections.Generic.Dictionary<string, object> { { "phase", "pass" }, { "note", passNote } }, false);
                 return KosValues.FromPlain(found);
             }, () => Landing(found) + CraftLine(craft) + PlanLine(found));
         }

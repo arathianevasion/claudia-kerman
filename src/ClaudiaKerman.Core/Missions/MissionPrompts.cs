@@ -273,6 +273,9 @@ namespace ClaudiaKerman.Core.Missions
             return "The player came back after the Transfer Window the launch's Due Time waited for, and the mod dropped the Sequence Plan. " + what;
         }
 
+        /// <summary>#966: with a missed held window, so the revision's transfer keeps to the player's next pick rather than a literal UT.</summary>
+        public const string HeldPickWindowLine = " Leave transfer_to's window at \"next\": it keeps to the window the player picks.";
+
         public const string WindowMissedNotice =
             "Revise the Mission Plan for a later window (the transfer rows above are from now): " + ProposePlan + ". If the craft can't fly "
             + "the goal then, hand in a plan with no sequences whose why proposes a reduced goal. The player must approve it again.";
@@ -813,7 +816,7 @@ namespace ClaudiaKerman.Core.Missions
         private static ToolOutcome TransferRow(PlanningTools tools, GameSnapshot snapshot, string input)
         {
             var rows = TransferRows.GetOrCreateValue(snapshot);
-            var key = snapshot.TimeVersusDeltaV + "|" + snapshot.MarginPercent + "|" + snapshot.WindowPick.Key + "|" + input;
+            var key = snapshot.TimeVersusDeltaV + "|" + snapshot.MarginPercent + "|" + snapshot.WindowPick.Key + "@" + (snapshot.WindowPick.DepartureUt.HasValue ? snapshot.WindowPick.DepartureUt.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : "") + "|" + input;
             lock (rows)
             {
                 ToolOutcome found;

@@ -237,10 +237,9 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void A_touchdown_under_the_limit_is_fine_and_90_ms_is_not()
+        public void A_touchdown_over_15_ms_fails_it()
         {
-            Assert.Equal("True", One("reentry_touchdown_ok(7.5)"));
-            Assert.Equal("False", One("reentry_touchdown_ok(90)"));
+            Assert.Equal(15, Number("reentry_touchdown_limit()"));
         }
 
         // ---- reentry: measurements ----
@@ -327,33 +326,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(expected == "1" ? "True" : "False", One("reentry_skipped_out(" + args + ")"));
         }
 
-        [Fact]
-        public void A_skip_out_with_the_periapsis_still_inside_waits_for_the_next_pass_and_the_auto_deadline_grows()
-        {
-            Assert.Equal("", One("reentry_skip_refusal(1, 34800, 70000)"));
-            Assert.Equal("", One("reentry_skip_refusal(2, 34800, 70000)"));
-            // 3 s run, 5000 s to the next entry: the deadline is 3 + 5000 + 1800.
-            Assert.Equal(6803, Number("reentry_next_deadline(true, 1900, 3, 5000)"));
-        }
-
-        [Fact]
-        public void A_fourth_pass_fails_with_the_skipped_out_reason()
-        {
-            Assert.Equal("skipped out of the atmosphere 3 times (periapsis 34800 m)", One("reentry_skip_refusal(3, 34800, 70000)"));
-        }
-
-        [Fact]
-        public void A_skip_out_with_the_periapsis_above_the_atmosphere_fails_at_once()
-        {
-            Assert.Equal("skipped out: periapsis 71000 m is above the atmosphere", One("reentry_skip_refusal(1, 71000, 70000)"));
-            Assert.Equal("skipped out: periapsis 71000 m is above the atmosphere", One("reentry_skip_refusal(3, 71000, 70000)"));
-        }
-
-        [Fact]
-        public void An_explicit_max_duration_stays_a_hard_cap_after_a_skip_out()
-        {
-            Assert.Equal(1900, Number("reentry_next_deadline(false, 1900, 3, 5000)"));
-        }
+        // The skip-out rules moved to Core with #958: EntryPartLossTests.
 
         // ---- science ----
 

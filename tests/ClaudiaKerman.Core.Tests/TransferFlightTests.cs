@@ -466,7 +466,7 @@ namespace ClaudiaKerman.Core.Tests
             var coming = AimedCorrectionTests.Falling();
             // What the adapter records from the step is what the trim aims at.
             coming.LandingTarget = BlockCalls.LandingTargetOf(step, "Kerbin");
-            var trim = BlockCalls.EntryTrim(new Dictionary<string, object> { { "to_air", 15000.0 }, { "dv_left", 300.0 }, { "isp", 0.0 }, { "has_node", false } },
+            var trim = BlockCalls.EntryTrim(new Dictionary<string, object> { { "to_air", 2000.0 }, { "dv_left", 300.0 }, { "isp", 0.0 }, { "has_node", false } },
                 coming, new AimedCorrectionTests.FrameBody(coming.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
             Assert.Equal("", trim["error"]);
             Assert.True(Convert.ToDouble(trim["dv"]) > 0, "it flies a trim toward KSC: " + trim["aim_note"]);

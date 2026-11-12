@@ -464,6 +464,7 @@ namespace ClaudiaKerman.Core.Tools
                 Script = script,
                 DueTimeUt = token.DueUt,
                 Vessel = plan.Vessel,
+                ReasonGiven = plan.ReasonGiven,
                 CoastCheckpoint = token.ToString(),
             };
         }

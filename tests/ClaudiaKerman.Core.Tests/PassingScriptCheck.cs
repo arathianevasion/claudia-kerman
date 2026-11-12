@@ -8,7 +8,7 @@ namespace ClaudiaKerman.Core.Tests
     /// <summary>A Script Check that passes every script, for tests about other parts of the Mission loop.</summary>
     internal sealed class PassingScriptCheck : IScriptCheck
     {
-        public ScriptCheckResult Check(string script)
+        public ScriptCheckResult Check(string script, string customScriptReason = null)
         {
             return ScriptCheckResult.Pass();
         }

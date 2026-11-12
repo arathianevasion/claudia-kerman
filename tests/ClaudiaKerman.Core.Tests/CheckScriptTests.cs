@@ -20,7 +20,7 @@ namespace ClaudiaKerman.Core.Tests
             public readonly List<string> Checked = new List<string>();
             public ScriptCheckResult Result = ScriptCheckResult.Pass();
 
-            public ScriptCheckResult Check(string script)
+            public ScriptCheckResult Check(string script, string customScriptReason = null)
             {
                 Checked.Add(script);
                 return Result;

@@ -26,9 +26,9 @@ namespace ClaudiaKerman.Core.Tests
             return Conic.FromState(ReentrySim.Mu, new Vec3(r, 0, 0), new Vec3(0, v * Math.Cos(i), v * Math.Sin(i)), 0);
         }
 
-        private static DeorbitPlan Find(double lat, double lng, Conic orbit = null, double maxWait = ReentrySim.RotationPeriod, double atmosphere = ReentrySim.AtmTop, double accuracyKm = 5, double earliest = 120)
+        private static DeorbitPlan Find(double lat, double lng, Conic orbit = null, double maxWait = ReentrySim.RotationPeriod, double atmosphere = ReentrySim.AtmTop, double accuracyKm = 5, double earliest = 120, bool daylight = false, Func<double, double> sunAt = null, SitePass site = null, double maxDv = 0)
         {
-            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = earliest, MaxWait = maxWait, AccuracyKm = accuracyKm, DeltaVLeft = 5000 };
+            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = earliest, MaxWait = maxWait, AccuracyKm = accuracyKm, DeltaVLeft = 5000, Daylight = daylight, SunAt = sunAt, Site = site, MaxDv = maxDv };
             return DeorbitBurn.Find(ReentrySim.Kerbin(atmosphere), orbit ?? Circular(), ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame());
         }
 
@@ -165,7 +165,16 @@ namespace ClaudiaKerman.Core.Tests
         {
             public override double TerrainAltitude(string body, double latitude, double longitude) { return 0; }
             public override string Biome(string body, double latitude, double longitude) { return ""; }
-            public override double SunElevation(string body, double latitude, double longitude, double ut) { return 0; }
+            /// <summary>What the sun reader was asked, and what it answers (0 unless set).</summary>
+            public readonly System.Collections.Generic.List<double[]> SunAsks = new System.Collections.Generic.List<double[]>();
+            public readonly System.Collections.Generic.List<string> SunBodies = new System.Collections.Generic.List<string>();
+            public double Sun;
+            public override double SunElevation(string body, double latitude, double longitude, double ut)
+            {
+                SunBodies.Add(body);
+                SunAsks.Add(new[] { latitude, longitude, ut });
+                return Sun;
+            }
 
             public override bool SurfaceUnder(string body, double x, double y, double z, out double latitude, out double longitude)
             {
@@ -181,7 +190,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var kerbin = ReentrySim.Kerbin();
             var radius = body == "Kerbin" ? ReentrySim.R : 200000;
-            var snapshot = new Missions.GameSnapshot { Ut = 0, Situation = "ORBITING", Body = body };
+            var snapshot = new Missions.GameSnapshot { Ut = 0, Situation = "ORBITING", Body = body, DaylightLandingDefault = false };
             var sma = (2 * radius + 80000 + pe) / 2;
             snapshot.Orbit = new Missions.SnapshotOrbit
             {
@@ -199,6 +208,34 @@ namespace ClaudiaKerman.Core.Tests
             var ask = new System.Collections.Generic.Dictionary<string, object>();
             for (var i = 0; i < pairs.Length; i += 2) ask[(string)pairs[i]] = pairs[i + 1];
             return ask;
+        }
+
+        [Fact]
+        public void The_block_call_reads_the_daylight_setting_and_the_planning_bodys_sun()
+        {
+            var ask = Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0);
+            var snapshot = Snapshot();
+            snapshot.DaylightLandingDefault = true;
+            var dark = BlockCalls.DeorbitBurn(ask, snapshot, new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Contains("daylight", (string)dark["error"]);
+            snapshot.DaylightLandingDefault = false;
+            Assert.Equal("", BlockCalls.DeorbitBurn(ask, snapshot, new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule())["error"]);
+        }
+
+        [Fact]
+        public void The_block_call_asks_the_planning_body_for_the_sun_at_the_target_when_the_burn_lands()
+        {
+            var ask = Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0);
+            var snapshot = Snapshot();
+            snapshot.DaylightLandingDefault = true;
+            var sphere = new Sphere { Sun = 40 };
+            var result = BlockCalls.DeorbitBurn(ask, snapshot, sphere, new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("", result["error"]);
+            Assert.NotEmpty(sphere.SunAsks);
+            Assert.All(sphere.SunBodies, body => Assert.Equal("Kerbin", body));
+            Assert.All(sphere.SunAsks, a => { Assert.Equal(KscLat, a[0]); Assert.Equal(KscLng, a[1]); });
+            Assert.Contains(sphere.SunAsks, a => a[2] == (double)result["landing_ut"]);
+            Assert.All(sphere.SunAsks, a => Assert.True(a[2] > (double)result["burn_ut"] || a[2] > 120, "asked at " + a[2]));
         }
 
         [Fact]
@@ -503,6 +540,287 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(wide.ErrorKm, 0, 0.5);
         }
 
+        // #957: the Daylight landing setting. A near-circular, near-equatorial orbit passes the site every turn at about the same cost.
+        [Fact]
+        public void With_daylight_on_a_dark_pass_is_skipped_for_a_lit_one()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            // The pass the search would fly with the sun ignored is dark; only the pass after it (about 2,000 s on) is lit.
+            var first = Find(KscLat, KscLng, orbit);
+            Assert.Null(first.Error);
+            var land = first.Landing.LandingUt;
+            Func<double, double> sun = ut => ut > land + 1000 && ut < land + 3200 ? 40 : -30;
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: sun);
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.Landing.LandingUt, land + 1000, land + 3200);
+            Assert.InRange(plan.ErrorKm, 0, 5);
+        }
+
+        /// <summary>
+        /// #970, flight m20261109-200745-96f6's figures with the sun as it moves (the hour angle turning with the body): find_landing_site's pass
+        /// lands at 73 degrees, the pass deorbit flew about 84 degrees of turn before it. At the target that pass landed at dawn, about 22.8 degrees
+        /// up: lit by the 20 degree rule, so it is flown; the craft then landed 17 degrees of longitude west, where the sun was 6.2. Had the sun
+        /// there been under the horizon (the other side of noon, -10.6), the pass is skipped for the next lit one.
+        /// </summary>
+        [Theory]
+        [InlineData(-67.1, true)]
+        [InlineData(-100.6, false)]
+        public void This_flights_dawn_pass_is_lit_at_the_target_and_a_dark_one_is_skipped(double hourAngleAtFirstLanding, bool firstIsLit)
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var first = Find(KscLat, KscLng, orbit);
+            var land = first.Landing.LandingUt;
+            Func<double, double> sun = ut =>
+            {
+                var hour = (hourAngleAtFirstLanding + 360 * (ut - land) / ReentrySim.RotationPeriod) * Math.PI / 180;
+                return Math.Asin(Math.Cos(KscLat * Math.PI / 180) * Math.Cos(hour)) * 180 / Math.PI;
+            };
+            Assert.Equal(firstIsLit, sun(land) >= LandingSiteSearch.MinSunElevationDeg);
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: sun);
+            Assert.Null(plan.Error);
+            Assert.True(sun(plan.Landing.LandingUt) >= LandingSiteSearch.MinSunElevationDeg);
+            if (firstIsLit) Assert.Equal(first.BurnUt, plan.BurnUt, 3);
+            else Assert.True(plan.Landing.LandingUt > land + 1000, "a later, lit pass");
+        }
+
+        /// <summary>
+        /// #974: the landings of three passes over KSC from the 2 degree orbit, each the cheapest from the last: the one deorbit's own rule flies
+        /// (about 3,800 s), one about 12,300 s later in the same turn of the body, and one past that turn. A dearer pass (about 1,700 s) lands too.
+        /// </summary>
+        private static double[] ThreeLandings(Conic orbit)
+        {
+            var first = Find(KscLat, KscLng, orbit).Landing.LandingUt;
+            var second = Find(KscLat, KscLng, orbit, earliest: first).Landing.LandingUt;
+            var third = Find(KscLat, KscLng, orbit, earliest: second).Landing.LandingUt;
+            var turnEnds = 120 + ReentrySim.RotationPeriod;
+            Assert.True(second > first + 1000 && second < turnEnds - 1000 && third > turnEnds + 1000, first + " " + second + " " + third);
+            return new[] { first, second, third };
+        }
+
+        /// <summary>A sun that is <paramref name="suns"/>[i] within 300 s of landing i, and <paramref name="elsewhere"/> between them.</summary>
+        private static Func<double, double> SunAtPasses(double[] landings, double[] suns, double elsewhere)
+        {
+            return ut =>
+            {
+                for (var i = 0; i < landings.Length; i++)
+                    if (Math.Abs(ut - landings[i]) < 300) return suns[i];
+                return elsewhere;
+            };
+        }
+
+        /// <summary>
+        /// #974, flight m20261109-200745-96f6: find_landing_site's pass lands with the sun at 73 degrees, but an earlier pass at dawn, about 22.8 degrees,
+        /// is lit too and costs the same. Given the site's pass, deorbit flies it, not the earliest lit one.
+        /// </summary>
+        [Fact]
+        public void Given_find_landing_sites_pass_it_flies_that_pass_not_an_earlier_dawn_one()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var lands = ThreeLandings(orbit);
+            var sun = SunAtPasses(lands, new[] { 22.8, 73, 50 }, 50);
+            var earliestLit = Find(KscLat, KscLng, orbit, daylight: true, sunAt: sun);
+            Assert.InRange(earliestLit.Landing.LandingUt, lands[0] - 300, lands[0] + 300);
+
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: sun, site: new SitePass { LandingUt = lands[1], SunDeg = 73 });
+            Assert.Null(plan.Error);
+            Assert.True(plan.Note == null, plan.Note);
+            Assert.InRange(plan.Landing.LandingUt, lands[1] - 300, lands[1] + 300);
+            Assert.Equal(73, sun(plan.Landing.LandingUt));
+            Assert.InRange(plan.ErrorKm, 0, 5);
+        }
+
+        /// <summary>
+        /// #974: the site's pass can't be flown (here it lands past max_wait): the lit pass whose sun is nearest the one find_landing_site gave
+        /// is flown, never one under the 20 degree bar, and the note says so.
+        /// </summary>
+        [Fact]
+        public void When_the_sites_pass_cannot_be_flown_the_lit_pass_nearest_its_sun_is_flown_with_a_note()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var lands = ThreeLandings(orbit);
+            var site = new SitePass { LandingUt = lands[2], SunDeg = 73 };
+
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: SunAtPasses(lands, new[] { 22.8, 45, 73 }, -30), site: site);
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.Landing.LandingUt, lands[1] - 300, lands[1] + 300);
+            Assert.NotNull(plan.Note);
+            Assert.Contains("find_landing_site", plan.Note);
+            Assert.Contains("73", plan.Note);
+            Assert.Contains("45", plan.Note);
+
+            // With daylight off, a pass under the bar is not taken though its sun is nearer the site's.
+            var low = new SitePass { LandingUt = lands[2], SunDeg = 21 };
+            var barred = Find(KscLat, KscLng, orbit, daylight: false, sunAt: SunAtPasses(lands, new[] { 60, 19.5, 21 }, -30), site: low);
+            Assert.Null(barred.Error);
+            Assert.InRange(barred.Landing.LandingUt, lands[0] - 300, lands[0] + 300);
+            Assert.NotNull(barred.Note);
+        }
+
+        /// <summary>
+        /// #974's fix round: the site's pass can't be flown, and the lit pass whose sun is nearest its sun is over max_dv, while another lit pass fits.
+        /// The fallback flies the one that fits, with the note, rather than refusing with the dearer one's error.
+        /// </summary>
+        [Fact]
+        public void The_nearest_sun_fallback_skips_a_pass_over_budget_for_a_lit_one_that_fits()
+        {
+            // Half a degree north of the equator, off the 2 degree orbit's track at some passes: the second pass costs about 0.2 m/s more than the first.
+            const double lat = 0.5;
+            var orbit = Circular(inclinationDeg: 2);
+            var first = Find(lat, KscLng, orbit);
+            var second = Find(lat, KscLng, orbit, earliest: first.Landing.LandingUt);
+            var third = Find(lat, KscLng, orbit, earliest: second.Landing.LandingUt);
+            var lands = new[] { first.Landing.LandingUt, second.Landing.LandingUt, third.Landing.LandingUt };
+            Assert.True(second.DeltaV > first.DeltaV + 0.1 && lands[1] > lands[0] + 1000 && lands[2] > 120 + ReentrySim.RotationPeriod, first.DeltaV + " " + second.DeltaV + " " + string.Join(" ", lands));
+            // The site's pass lands past max_wait. The second pass's sun (70) is nearest the site's 73, the first's (40) is lit too; max_dv lets only the first fly.
+            var site = new SitePass { LandingUt = lands[2], SunDeg = 73 };
+            var plan = Find(lat, KscLng, orbit, daylight: true, sunAt: SunAtPasses(lands, new[] { 40.0, 70, 73 }, -30), site: site, maxDv: (first.DeltaV + second.DeltaV) / 2);
+            Assert.True(plan.Error == null, plan.Error);
+            Assert.InRange(plan.Landing.LandingUt, lands[0] - 300, lands[0] + 300);
+            Assert.NotNull(plan.Note);
+            Assert.Contains("40 degrees", plan.Note);
+        }
+
+        /// <summary>
+        /// #974: with no site pass to follow, the earliest lit pass is flown as before. Through the block call: find_landing_site's last sites are
+        /// followed only for a target that is one of them and a max_wait given as a number (its max_wait_s); "auto" or another target is today's rule.
+        /// </summary>
+        [Fact]
+        public void With_no_site_pass_to_follow_the_earliest_lit_pass_is_flown()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var lands = ThreeLandings(orbit);
+            var none = Find(KscLat, KscLng, orbit, daylight: true, sunAt: SunAtPasses(lands, new[] { 22.8, 73, 50 }, 50), site: null);
+            Assert.Null(none.Note);
+            Assert.InRange(none.Landing.LandingUt, lands[0] - 300, lands[0] + 300);
+
+            // The block call, from the equatorial snapshot orbit, with find_landing_site's sites recorded for it.
+            var snapshot = Snapshot();
+            snapshot.DaylightLandingDefault = true;
+            Func<System.Collections.Generic.Dictionary<string, object>, System.Collections.Generic.IDictionary<string, object>> call = ask =>
+                BlockCalls.DeorbitBurn(ask, snapshot, new Sphere { Sun = 40 }, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), Recorded);
+            var first = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", "auto", "dv_left", 5000.0));
+            Assert.Equal("", first["error"]);
+            var later = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", (double)first["landing_ut"], "max_wait", 21549.425, "dv_left", 5000.0));
+            var siteLanding = (double)later["landing_ut"];
+            var sites = new SitePasses();
+            // Recorded for another vessel: the craft flying deorbit is a lander decoupled from the one the tool ran for (#974's fix round).
+            sites.Record("mothership", "Kerbin", 0, new[] { new LandingSite { Latitude = KscLat + 0.0004, Longitude = KscLng - 0.0004, PassUt = (double)later["burn_ut"], LandingUt = siteLanding, SunElevationDeg = 40 } });
+            Assert.NotEqual("mothership", snapshot.Craft.VesselId);
+            Recorded = sites;
+
+            var followed = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0));
+            Assert.Equal("", followed["error"]);
+            Assert.InRange((double)followed["landing_ut"], siteLanding - 300, siteLanding + 300);
+            Assert.False(followed.ContainsKey("pass_note"));
+            // The site typed to 2 places (about 50 m off on Kerbin) is still that site.
+            var twoPlaces = call(Ask("lat", Math.Round(KscLat, 2), "lng", Math.Round(KscLng, 2), "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0));
+            Assert.InRange((double)twoPlaces["landing_ut"], siteLanding - 300, siteLanding + 300);
+            Assert.False(twoPlaces.ContainsKey("pass_note"));
+            var auto = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", "auto", "dv_left", 5000.0));
+            Assert.Equal((double)first["burn_ut"], (double)auto["burn_ut"], 3);
+            Assert.False(auto.ContainsKey("pass_note"));
+
+            // No site within accuracy_km of the target: its own choice, the cheapest lit pass, and with Daylight landing on and max_wait a number, a note saying so.
+            var far = new SitePasses();
+            far.Record("", "Kerbin", 0, new[] { new LandingSite { Latitude = KscLat + 1, Longitude = KscLng, PassUt = (double)later["burn_ut"], LandingUt = siteLanding, SunElevationDeg = 40 } });
+            Recorded = far;
+            var elsewhere = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0));
+            Assert.True((double)elsewhere["landing_ut"] < siteLanding - 1000, "another target: its own choice, the cheapest lit pass");
+            Assert.Contains("not one of find_landing_site's sites", (string)elsewhere["pass_note"]);
+            snapshot.DaylightLandingDefault = false;
+            Assert.False(call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0)).ContainsKey("pass_note"));
+        }
+
+        private SitePasses Recorded = new SitePasses();
+
+        [Fact]
+        public void A_max_wait_of_auto_is_one_turn_of_the_body()
+        {
+            var snapshot = Snapshot();
+            snapshot.DaylightLandingDefault = true;
+            var dark = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", "auto", "dv_left", 5000.0), snapshot, new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Contains("in the next 6 h", (string)dark["error"]);
+        }
+
+        [Fact]
+        public void With_daylight_on_the_sun_is_read_when_the_burn_lands_not_when_it_burns()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var first = Find(KscLat, KscLng, orbit);
+            var land = first.Landing.LandingUt;
+            Assert.True(land - first.BurnUt > 400, "the burn must be well before the landing for this to tell them apart");
+            // Lit only about the first landing, not about its burn nor about any other pass.
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: ut => Math.Abs(ut - land) < 300 ? 40 : -30);
+            Assert.Null(plan.Error);
+            Assert.Equal(first.BurnUt, plan.BurnUt, 0);
+        }
+
+        [Fact]
+        public void With_daylight_on_a_walked_burn_that_lands_in_the_dark_is_not_flown()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var best = Find(KscLat, KscLng, orbit);
+            var landed = best.Landing.LandingUt;
+            // Everything is lit but the very landing the sun-blind search ends on, which is a walked burn (a refined one lands a hair off it).
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: ut => ut == landed ? -30 : 40);
+            Assert.Null(plan.Error);
+            Assert.NotEqual(landed, plan.Landing.LandingUt);
+        }
+
+        [Fact]
+        public void With_daylight_off_the_first_pass_is_flown_whatever_the_sun()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var first = Find(KscLat, KscLng, orbit);
+            var plan = Find(KscLat, KscLng, orbit, daylight: false, sunAt: ut => -30);
+            Assert.Null(plan.Error);
+            Assert.Equal(first.BurnUt, plan.BurnUt, 3);
+        }
+
+        [Fact]
+        public void With_daylight_on_and_no_lit_pass_in_the_window_it_fails_naming_the_best_sun_found()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: ut => -12.34);
+            Assert.NotNull(plan.Error);
+            Assert.Contains("sun", plan.Error);
+            Assert.Contains("-12.3", plan.Error);
+            Assert.Contains("max_wait", plan.Error);
+            Assert.Contains("site", plan.Error);
+            Assert.Equal(-1, plan.BurnUt);
+        }
+
+        [Fact]
+        public void With_daylight_on_a_sun_at_the_minimum_counts_as_lit()
+        {
+            var plan = Find(KscLat, KscLng, Circular(inclinationDeg: 2), daylight: true, sunAt: ut => LandingSiteSearch.MinSunElevationDeg);
+            Assert.Null(plan.Error);
+        }
+
+        [Fact]
+        public void With_daylight_on_a_sun_that_cannot_be_read_behaves_as_today()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var first = Find(KscLat, KscLng, orbit);
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: ut => double.NaN);
+            Assert.Null(plan.Error);
+            Assert.Equal(first.BurnUt, plan.BurnUt, 3);
+            var none = Find(KscLat, KscLng, orbit, daylight: true);
+            Assert.Equal(first.BurnUt, none.BurnUt, 3);
+        }
+
+        [Fact]
+        public void With_daylight_on_a_lit_pass_beyond_the_scan_budget_fails_rather_than_flying_an_earlier_dark_one()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var window = 20 * ReentrySim.RotationPeriod;
+            var far = Find(KscLat, KscLng, orbit, maxWait: window);
+            var searched = 120 + 12 * ReentrySim.RotationPeriod;
+            var plan = Find(KscLat, KscLng, orbit, maxWait: window, daylight: true, sunAt: ut => ut < searched ? -30 : 40);
+            Assert.NotNull(plan.Error);
+            Assert.Equal(-1, plan.BurnUt);
+        }
+
         [Fact]
         public void A_window_too_long_to_scan_is_searched_as_far_as_the_budget_and_the_failure_says_how_far()
         {
@@ -621,6 +939,7 @@ namespace ClaudiaKerman.Core.Tests
                     new Missions.PlannedSequence { Name = "Hop", DeltaV = 4500, Vessel = "craft" }, new Missions.PlannedSequence { Name = "Probe", DeltaV = 900, Vessel = "Probe" },
                 },
             };
+            view.Settings.DaylightLanding = false;
             var stamped = Missions.MissionView.Stamp(Snapshot(), view);
             Assert.Equal(4500, stamped.LaterLegsDv);
             var held = deorbit(stamped);

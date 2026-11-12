@@ -70,6 +70,9 @@ namespace ClaudiaKerman.Core.Tests
         private readonly Queue<ScriptedResponse> _responses = new Queue<ScriptedResponse>();
         public readonly List<HttpRequestSpec> Requests = new List<HttpRequestSpec>();
 
+        /// <summary>#953: what <see cref="RequestOrder.Violation"/> found in each request sent, in order; empty when every request was valid.</summary>
+        public readonly List<string> OrderViolations = new List<string>();
+
         public StreamingFakeTransport(params ScriptedResponse[] responses)
         {
             foreach (var response in responses) _responses.Enqueue(response);
@@ -91,6 +94,13 @@ namespace ClaudiaKerman.Core.Tests
             lock (_responses)
             {
                 Requests.Add(request);
+                var violation = RequestOrder.Violation(request.Body);
+                if (violation != null)
+                {
+                    OrderViolations.Add("request " + Requests.Count + ": " + violation);
+                    // Like the API: HTTP 400. Every test through this fake therefore guards every path that adds a mod notice.
+                    throw new InvalidOperationException("HTTP 400: " + violation);
+                }
                 if (_responses.Count == 0) throw new InvalidOperationException("no scripted response left");
                 response = _responses.Dequeue();
             }
