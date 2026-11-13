@@ -12,6 +12,10 @@
 All of them run on the checkout they live in (`GATES_ROOT` overrides). A new wall-clock test must carry `[Trait("Category", "Timing")]`; check with
 `grep -rLZ 'Category", "Timing' $(grep -rlE 'Timing\.Within\(' tests --include=*.cs)` (no file besides `Timing.cs` may be listed; a helper that wraps `Timing.Within` needs its callers tagged).
 
+## What CI can't check
+
+CI has no KSP, so it skips building the Adapter and the kOS addon (`GATES_NO_KSP=1`). By the player's ruling (2026-11-13), a ticket that touches `src/ClaudiaKerman.Adapter` or `src/ClaudiaKerman.KOS` merges from a Mac session, which runs the full local `gates.sh` with KSP installed; a merge from the cmux VM gates on CI and so may not include such a ticket.
+
 ## Repointing the `.scratch/v1/run-tools/` copies (the orchestrator, after the merge)
 
 - `gates.sh`: `exec /Users/andrewwatson/Claude-Projects/claudia-kermin/tools/gates/gates.sh "$@"`
