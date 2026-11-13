@@ -7,8 +7,18 @@
 name: CI
 
 on:
+  # Branches get CI through their pull request; a push to main runs after merge.
+  # (Before, a branch with a PR ran twice per commit: once for push, once for the PR.)
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# A newer push to the same PR cancels its older run. Every push to main gets its
+# own group, so no main run is cancelled or dropped while queued.
+concurrency:
+  group: ci-${{ github.ref == 'refs/heads/main' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -35,8 +45,9 @@ jobs:
       - name: Build and test the core
         run: dotnet test tests/ClaudiaKerman.Core.Tests -c Release --filter "Category!=Timing"
 
-      # The wall-clock tests (#623) fail on slow runners; run them for the record without failing the job.
+      # The wall-clock tests (#623) fail on slow runners; run them for the record, on main only, without failing the job.
       - name: Core timing tests (informational)
+        if: github.ref == 'refs/heads/main'
         continue-on-error: true
         run: dotnet test tests/ClaudiaKerman.Core.Tests -c Release --no-build --filter "Category=Timing"
 
