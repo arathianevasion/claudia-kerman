@@ -24,7 +24,7 @@ CI has no KSP, so it skips building the Adapter and the kOS addon (`GATES_NO_KSP
 - `rec-local.sh` already calls `gates2.sh`; leave it.
 - a timing run: `/Users/andrewwatson/Claude-Projects/claudia-kermin/tools/gates/gates-timing.sh`
 
-## Handover step for the dispatch brief (paste as the last step)
+## Handover step for the dispatch brief, Mac sessions (paste as the last step)
 
 > **Last step: hand over a branch that is ready to merge.** After your final commit, in your worktree:
 > 1. `git merge main` (a conflict you cannot resolve in your own files: stop, say so in notes). Rebuild. For a prefix change, set `TodaysEstimate` to the figure `TodaysEstimateIsTheMeasuredFigure` prints and add `docs/prefix-budget/<ticket>.md` (delta, reason, measured figure).
@@ -33,3 +33,29 @@ CI has no KSP, so it skips building the Adapter and the kOS addon (`GATES_NO_KSP
 > 4. Put `"tested_against_main": "<git rev-parse main>"` in the result file.
 >
 > The orchestrator then merges and runs `tools/gates/gates.sh` on main. When the merged tree is the one the agent gated (main had not moved, or the merge changed nothing), that run prints `PASS cached` and takes a second; otherwise it runs in full (#1005).
+
+## Merging from the cmux VM: CI is the gate
+
+The player's policy (2026-11-13): sessions on the Mac gate 100% locally, with the full suite, and use no CI until a PR is opened. Sessions on the cmux VM gate on CI, never on the VM itself. The player's rulings for the VM flow (2026-11-13): agents may use `dotnet` on the VM for builds and single targeted tests only, never the full suite or `gates.sh`; the orchestrator batches a wave's tickets into one CI run; the batch merges through its PR, not by an admin push to main.
+
+On the VM, set `KOS_PLUGINS_DIR` to a folder holding `kOS.Safe.dll` from the kOS release CI uses (`KOS_RELEASE_TAG` in `.github/workflows/ci.yml`), for building the projects that need kOS. Pass `-p:KOSPluginsDir="$KOS_PLUGINS_DIR"` to a `dotnet build` or `dotnet test` by hand.
+
+### Handover step for the dispatch brief, VM sessions (paste as the last step)
+
+> **Last step: hand over a branch that CI passed.** Your branch is `ci/<ticket>-<slug>`; never push an `agent/*` branch. In your worktree:
+> 1. `git merge main` (a conflict you cannot resolve in your own files: stop, say so in notes). For a prefix change, set `TodaysEstimate` to the figure `TodaysEstimateIsTheMeasuredFigure` prints and add `docs/prefix-budget/<ticket>.md` (delta, reason, measured figure).
+> 2. Commit everything. Don't run `tools/gates/gates.sh` or the whole test suite on the VM; build, and run single tests with `--filter`, only.
+> 3. Push the branch and open a draft PR: `gh pr create --draft --base main --title "<ticket>: <what it does>" --body "Part of #<ticket>. Merges in a batch."`. CI runs on it.
+> 4. Wait for the run (`gh pr checks <pr> --watch`). Red: fix, commit, push, wait again.
+> 5. Put `"ci_run": "<run URL>"`, `"ci_sha": "<the commit CI passed>"` and `"pr": <number>` in the result file.
+
+### The orchestrator's merge of a wave
+
+1. **Hold back** each ticket whose branch changes `src/ClaudiaKerman.Adapter` or `src/ClaudiaKerman.KOS` (`git diff --name-only main...<branch>`): CI can't build them, so they merge from a Mac session (see What CI can't check). List them for the player.
+2. **Batch the rest.** Cut `ci/batch-<date>-<k>` from main and merge each green ticket branch into it, one `git merge --no-ff` per ticket. A textual conflict goes back to that ticket's agent ("merge main into your branch"). No `dotnet` runs here.
+3. **One PR for the batch**, its body listing each ticket with one line on what it does. CI runs once for the wave.
+4. **Keep or abort.**
+   - Green, and main has not moved since the batch was cut: merge the batch PR with a merge commit (`gh pr merge <pr> --merge`), so each ticket's commits stay visible. Close each ticket's draft PR with "Merged in batch #<pr>".
+   - Green, but main moved: merge main into the batch branch, push, and wait for CI again.
+   - Red: don't merge. Match the failing tests to a ticket, drop that ticket from the batch (cut the batch again without it), send it back to its agent with the failure, and rerun CI on the rest. If no ticket clearly owns the failure, split the batch in half and run CI on each half.
+5. **After the merge**, pull main on the VM. The in-game check (install into `~/KSP_spike`, the player's checklist) stays on the Mac.
