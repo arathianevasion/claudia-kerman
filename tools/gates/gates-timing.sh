@@ -5,7 +5,7 @@
 # Runs on the checkout it lives in; GATES_ROOT overrides that.
 ROOT=${GATES_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
-K="-p:KOSPluginsDir=$HOME/KSP_spike/GameData/kOS/Plugins"
+K="-p:KOSPluginsDir=${KOS_PLUGINS_DIR:-$HOME/KSP_spike/GameData/kOS/Plugins}"   # KOS_PLUGINS_DIR: where kOS.Safe.dll is (CI: the kOS release)
 if ! out=$(dotnet build ClaudiaKerman.sln -warnaserror $K 2>&1); then echo "FAIL build"; echo "$out" | grep -E 'error' | head -20; exit 1; fi
 for attempt in 1 2; do
   out=$(dotnet test tests/ClaudiaKerman.Core.Tests --no-build $K --filter "Category=Timing" 2>&1); rc=$?

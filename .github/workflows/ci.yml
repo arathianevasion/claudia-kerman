@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# CI has no KSP, so it builds and tests the Unity-free core; then, with kOS.Safe taken from the
-# public kOS release, it tests the Script Check (ADR 0003) and runs it over every shipped script.
-# The adapter and kOS addon need a local KSP install and are built on a developer machine
-# (see README, Building).
+# CI runs the merge gate, tools/gates/gates.sh, so CI and a local run check the same things (#1004).
+# CI has no KSP: kOS.Safe comes from the public kOS release, and GATES_NO_KSP=1 skips building the
+# adapter and kOS addon, which need a local KSP install (see README, Building). The Kerboscript tests
+# run as one test process per core, as they do locally.
 name: CI
 
 on:
@@ -39,18 +39,6 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Kerboscript line limit (ADR 0014)
-        run: bash tools/gates/kerboscript-loc.sh
-
-      - name: Build and test the core
-        run: dotnet test tests/ClaudiaKerman.Core.Tests -c Release --filter "Category!=Timing"
-
-      # The wall-clock tests (#623) fail on slow runners; run them for the record, on main only, without failing the job.
-      - name: Core timing tests (informational)
-        if: github.ref == 'refs/heads/main'
-        continue-on-error: true
-        run: dotnet test tests/ClaudiaKerman.Core.Tests -c Release --no-build --filter "Category=Timing"
-
       - name: Fetch kOS.Safe from the kOS release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -64,26 +52,15 @@ jobs:
           if [ -z "$safe" ]; then echo "kOS.Safe.dll not found in the $KOS_RELEASE_TAG release"; exit 1; fi
           echo "KOS_PLUGINS_DIR=$(dirname "$safe")" >> "$GITHUB_ENV"
 
-      - name: Test the Script Check with kOS.Safe
-        run: dotnet test tests/ClaudiaKerman.ScriptCheck.Tests -c Release -p:KOSPluginsDir="$KOS_PLUGINS_DIR"
+      # The build, Core, Kerboscript (one process per core) and Script Check tests, KsCompile over the shipped
+      # kerboscript, tests/blocks and tests/tools, the undefined-call check and every fixture, and the library line limit.
+      - name: Merge gate (tools/gates/gates.sh)
+        env:
+          GATES_NO_KSP: 1
+        run: bash tools/gates/gates.sh
 
-      - name: Build the Script Check command line
-        run: dotnet build tools/ClaudiaKerman.KsCompile -c Release -p:KOSPluginsDir="$KOS_PLUGINS_DIR"
-
-      # Every shipped script under kerboscript/ (the Core Library in kerboscript/library, and the
-      # debug scripts) and the block test scripts: a compile error or
-      # a forbidden call fails CI.
-      - name: Script Check the shipped kerboscript and the block test scripts
-        run: dotnet run --project tools/ClaudiaKerman.KsCompile -c Release --no-build -- kerboscript tests/blocks
-
-      - name: Test the Core Library on kOS.Safe
-        run: dotnet test tests/ClaudiaKerman.Kerboscript.Tests -c Release -p:KOSPluginsDir="$KOS_PLUGINS_DIR"
-
-      - name: Check that a syntax error and a forbidden call fail the Script Check
-        run: |
-          for fixture in syntax-error forbidden-call; do
-            if dotnet run --project tools/ClaudiaKerman.KsCompile -c Release --no-build -- "tools/ClaudiaKerman.KsCompile/fixtures/$fixture.ks"; then
-              echo "The Script Check passed $fixture.ks"
-              exit 1
-            fi
-          done
+      # The wall-clock tests (#623) fail on slow runners; run them for the record, on main only, without failing the job.
+      - name: Core timing tests (informational)
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: dotnet test tests/ClaudiaKerman.Core.Tests --no-build --filter "Category=Timing"
