@@ -11,7 +11,7 @@
 # Runs on the checkout it lives in (the repo root is two levels up); GATES_ROOT overrides that.
 ROOT=${GATES_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
-K="-p:KOSPluginsDir=$HOME/KSP_spike/GameData/kOS/Plugins"
+K="-p:KOSPluginsDir=${KOS_PLUGINS_DIR:-$HOME/KSP_spike/GameData/kOS/Plugins}"   # KOS_PLUGINS_DIR: where kOS.Safe.dll is (CI: the kOS release)
 P=tests/ClaudiaKerman.Kerboscript.Tests
 SHARDS=${SHARDS:-$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || nproc 2>/dev/null || echo 4)}
 
