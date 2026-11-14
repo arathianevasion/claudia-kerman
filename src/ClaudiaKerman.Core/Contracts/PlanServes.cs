@@ -131,8 +131,8 @@ namespace ClaudiaKerman.Core.Contracts
         {
             var touches = new List<Touch>();
             var homeBody = SequenceWords.Body(snapshot, home);
-            var start = snapshot.Orbit != null && snapshot.Orbit.Body.Length > 0 ? snapshot.Orbit.Body : snapshot.Body;
-            var at = SequenceWords.Body(snapshot, start) ?? homeBody;
+            // The whole plan is walked, flown legs included (a revision keeps them), so it starts where a Mission does: at home.
+            var at = homeBody;
             for (var i = 0; i < plan.Sequences.Count; i++)
             {
                 var sequence = plan.Sequences[i];
