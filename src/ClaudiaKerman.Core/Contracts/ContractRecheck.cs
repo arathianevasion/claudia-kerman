@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
@@ -53,11 +54,12 @@ namespace ClaudiaKerman.Core.Contracts
                 ContractReach had;
                 if (!needs.TryGetValue(requirement.Body, out had) || requirement.Reach > had) needs[requirement.Body] = requirement.Reach;
             }
-            var route = new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return), r => true);
+            // Like the Contract check, the order that keeps every deadline is preferred over the cheapest one.
+            var route = new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return),
+                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)));
             foreach (var one in open)
             {
-                var done = one.Value.Select(r => route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return }, home))
-                    .Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(snapshot.Ut).Max();
+                var done = DoneOf(route, one.Value, snapshot, home);
                 var deadline = one.Key.DeadlineUt.Value;
                 if (!ContractCheck.BreaksSpare(done, deadline, snapshot.Ut)) continue;
                 var title = one.Value[0].Title;
@@ -68,6 +70,12 @@ namespace ClaudiaKerman.Core.Contracts
                 });
             }
             return late;
+        }
+
+        private static double DoneOf(PricedRoute route, IEnumerable<ChosenRequirement> requirements, GameSnapshot snapshot, string home)
+        {
+            return requirements.Select(r => route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return }, home))
+                .Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(snapshot.Ut).Max();
         }
     }
 }
