@@ -11,6 +11,8 @@
 #   core:         Core tests
 #   kerboscript:  Kerboscript tests, library line limit
 #   scriptcheck:  Script Check tests, Quarantine tests and their tracking-issue check (#1067), tests/blocks and tests/tools through KsCompile, undefined calls, fixtures
+# A push to main whose tree already passed on its PR skips the gate and names that run (#1050); the `check` job decides and
+# the `record` job saves each green run's pass. PR runs never skip.
 # fail-fast is off so one failing job doesn't hide the others' results; any failing job fails the run.
 name: CI
 
@@ -21,6 +23,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      skip_if_passed:
+        description: Skip the gate when this tree already passed (as a push to main does)
+        type: boolean
+        default: false
 
 # A newer push to the same PR cancels its older run. Every push to main gets its
 # own group, so no main run is cancelled or dropped while queued.
@@ -36,10 +43,50 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   # kOS release whose kOS.Safe.dll the Script Check compiles with; keep in step with the supported kOS.
   KOS_RELEASE_TAG: 1.6.0.1
+  # CI has no KSP (see the header). Both settings are in the pass record's key (#1050).
+  GATES_NO_KSP: 1
 
 jobs:
+  # Skip a tree that already passed (#1050). A pass is recorded as an artifact named gates-pass-<tree>-<settings hash>, saved
+  # by the `record` job after all three gate jobs are green. Only a push to main (or a dispatch with skip_if_passed) looks it
+  # up, so a PR always runs and shows its own result. A merge that makes a new tree, or a changed setting, finds nothing and
+  # runs the full gate. (Not actions/cache: a cache saved on a PR ref can't be read from main.)
+  check:
+    name: already passed?
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      key: ${{ steps.look.outputs.key }}
+      skip: ${{ steps.look.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: look
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAY_SKIP: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.skip_if_passed) }}
+        run: |
+          key=$(bash tools/gates/ci-pass-record.sh key)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          skip=false
+          if [ "$MAY_SKIP" = true ]; then
+            run=$(bash tools/gates/ci-pass-record.sh lookup "$key")
+            if [ -n "$run" ]; then
+              skip=true
+              echo "tree $(git rev-parse 'HEAD^{tree}') already passed in run $run (https://github.com/$GITHUB_REPOSITORY/actions/runs/$run); not building. The informational timing tests are skipped with it."
+            else
+              echo "no earlier pass for $key; running the full gate"
+            fi
+          else
+            echo "$GITHUB_EVENT_NAME on $GITHUB_REF never skips; running the full gate (key $key)"
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
   gate:
     name: gate (${{ matrix.name }})
+    needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -75,7 +122,6 @@ jobs:
       - name: Merge gate (tools/gates/gates.sh, ${{ matrix.name }})
         env:
           GH_TOKEN: ${{ github.token }}   # the Quarantine step reads each tracking issue's state
-          GATES_NO_KSP: 1
           GATES_ONLY: ${{ matrix.only }}
         run: bash tools/gates/gates.sh
 
@@ -85,3 +131,18 @@ jobs:
         if: github.ref == 'refs/heads/main' && matrix.name == 'core'
         continue-on-error: true
         run: dotnet test tests/ClaudiaKerman.Core.Tests --no-build --filter "Category=Timing"
+
+  # Record the pass once every gate job is green. A second upload of a key that already exists is harmless: lookup takes the
+  # newest.
+  record:
+    name: record pass
+    needs: [check, gate]
+    if: needs.gate.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "$GITHUB_RUN_ID" > pass.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.check.outputs.key }}
+          path: pass.txt
+          retention-days: 30
