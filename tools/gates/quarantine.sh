@@ -10,7 +10,7 @@ ROOT=${GATES_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
 K="-p:KOSPluginsDir=${KOS_PLUGINS_DIR:-$HOME/KSP_spike/GameData/kOS/Plugins}"
 fail=0; n=0
-files=$(grep -rlF 'Trait("Category", "Quarantine")' tests --include='*.cs' 2>/dev/null | sort)
+files=$(grep -rlE 'Trait\("Category", ?"Quarantine"\)' tests --include='*.cs' 2>/dev/null | sort)
 for f in $files; do
   # One line per trait: "line<TAB>issue" (issue empty when the comment is missing).
   while IFS=$'\t' read -r line issue; do
@@ -22,7 +22,7 @@ for f in $files; do
       CLOSED) echo "FAIL $f:$line tracking issue #$issue is closed: fix and un-quarantine the test, or reopen the issue"; fail=1 ;;
       *) echo "WARN $f:$line couldn't read the state of tracking issue #$issue; not checked" ;;
     esac
-  done < <(awk '{ prev[NR] = $0 } /Trait\("Category", "Quarantine"\)/ {
+  done < <(awk '{ prev[NR] = $0 } /Trait\("Category", ?"Quarantine"\)/ {
       issue = ""; for (i = NR; i >= NR - 2 && i >= 1; i--) if (match(prev[i], /#[0-9]+/)) { issue = substr(prev[i], RSTART + 1, RLENGTH - 1); break }
       print NR "\t" issue }' "$f")
 done

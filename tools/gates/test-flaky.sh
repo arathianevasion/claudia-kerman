@@ -59,4 +59,15 @@ mk '// Quarantine: #300' '[Trait("Category", "Quarantine")]' 'public void A() {}
 out=$(q); rc=$?; check "issue that can't be read: warns, does not fail" '[ $rc -eq 0 ] && echo "$out" | grep -q WARN'
 mk 'public void A() {}'
 out=$(q); rc=$?; check "no Quarantine tests: pass" '[ $rc -eq 0 ]'
+# A rerun that runs no test (the filter matched nothing) must not count as a pass.
+cat > "$tmp/bin/dotnet" <<'EOS'
+#!/bin/bash
+if [[ "$*" == *FullyQualifiedName~* ]]; then echo "No test matches the given testcase filter"; exit 0; fi
+echo "  Failed N.C.M1 [2 m 3 s]"; echo "  Error Message:"; echo "   Failed to connect to the thing"; echo "Failed!  - Failed: 1, Passed: 8, Skipped: 1, Total: 10 - X.dll"; exit 1
+EOS
+: > "$FAKE_LOG"; out=$(bash "$HERE/dotnet-test.sh" proj --no-build); rc=$?
+check "rerun that ran no test: fails, no FLAKY" '[ $rc -ne 0 ] && ! echo "$out" | grep -q "^FLAKY"'
+check "message text starting with Failed is not a test name" '! echo "$out" | grep -q "to connect"  || ! echo "$out" | grep -q "^FLAKY"'
+mk '// Quarantine: #100' '[Trait("Category","Quarantine")]' 'public void A() {}'
+out=$(q); rc=$?; check "trait without a space is found" '[ $rc -eq 0 ] && echo "$out" | grep -q "#100"'
 exit $bad

@@ -6,7 +6,8 @@
 # is rerun as a whole (every case), since a case's arguments can't go in a filter. The last Passed!/Failed! line printed is a
 # summary for the whole run (the totals of the first run, with the failures that remain), which gates.sh and kerboscript.sh read.
 # Which tests failed in a run: their names, one per line, without the arguments and the time.
-failed_names() { sed -nE 's/^ *Failed ([^!].*)$/\1/p' | sed -E 's/ \[[<0-9. ,]+ ?m?s\]$//; s/\(.*$//' | sort -u; }
+# Only a line ending in the time ("[5 ms]", "[2 m 3 s]") is a test; an error message that starts with "Failed" is not.
+failed_names() { sed -nE 's/^ *Failed ([^!].*) \[[^]]*\]$/\1/p' | sed -E 's/\(.*$//' | sort -u; }
 count() { echo "$2" | grep -oE "$1: +[0-9]+" | grep -oE '[0-9]+$' | head -1; }
 
 out=$(dotnet test "$@" 2>&1); rc=$?
@@ -26,7 +27,10 @@ echo "--- rerunning the $(echo "$names" | wc -l | tr -d ' ') failed test(s) once
 out2=$(dotnet test "${args[@]}" --filter "($filter)&Category!=Quarantine" 2>&1); rc2=$?
 echo "$out2"
 still=$(echo "$out2" | failed_names)
-while IFS= read -r n; do echo "$still" | grep -qxF "$n" || echo "FLAKY $n"; done <<< "$names"
+# A rerun that ran no test (the filter matched nothing, e.g. a custom display name) is no pass.
+ran=$(count Total "$(echo "$out2" | grep -E 'Passed!|Failed!' | tail -1)")
+if [ $rc2 -eq 0 ] && [ "${ran:-0}" -eq 0 ]; then echo "FAIL the rerun ran no test; the failed tests can't be told apart from a pass"; rc2=1; fi
+[ $rc2 -eq 0 ] || [ -n "$still" ] && while IFS= read -r n; do echo "$still" | grep -qxF "$n" || echo "FLAKY $n"; done <<< "$names"
 first=$(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)
 total=$(count Total "$first"); skipped=$(count Skipped "$first"); nfail=0
 [ $rc2 -ne 0 ] && nfail=$(echo "$still" | grep -c .)
