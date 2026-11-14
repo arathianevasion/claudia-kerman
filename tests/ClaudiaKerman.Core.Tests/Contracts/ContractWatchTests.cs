@@ -45,9 +45,9 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Send(At(EndedAt, "Mun", "ORBITING", "Complete"));
 
             mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
-            DrainUntil(mission, v => transport.Requests.Count(IsMission) >= 4);
+            DrainUntil(mission, v => MissionRequests(transport) >= 4);
 
-            var debrief = LastUserText(transport.Requests.Last(IsMission));
+            var debrief = DebriefText(transport);
             Assert.True(debrief.Contains("Contract Requirements this sequence served"), debrief);
             Assert.Contains("\"contract\":\"Explore the Mun\"", debrief);
             Assert.Contains("\"requirement\":\"orbit the Mun\"", debrief);
@@ -67,12 +67,12 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             _background.Drain();
 
             Assert.Equal(MissionStage.Running, mission.View.Stage);
-            Assert.Equal(3, transport.Requests.Count(IsMission));
+            Assert.Equal(3, MissionRequests(transport));
             Assert.Contains(mission.View.Log, e => e.Text.Contains("Holding for the game to mark \"orbit the Mun\" met"));
 
             mission.Send(At(EndedAt + 25, "Mun", "ORBITING", "Complete"));
-            DrainUntil(mission, v => transport.Requests.Count(IsMission) >= 4);
-            Assert.Contains("\"state\":\"met\"", LastUserText(transport.Requests.Last(IsMission)));
+            DrainUntil(mission, v => MissionRequests(transport) >= 4);
+            Assert.Contains("\"state\":\"met\"", DebriefText(transport));
         }
 
         [Fact]
@@ -84,12 +84,12 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
             mission.Send(new UtAdvanced(EndedAt + 59));
             _background.Drain();
-            Assert.Equal(3, transport.Requests.Count(IsMission));
+            Assert.Equal(3, MissionRequests(transport));
 
             mission.Send(new UtAdvanced(EndedAt + 60));
-            DrainUntil(mission, v => transport.Requests.Count(IsMission) >= 4);
+            DrainUntil(mission, v => MissionRequests(transport) >= 4);
 
-            var debrief = LastUserText(transport.Requests.Last(IsMission));
+            var debrief = DebriefText(transport);
             Assert.Contains("\"state\":\"not met\"", debrief);
             Assert.Contains("for 60 s of game time, and the game still hasn't marked it met", debrief);
             Assert.Contains("For a Requirement not met, propose a trim burn or a retry leg (priced at the plan proposal), or dropping its Contract, with the reason", debrief);
@@ -103,9 +103,9 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Send(At(EndedAt, "Kerbin", "SUB_ORBITAL", "Incomplete"));
 
             mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
-            DrainUntil(mission, v => transport.Requests.Count(IsMission) >= 4);
+            DrainUntil(mission, v => MissionRequests(transport) >= 4);
 
-            var debrief = LastUserText(transport.Requests.Last(IsMission));
+            var debrief = DebriefText(transport);
             Assert.Contains("\"state\":\"not met\"", debrief);
             Assert.Contains("the craft is SUB_ORBITAL at Kerbin, and the Requirement asks it to orbit the Mun", debrief);
             Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("Holding for the game"));
@@ -124,14 +124,14 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             _background.Drain();
 
             Assert.Contains(mission.View.Log, e => e.Text == "Contract complete: Explore the Mun · +10,000 √");
-            Assert.Equal(3, transport.Requests.Count(IsMission));
+            Assert.Equal(3, MissionRequests(transport));
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             Assert.Empty(mission.TakeCommands());
 
             mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
             mission.Send(Finished(EndedAt, "Mun", "ORBITING", "Completed"));
-            DrainUntil(mission, v => transport.Requests.Count(IsMission) >= 4);
-            var debrief = LastUserText(transport.Requests.Last(IsMission));
+            DrainUntil(mission, v => MissionRequests(transport) >= 4);
+            var debrief = DebriefText(transport);
             Assert.Contains("\"state\":\"completed\"", debrief);
             Assert.Contains("\"Explore the Mun\" completed: the game paid +10,000 funds", debrief);
             Assert.Single(mission.View.Log, e => e.Text.StartsWith("Contract complete:", StringComparison.Ordinal));
@@ -149,15 +149,15 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             _background.Drain();
 
             Assert.Equal(MissionStage.Running, mission.View.Stage);
-            Assert.Equal(3, transport.Requests.Count(IsMission));
+            Assert.Equal(3, MissionRequests(transport));
             Assert.Empty(mission.TakeCommands());
             // Not an Alert, not a Telemetry Check, not even a line: it waits for the Debrief.
             Assert.Equal(logged, mission.View.Log.Count);
 
             mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
             mission.Send(Finished(EndedAt, "Kerbin", "ORBITING", "Failed"));
-            DrainUntil(mission, v => transport.Requests.Count(IsMission) >= 4);
-            var debrief = LastUserText(transport.Requests.Last(IsMission));
+            DrainUntil(mission, v => MissionRequests(transport) >= 4);
+            var debrief = DebriefText(transport);
             Assert.Contains("\"Explore the Mun\" can't complete: the game failed it", debrief);
             Assert.Contains("propose dropping it, with the reason", debrief);
         }
@@ -174,8 +174,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
             mission.Send(At(EndedAt, "Mun", "ORBITING", "Incomplete"));
             mission.Send(new UtAdvanced(EndedAt + 61));
-            DrainUntil(mission, v => transport.Requests.Count(IsMission) >= 4);
-            Assert.Contains("\"Explore the Mun\": \"orbit the Mun\" fell back to unmet", LastUserText(transport.Requests.Last(IsMission)));
+            DrainUntil(mission, v => MissionRequests(transport) >= 4);
+            Assert.Contains("\"Explore the Mun\": \"orbit the Mun\" fell back to unmet", DebriefText(transport));
         }
 
         // ---- The replan drops the Contract with the reason, for Approval ----
@@ -222,6 +222,22 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         private static bool IsMission(HttpRequestSpec request)
         {
             return request.Body.Contains(ProposedPlans.ToolName);
+        }
+
+        private static int MissionRequests(StreamingFakeTransport transport)
+        {
+            return transport.RequestsSoFar().Count(IsMission);
+        }
+
+        /// <summary>
+        /// The Debrief: the 4th Mission request, after the plan, its reply and the Sequence Plan. Taken by position, not as the last one sent:
+        /// once its reply lands the loop sends the next Sequence Plan request, which can go out before the test reads.
+        /// </summary>
+        private static string DebriefText(StreamingFakeTransport transport)
+        {
+            var mission = transport.RequestsSoFar().Where(IsMission).ToList();
+            Assert.True(mission.Count >= 4, "no Debrief request: " + mission.Count + " Mission requests");
+            return LastUserText(mission[3]);
         }
 
         internal static GameSnapshot At(double ut, string body, string situation, string state, string contractState = "Active")
