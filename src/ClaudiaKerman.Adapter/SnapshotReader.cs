@@ -113,6 +113,7 @@ namespace ClaudiaKerman.Adapter
                     snapshot.NextPatchEndUt = vessel.orbit.EndUT;
             }
             ReadTargets(snapshot, vessel);
+            snapshot.Contracts = ContractReader.Read();
             return snapshot;
         }
 
@@ -379,6 +380,7 @@ namespace ClaudiaKerman.Adapter
             if (manifest != null) snapshot.Crew.AddRange(manifest.GetAllCrew(false).Where(c => c != null).Select(Crew));
             ReadAboard(snapshot);
             ReadSavedVessels(snapshot);
+            snapshot.Contracts = ContractReader.Read();
             return snapshot;
         }
 
