@@ -2,11 +2,16 @@
 # The merge gate (#623): one build, then every test and Script Check on the built output. No Category=Timing test runs
 # here (tools/gates/gates-timing.sh runs those, once per wave, on an idle machine).
 # Prints one line per gate and exits non-zero on any failure.
+# A failed test is rerun once, alone (#1067, tools/gates/dotnet-test.sh; the Kerboscript shards too): if it passes the step
+# passes and prints `FLAKY <test>`; if it fails again the step fails. A test with [Trait("Category", "Quarantine")] is left out
+# of every step and runs in the `quarantine` step (tools/gates/quarantine.sh), where it can't fail the gate and is printed; the
+# step fails if such a test has no tracking issue in its comment ("// Quarantine: #N") or that issue is closed. A flaky pass
+# counts as a pass for the pass record (#1005) but its FLAKY lines show. tools/gates/test-flaky.sh tests all this.
 # After the build the steps run at once (#702): each writes its output to a file in a temp directory, then the lines are
 # printed in the fixed order below. GATES_SERIAL=1 runs them one after another instead (the order of the lines is the same).
 # GATES_ONLY=<name>[,<name>...] builds as usual, then starts only the named steps (core, kerboscript, kerboscript-loc,
-# scriptcheck, blocks, tools, undefined-calls, fixtures) and prints a SKIP line for each of the rest (#1049). CI runs three
-# jobs this way, in parallel: core | kerboscript,kerboscript-loc | scriptcheck,blocks,tools,undefined-calls,fixtures, so
+# scriptcheck, quarantine, blocks, tools, undefined-calls, fixtures) and prints a SKIP line for each of the rest (#1049). CI runs three
+# jobs this way, in parallel: core | kerboscript,kerboscript-loc | scriptcheck,quarantine,blocks,tools,undefined-calls,fixtures, so
 # every gate line comes from exactly one job. A partial run never writes the pass record (#1005) and never reads it.
 # Runs on the checkout it lives in (the repo root is two levels up); GATES_ROOT overrides that.
 # KOS_PLUGINS_DIR names the folder holding kOS.Safe.dll (default ~/KSP_spike/GameData/kOS/Plugins). GATES_NO_KSP=1 builds
@@ -21,7 +26,7 @@ fail=0
 want() { local n=$1; [ "$n" = undefined-fixture ] && n=fixtures
   [ "$n" = build ] || [ -z "${GATES_ONLY:-}" ] || [[ ",$GATES_ONLY," == *",$n,"* ]]; }
 for n in ${GATES_ONLY//,/ }; do
-  case $n in core|kerboscript|kerboscript-loc|scriptcheck|blocks|tools|undefined-calls|fixtures) ;;
+  case $n in core|kerboscript|kerboscript-loc|scriptcheck|quarantine|blocks|tools|undefined-calls|fixtures) ;;
     *) echo "FAIL GATES_ONLY: unknown step '$n'"; exit 2 ;; esac
 done
 skip() { echo "SKIP $1 (GATES_ONLY=$GATES_ONLY)"; }
@@ -43,7 +48,9 @@ start() { local name=$1; shift; want "$name" || return 0
 collect() { [ -e "$dir/$1.rc" ] || { wait "$(cat "$dir/$1.pid")"; echo $? > "$dir/$1.rc"; }; rc=$(cat "$dir/$1.rc"); out=$(cat "$dir/$1.out"); }
 # report NAME: prints the PASS or FAIL lines for a job (once), in the format the callers grep.
 report() { [ -e "$dir/$1.shown" ] && return; : > "$dir/$1.shown"; want "$1" || { skip "$1"; return; }; collect "$1"
-  if [ "$rc" -eq 0 ]; then echo "PASS $1 $(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)"; else echo "FAIL $1"; echo "$out" | grep -E 'error|Failed!|FAIL' | head -20; echo "$out" | failed_tests; fail=1; fi; }
+  if [ "$1" = quarantine ]; then   # its whole output is the report; only a missing or closed tracking issue fails it
+    if [ "$rc" -eq 0 ]; then echo "PASS quarantine"; else echo "FAIL quarantine"; fail=1; fi; echo "$out" | sed 's/^/  /'; return; fi
+  if [ "$rc" -eq 0 ]; then echo "PASS $1 $(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)"; echo "$out" | grep '^FLAKY '; else echo "FAIL $1"; echo "$out" | grep -E 'error|Failed!|FAIL' | head -20; echo "$out" | failed_tests; fail=1; fi; }
 
 # A tree that already passed is not gated again (#1005). Each pass records the committed tree it ran on, with the settings
 # below, in the repository's shared git directory, which every worktree of the clone sees. So when the orchestrator merges a
@@ -76,14 +83,16 @@ report build
 [ -n "$skipped_ksp" ] && echo "SKIP build of the projects that need KSP:$skipped_ksp (GATES_NO_KSP=1)"
 [ $fail -ne 0 ] && exit 1   # nothing below can run on a broken build
 
-start core dotnet test tests/ClaudiaKerman.Core.Tests --no-build $K --filter "Category!=Timing"
+DT="bash tools/gates/dotnet-test.sh"   # dotnet test, then one rerun of the failed tests (#1067)
+start core $DT tests/ClaudiaKerman.Core.Tests --no-build $K --filter "Category!=Timing&Category!=Quarantine"
 start kerboscript bash tools/gates/kerboscript.sh   # several test processes at once (#625)
 start kerboscript-loc bash tools/gates/kerboscript-loc.sh   # the library may not grow (#705, ADR 0014)
-start scriptcheck dotnet test tests/ClaudiaKerman.ScriptCheck.Tests --no-build $K
+start scriptcheck $DT tests/ClaudiaKerman.ScriptCheck.Tests --no-build $K --filter "Category!=Quarantine"
+start quarantine bash tools/gates/quarantine.sh   # Quarantine tests: run and printed, can't fail the gate (#1067)
 
 # KsCompile runs from the binary the build above made.
 KS=$(ls -t tools/ClaudiaKerman.KsCompile/bin/*/*/ClaudiaKerman.KsCompile.dll 2>/dev/null | head -1)   # newest = the one just built
-if [ -z "$KS" ]; then report core; report kerboscript; report kerboscript-loc; report scriptcheck; echo "FAIL ksc-binary not found under tools/ClaudiaKerman.KsCompile/bin"; exit 1; fi
+if [ -z "$KS" ]; then report core; report kerboscript; report kerboscript-loc; report scriptcheck; report quarantine; echo "FAIL ksc-binary not found under tools/ClaudiaKerman.KsCompile/bin"; exit 1; fi
 start blocks dotnet "$KS" kerboscript tests/blocks
 [ -d tests/tools ] && start tools dotnet "$KS" kerboscript tests/tools
 start undefined-calls dotnet "$KS" --undefined-calls tests/blocks tests/tools   # a test script calling a function nothing defines (#928)
@@ -93,7 +102,7 @@ start undefined-fixture dotnet "$KS" --undefined-calls tools/ClaudiaKerman.KsCom
 fixtures=$(find tools tests \( -name forbidden-call.ks -o -name syntax-error.ks \) | grep -v /bin/ | grep -v /obj/)
 if [ -n "$fixtures" ]; then start fixtures dotnet "$KS" $fixtures; fi
 
-report core; report kerboscript; report kerboscript-loc; report scriptcheck; report blocks
+report core; report kerboscript; report kerboscript-loc; report scriptcheck; report quarantine; report blocks
 [ -d tests/tools ] && report tools
 report undefined-calls
 # The fixture must fail, naming the function and its line, or the gate above could be passing for nothing.
