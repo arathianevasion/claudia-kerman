@@ -1,0 +1,156 @@
+<!doctype html>
+<!-- PROTOTYPE, throwaway. Map #1010, ticket #1018 "How contract planning looks at Start Mission and in Mission Control".
+     Three variants of the Mission window at Start Mission, switchable via ?variant=A|B|C (arrows or ← →).
+     Sample data only; the real UI is the IMGUI Mission window in KSP, so this mocks its density, not its pixels. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contract Planning Prototype</title>
+<style>
+:root{--bg:#1b1f24;--panel:#232a31;--panel2:#2b333c;--line:#3a444f;--text:#e6e9ec;--muted:#9aa5b1;--ok:#5cc87a;--warn:#e7b84a;--bad:#e2685b;--later:#6aa8e8;--accent:#f0a030}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;padding:16px 16px 90px}
+h1{font-size:15px;margin:0 0 4px}h2{font-size:13px;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.wrap{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.win{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;width:100%;max-width:560px}
+.win.mc{max-width:430px}
+.titlebar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:8px}
+.muted{color:var(--muted)}.small{font-size:12px}
+textarea{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:6px;font:inherit;min-height:44px}
+button{font:inherit;border-radius:4px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:6px 10px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#1b1f24;font-weight:600}
+.row{display:flex;gap:8px;align-items:center}
+.chip{display:inline-block;font-size:11px;padding:1px 6px;border-radius:9px;border:1px solid currentColor;white-space:nowrap}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.later{color:var(--later)}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:500;font-size:12px}
+td.num{text-align:right;white-space:nowrap}
+.bar{height:10px;background:var(--panel2);border-radius:5px;overflow:hidden;display:flex;margin:4px 0}
+.bar span{display:block;height:100%}
+.chat{background:var(--panel2);border-radius:6px;padding:10px;margin:8px 0}
+.chat .who{font-weight:600;color:var(--accent);margin-bottom:4px}
+.chat ul{margin:4px 0 4px 18px;padding:0}
+.qr{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.timeline{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.phase{min-width:118px;flex:1;background:var(--panel2);border-radius:6px;padding:6px}
+.phase .ph{font-size:11px;color:var(--muted);text-transform:uppercase}
+.pin{margin-top:6px;font-size:12px;border-left:3px solid var(--c);padding-left:6px}
+.pin.manual{border-left-style:dashed}
+.tray{margin-top:10px;border:1px dashed var(--line);border-radius:6px;padding:8px}
+.mcrow{display:flex;justify-content:space-between;gap:8px;padding:7px 6px;border-bottom:1px solid var(--line);position:relative}
+.mcrow .dot{width:8px;height:8px;border-radius:50%;background:#7a7;margin-top:6px;flex:none}
+.icon{width:18px;height:18px;border-radius:3px;background:var(--accent);color:#1b1f24;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none}
+.icon.off{background:transparent;border:1px solid var(--line);color:var(--muted)}
+.tip{position:absolute;right:30px;top:28px;background:#000;border:1px solid var(--line);padding:6px 8px;border-radius:4px;font-size:12px;z-index:2;width:240px;display:none}
+.mcrow:hover .tip{display:block}
+.legend{font-size:12px;color:var(--muted);margin-top:6px}
+#switcher{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#fff;color:#000;border-radius:999px;padding:6px 10px;display:flex;gap:10px;align-items:center;box-shadow:0 4px 18px rgba(0,0,0,.5);font-weight:600;z-index:9}
+#switcher button{background:#000;color:#fff;border:0;border-radius:50%;width:28px;height:28px;padding:0}
+input[type=checkbox]{accent-color:var(--accent)}
+</style></head><body>
+<h1>Contract planning at Start Mission — prototype <span class="muted small">(sample data; Mission Control level 2, craft “Mun Lander II”, 5,820 m/s, reserve 300 m/s)</span></h1>
+<div class="wrap">
+  <div class="win" id="mission"></div>
+  <div class="win mc" id="mc"></div>
+</div>
+<div id="switcher"><button id="prev">←</button><span id="label"></span><button id="next">→</button></div>
+<script>
+// ---- Sample data (what Core would hand the UI) ----
+const C=[
+ {id:1,t:"Test RT-10 “Hammer” booster",sub:"over Kerbin, 8–12 km, 250–400 m/s",status:"fits",dv:0,done:"T+2 min",dl:"38 d",reward:"√ 18,400",phase:"Ascent",col:"#e7b84a",note:"served on the way up; free"},
+ {id:2,t:"Orbit the Mun",sub:"Exploration",status:"fits",dv:1060,done:"T+3 d",dl:"none",reward:"√ 42,000",phase:"Mun",col:"#5cc87a",note:"shares the Mun trip"},
+ {id:3,t:"Plant a flag on the Mun",sub:"EVA (you plant it)",status:"fits",dv:640,done:"T+3 d",dl:"60 d",reward:"√ 31,500",phase:"Mun",col:"#6aa8e8",manual:true,note:"Manual stretch: you plant the flag, then Hand back"},
+ {id:4,t:"Test Mk16 parachute",sub:"splashed at Kerbin, 200–300 m/s",status:"fits",dv:0,done:"T+6 d",dl:"45 d",reward:"√ 9,200",phase:"Return",col:"#c58be0",note:"served on the way down; free"},
+ {id:5,t:"Survey Minmus: temperature",sub:"3 waypoints, above 20 km",status:"short",dv:1290,reward:"√ 55,000",reason:"short 410 m/s with the Mun Contracts (fits on its own)",phase:"Minmus"},
+ {id:6,t:"Rescue Bill Kerman",sub:"landed on the Mun",status:"notyet",reason:"Not yet: needs a ground rendezvous",reward:"√ 64,000"},
+ {id:7,t:"Sentinel: find 2 asteroids",sub:"telescope in solar orbit",status:"later",reason:"placed this flight; completes later (est. 40 d; deadline 120 d)",reward:"√ 70,000",excluded:true,why:"needs a solar-orbit insertion this craft can't add (short 1,900 m/s)"},
+];
+const own="Also collect science from Mun orbit and the surface.";
+const chip=c=>({fits:'<span class="chip ok">fits</span>',short:'<span class="chip warn">this craft can’t</span>',notyet:'<span class="chip bad">not yet</span>',later:'<span class="chip later">completes later</span>'}[c.status]);
+const totals=`<div class="small muted">Route Δv</div><div class="bar"><span style="width:62%;background:var(--ok)"></span><span style="width:24%;background:#4a8"></span><span style="width:5%;background:var(--warn)"></span><span style="width:9%;background:transparent"></span></div>
+<div class="small muted">4,480 m/s route (your science 1,190 · Contracts +1,700 · ascent 3,290 shared) · 300 reserve · <b class="ok">1,040 to spare</b></div>`;
+const header=`<div class="titlebar"><b>Mission — Mun Lander II</b><span class="muted small">on the pad</span></div>
+<div class="small muted">Your words</div><textarea>${own}</textarea>`;
+const startRow=`<div class="row" style="margin-top:10px"><button class="primary" style="flex:1">Start Mission</button><button>Check craft</button></div>`;
+
+// A: checklist table inside the start form
+function A(){return header+`<h2>Contracts (4 of 7 suggested)</h2>
+<table><tr><th></th><th>Contract</th><th>Status</th><th class="num">+Δv</th><th class="num">done / deadline</th></tr>
+${C.map(c=>`<tr><td><input type="checkbox" ${c.status==='fits'?'checked':''} ${c.status==='notyet'?'disabled':''}></td>
+<td>${c.t}<div class="small muted">${c.sub}${c.reason?' — '+c.reason:''}${c.why?' — '+c.why:''}</div></td><td>${chip(c)}</td>
+<td class="num">${c.status==='notyet'?'—':(c.dv?'+'+c.dv.toLocaleString():'0')}</td><td class="num small">${c.done?c.done+' / '+c.dl:'—'}</td></tr>`).join('')}</table>
+<div style="margin-top:8px">${totals}</div>
+<div class="small muted" style="margin-top:6px">Ticking or unticking re-prices your choice (no new search); the Craft Check judges it.</div>`+startRow;}
+
+// B: no form change; Claudia proposes the set in chat after Start Mission
+function B(){return header+`<div class="small muted" style="margin-top:6px">Accepted Contracts: 7 (Claudia reads them when you start)</div>`+startRow+`
+<div class="chat"><div class="who">Claudia</div>
+I can fly <b>4 of your 7 Contracts</b> with this craft, plus your science, with <b>1,040 m/s</b> to spare:
+<ul><li>Hammer booster test — on the way up</li><li>Orbit the Mun, and plant a flag there (you plant it on EVA)</li><li>Mk16 parachute test — on the way home</li></ul>
+<b>Not this flight:</b>
+<ul><li>Minmus temperature survey — 410 m/s short with the Mun Contracts. Swap it for the two Mun ones and it fits.</li>
+<li>Sentinel — the solar-orbit insertion is 1,900 m/s beyond this craft.</li>
+<li>Rescue Bill Kerman — not yet: needs a ground rendezvous.</li></ul>
+<div class="qr"><button class="primary">Plan these 4</button><button>Swap in Minmus survey</button><button>Change…</button><button>Ask a question</button></div></div>`;}
+
+// D: B's place (the chat), but the message is the mod's own card, templated from Core's result: no LLM until "Plan these"
+function D(){const fit=C.filter(c=>c.status==='fits');const out=C.filter(c=>c.status!=='fits');
+return header+`<div class="small muted" style="margin-top:6px">Accepted Contracts: 7</div>`+startRow+`
+<div class="chat" style="border-left:3px solid var(--accent)"><div class="who" style="color:var(--muted)">Mission Control · Contract check <span class="small">(the mod, no Claude)</span></div>
+<b>4 of 7 Contracts fit</b> with your science · route 4,480 m/s · reserve 300 · <b class="ok">1,040 to spare</b>
+<table style="margin-top:6px"><tr><th></th><th>Contract</th><th>Phase</th><th class="num">+Δv</th><th class="num">done / deadline</th></tr>
+${fit.map(c=>`<tr><td><input type="checkbox" checked></td><td>${c.t}${c.manual?' <span class="chip later">you fly</span>':''}</td><td class="small">${c.phase}</td><td class="num">${c.dv?'+'+c.dv.toLocaleString():'0'}</td><td class="num small">${c.done} / ${c.dl}</td></tr>`).join('')}</table>
+<div class="small" style="margin-top:8px"><b>Not this flight</b></div>
+${out.map(c=>`<div class="row small" style="justify-content:space-between;margin-top:4px"><span>${chip(c)} ${c.t} <span class="muted">— ${c.reason||''}${c.why?' '+c.why:''}</span></span>${c.status==='short'?'<button class="small">Swap in</button>':''}</div>`).join('')}
+<div class="qr"><button class="primary">Plan these 4</button><button>Plan without Contracts</button></div>
+<div class="small muted" style="margin-top:6px">Ticking, unticking or Swap in re-prices here (Core, no search, no LLM). “Plan these” sends the set to Claudia, whose plan proposal is the first LLM request.</div></div>`;}
+
+// E: the recommendation. D's card (as it looks after "Plan these 4" was pressed) + Claudia's plan proposal,
+// whose legs carry Requirement tags written by Core's plan check (not Claudia's text).
+function E(){const fit=C.filter(c=>c.status==='fits');const out=C.filter(c=>c.status!=='fits');
+const tag=(txt,col,manual)=>`<span class="chip" style="color:${col};${manual?'border-style:dashed':''}">${txt}</span>`;
+const legs=[
+ ["1","launch → 80 km Kerbin orbit","3,290",[tag("Hammer test · 8–12 km, 250–400 m/s","#e7b84a")],"Core times the staging when altitude and speed are both in the band"],
+ ["2","transfer_to Mun → capture 20 km","1,060",[tag("Orbit the Mun","#5cc87a")],""],
+ ["3","science (Mun orbit)","0",[tag("your science","#aaa")],""],
+ ["4","land near 2.4°N 81.0°E","640",[],""],
+ ["5","Manual stretch: plant flag, EVA science","0",[tag("Mun flag · you fly","#6aa8e8",true),tag("your science","#aaa")],"Hand back when done; the game confirms the flag"],
+ ["6","ascend → return → reentry","810",[tag("Mk16 test · splashed, 200–300 m/s","#c58be0")],"Core times the chute when splashed and speed is in the band"],
+];
+return header+`<div class="small muted" style="margin-top:6px">Accepted Contracts: 7</div>`+startRow+`
+<div class="chat" style="border-left:3px solid var(--accent);opacity:.75"><div class="who" style="color:var(--muted)">Mission Control · Contract check <span class="small">(the mod, no Claude)</span></div>
+<b>4 of 7 Contracts</b> chosen · route 4,480 m/s · <b class="ok">1,040 to spare</b>
+<div class="small" style="margin-top:4px">${fit.map(c=>'✓ '+c.t).join(' · ')}</div>
+<div class="small muted" style="margin-top:4px">Not this flight: ${out.map(c=>c.t+' ('+(c.status==='short'?'410 m/s short':c.status==='later'?'out of reach':'not yet')+')').join(' · ')}</div>
+<div class="small muted" style="margin-top:4px">You pressed <b>Plan these 4</b>.</div></div>
+<div class="chat"><div class="who">Claudia</div>
+Here's the Mission Plan for your science and the four Contracts. The flag is yours to plant on EVA after I land; I'll hold until you hand back.
+<table style="margin-top:6px"><tr><th>#</th><th>Leg</th><th class="num">Δv</th><th>Serves</th></tr>
+${legs.map(l=>`<tr><td>${l[0]}</td><td>${l[1]}${l[4]?'<div class="small muted">'+l[4]+'</div>':''}</td><td class="num">${l[2]}</td><td>${l[3].join(' ')||'<span class="muted small">—</span>'}</td></tr>`).join('')}</table>
+<div class="small muted" style="margin-top:6px">Tags come from the mod's plan check: every chosen Requirement is on a leg that can meet it, or this plan would have gone back to Claudia.</div>
+<div class="qr"><button class="primary">Approve</button><button>Change something</button><button>Ask a question</button></div></div>`;}
+
+// C: the Contract Route as a phase timeline, with a "not this flight" tray
+function C_(){const phases=["Ascent","Kerbin orbit","Mun","Return"];
+const pins=p=>C.filter(c=>c.phase===p&&c.status==='fits').map(c=>`<div class="pin ${c.manual?'manual':''}" style="--c:${c.col}">${c.t}<div class="small muted">${c.note}</div></div>`).join('')
+ +(p==='Mun'?`<div class="pin" style="--c:#888">Your science: orbit + surface<div class="small muted">science block</div></div>`:'');
+return header+`<h2>Contract Route</h2><div class="timeline">${phases.map(p=>`<div class="phase"><div class="ph">${p}</div>${pins(p)||'<div class="small muted" style="margin-top:6px">—</div>'}</div>`).join('')}</div>
+<div class="legend">Dashed = Manual stretch (you fly it). Each pin is a Contract Requirement on the leg that serves it.</div>
+<div style="margin-top:8px">${totals}</div>
+<div class="tray"><b class="small">Not this flight</b>${C.filter(c=>c.status!=='fits').map(c=>`<div class="row small" style="justify-content:space-between;margin-top:6px"><span>${chip(c)} ${c.t} <span class="muted">— ${c.reason||''}${c.why?' '+c.why:''}</span></span>${c.status==='short'?'<button class="small">Swap in</button>':''}</div>`).join('')}</div>`+startRow;}
+
+// Mission Control (same in every variant): icon on the right; hover for reason
+function MC(){const rows=[
+ ["Test RT-10 “Hammer” booster","Active",true,"Claudia can plan this: served on the ascent."],
+ ["Rescue Bill Kerman","Active",false,"Not yet: needs a ground rendezvous."],
+ ["Put a satellite in polar Kerbin orbit","Offered",true,"Claudia can plan this (one new satellite)."],
+ ["Satellite network: 3 craft","Offered",false,"Not yet: needs several satellites."],
+ ["Test Mk1 Cockpit flying at 2 km","Offered",false,"Not yet: needs sustained flight in the atmosphere (aircraft)."],
+ ["Grand Tour: Mun and Minmus","Offered",true,"Claudia can plan this. Whether your craft can is the Craft Check’s call at Start Mission."]];
+return `<div class="titlebar"><b>Mission Control (stock)</b><span class="muted small">hover a row</span></div>`+rows.map(r=>`<div class="mcrow"><div class="row"><span class="dot" title="Contract Configurator’s dot, if installed"></span><span>${r[0]} <span class="muted small">· ${r[1]}</span></span></div><div class="icon ${r[2]?'':'off'}">${r[2]?'C':'–'}</div><div class="tip">${r[3]}</div></div>`).join('')
++`<div class="legend">Orange “C” = the Claudia Flag icon (Claudia can plan this kind of Contract). Every row has hover text. No craft exists here, so it never says whether a craft can do it.</div>`;}
+
+const V={A:["Checklist in the start form",A],B:["Claudia proposes in chat",B],C:["Contract Route timeline",C_],D:["Mod's own card in chat",D],E:["Recommended: card, then plan with tags",E]};const keys=Object.keys(V);
+function render(){let v=new URLSearchParams(location.search).get('variant')||'A';if(!V[v])v='A';
+ document.getElementById('mission').innerHTML=V[v][1]();document.getElementById('mc').innerHTML=MC();document.getElementById('label').textContent=v+' ('+V[v][0]+')';}
+function go(d){let v=new URLSearchParams(location.search).get('variant')||'A';let i=(keys.indexOf(v)+d+keys.length)%keys.length;history.replaceState(null,'','?variant='+keys[i]);render();}
+document.getElementById('prev').onclick=()=>go(-1);document.getElementById('next').onclick=()=>go(1);
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,[contenteditable]'))return;if(e.key==='ArrowLeft')go(-1);if(e.key==='ArrowRight')go(1);});
+render();
+</script></body></html>

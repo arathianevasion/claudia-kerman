@@ -1,0 +1,144 @@
+<!doctype html>
+<!-- PROTOTYPE, throwaway. Map #1010, ticket #1018. Interactive walkthrough of layout D: from a clear Claudia window,
+     Start Mission with accepted Contracts -> the mod's Contract check card grows in at the bottom of the chat ->
+     tick/untick/Swap in re-price in place (mock Core arithmetic) -> Plan these -> Claudia's plan proposal with Requirement tags.
+     Sample data only. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contract Check Flow</title>
+<style>
+:root{--bg:#14171b;--panel:#232a31;--panel2:#2b333c;--line:#3a444f;--text:#e6e9ec;--muted:#9aa5b1;--ok:#5cc87a;--warn:#e7b84a;--bad:#e2685b;--later:#6aa8e8;--accent:#f0a030}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;padding:16px}
+.layout{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;justify-content:center}
+.win{background:var(--panel);border:1px solid var(--line);border-radius:6px;width:100%;max-width:540px;height:720px;display:flex;flex-direction:column}
+.titlebar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding:8px 12px}
+.portrait{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#f0a030,#a0602a);display:inline-block;vertical-align:middle;margin-right:8px}
+#chat{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
+#chat .spacer{flex:1}
+.msg{background:var(--panel2);border-radius:6px;padding:9px 10px;overflow:hidden}
+.msg .who{font-weight:600;color:var(--accent);margin-bottom:3px}
+.msg.mod{border-left:3px solid var(--accent)}.msg.mod .who{color:var(--muted)}
+.msg.player{align-self:flex-end;background:#33404d;max-width:85%}.msg.player .who{color:#9cc}
+.msg.sys{background:transparent;color:var(--muted);font-size:12px;text-align:center;padding:2px}
+.grow{animation:grow .55s cubic-bezier(.2,.8,.2,1) both;transform-origin:bottom}
+@keyframes grow{from{opacity:0;transform:translateY(24px) scaleY(.6);max-height:0}to{opacity:1;transform:none;max-height:900px}}
+.fade{animation:fade .35s ease both}@keyframes fade{from{opacity:0}to{opacity:1}}
+.collapse{transition:opacity .4s, max-height .5s;max-height:900px}
+.dots span{display:inline-block;width:6px;height:6px;margin-right:3px;border-radius:50%;background:var(--muted);animation:b 1s infinite}.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,100%{opacity:.25}50%{opacity:1}}
+.input{border-top:1px solid var(--line);padding:10px 12px}
+textarea{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:6px;font:inherit;min-height:40px;resize:none}
+button{font:inherit;border-radius:4px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:6px 10px;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#1b1f24;font-weight:600}
+.row{display:flex;gap:8px;align-items:center}
+.muted{color:var(--muted)}.small{font-size:12px}.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.later{color:var(--later)}
+.chip{display:inline-block;font-size:11px;padding:1px 6px;border-radius:9px;border:1px solid currentColor;white-space:nowrap;margin:1px 2px 1px 0}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:4px 3px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:500;font-size:12px}td.num,th.num{text-align:right;white-space:nowrap}
+.bar{height:8px;background:#1b2026;border-radius:4px;overflow:hidden;display:flex;margin:5px 0 3px}.bar span{height:100%;transition:width .35s}
+.flash{animation:flash .6s}@keyframes flash{0%{background:#4a3a1a}100%{background:transparent}}
+.side{max-width:330px;width:100%;font-size:13px}
+.side .box{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px;margin-bottom:10px}
+.side h3{margin:0 0 6px;font-size:13px}
+.side ol{margin:0;padding-left:18px}.side li{margin:3px 0}.side li.now{color:var(--accent);font-weight:600}
+pre{white-space:pre-wrap;font-size:11px;color:var(--muted);margin:0}
+input[type=checkbox]{accent-color:var(--accent)}
+</style></head><body>
+<div class="layout">
+ <div class="win">
+  <div class="titlebar"><span><span class="portrait"></span><b>Claudia</b> <span class="muted small">· Mun Lander II on the pad</span></span><span class="muted small">Career · Mission Control lvl 2</span></div>
+  <div id="chat"><div class="spacer"></div></div>
+  <div class="input">
+   <textarea id="words" placeholder="What should this Mission do? (optional with Contracts)"></textarea>
+   <div class="row" style="margin-top:8px" id="startrow"><button class="primary" id="start" style="flex:1">Start Mission</button><button id="check">Check craft</button></div>
+  </div>
+ </div>
+ <div class="side">
+  <div class="box"><h3>Walkthrough</h3><ol id="steps">
+   <li data-s="clear">Clear window. Optionally type your own words (try “Also collect science from Kerbin orbit”).</li>
+   <li data-s="checking">Start Mission: the mod reads your 7 accepted Contracts (no Claude).</li>
+   <li data-s="card">The Contract check card grows in at the bottom. Tick, untick or Swap in: it re-prices in place.</li>
+   <li data-s="planning">Plan these: the card folds to a summary; Claudia's plan proposal is the first LLM request.</li>
+   <li data-s="proposed">Each leg carries the Requirements it serves (tags from the mod's plan check). Approve.</li>
+  </ol><div class="row" style="margin-top:8px"><button id="reset">Reset to clear</button><label class="small"><input type="checkbox" id="nocontracts"> no accepted Contracts</label></div></div>
+  <div class="box"><h3>State</h3><pre id="state"></pre></div>
+ </div>
+</div>
+<script>
+const CRAFT=6840, RESERVE=300;
+const K=[
+ {id:"hammer",t:"Test RT-10 “Hammer” booster",band:"over Kerbin, 8–12 km, 250–400 m/s",phase:"Ascent",dl:"38 d",fund:18400,status:"fits",col:"#e7b84a"},
+ {id:"munorbit",t:"Orbit the Mun",band:"Exploration",phase:"Mun",dl:"none",fund:42000,status:"fits",col:"#5cc87a"},
+ {id:"flag",t:"Plant a flag on the Mun",band:"EVA, you plant it",phase:"Mun surface",dl:"60 d",fund:31500,status:"fits",col:"#6aa8e8",manual:true},
+ {id:"mk16",t:"Test Mk16 parachute",band:"splashed at Kerbin, 200–300 m/s",phase:"Return",dl:"45 d",fund:9200,status:"fits",col:"#c58be0"},
+ {id:"minmus",t:"Survey Minmus: temperature",band:"3 waypoints above 20 km",phase:"Minmus",dl:"52 d",fund:55000,status:"fits",col:"#e2a0c0"},
+ {id:"rescue",t:"Rescue Bill Kerman",band:"landed on the Mun",status:"notyet",reason:"not yet: needs a ground rendezvous"},
+ {id:"sentinel",t:"Sentinel: find 2 asteroids",band:"telescope in solar orbit",status:"far",reason:"the solar-orbit insertion is 1,900 m/s beyond this craft"},
+];
+// Mock of Core's route pricing: shared trips counted once (the real thing is the #1019 decision).
+function price(sel,own){const has=id=>sel.has(id);const mun=has("munorbit")||has("flag");const min=has("minmus");
+ let parts=[["ascent",3290]];
+ if(own) parts.push(["your science (Kerbin orbit)",0]);
+ if(mun) parts.push(["Mun trip",1060]);
+ if(has("flag")) parts.push(["Mun landing + ascent",640]);
+ if(min) parts.push([mun?"Mun → Minmus":"Minmus trip",mun?1150:1290]);
+ parts.push(mun||min?["return",810]:["deorbit",100]);
+ const total=parts.reduce((a,p)=>a+p[1],0);return {parts,total,spare:CRAFT-RESERVE-total};}
+const marginal=(sel,own,id)=>{const w=new Set(sel);w.add(id);const wo=new Set(sel);wo.delete(id);return price(w,own).total-price(wo,own).total;};
+let S={step:"clear",sel:new Set(["hammer","munorbit","flag","mk16"]),own:"",log:[]};
+const chat=document.getElementById('chat');
+function show(){document.querySelectorAll('#steps li').forEach(li=>li.className=li.dataset.s===S.step?'now':'');
+ const p=price(S.sel,S.own);document.getElementById('state').textContent=JSON.stringify({step:S.step,yourWords:S.own||null,chosen:[...S.sel],routeDv:p.total,spare:p.spare,llmRequests:S.step==='proposed'||S.step==='approved'?1:0},null,1);}
+function add(html,cls){const d=document.createElement('div');d.className='msg '+(cls||'')+' grow';d.innerHTML=html;chat.appendChild(d);chat.scrollTop=chat.scrollHeight;return d;}
+function setStartRow(html){document.getElementById('startrow').innerHTML=html;}
+function reset(){chat.innerHTML='<div class="spacer"></div>';S={step:"clear",sel:new Set(["hammer","munorbit","flag","mk16"]),own:"",log:[]};
+ document.getElementById('words').value='';document.getElementById('words').disabled=false;
+ setStartRow('<button class="primary" id="start" style="flex:1">Start Mission</button><button id="check">Check craft</button>');wire();
+ add('Craft Check: no Blockers. 6,840 m/s, TWR 1.6 on the pad.','sys');show();}
+function wire(){document.getElementById('start').onclick=start;}
+function start(){S.own=document.getElementById('words').value.trim();document.getElementById('words').disabled=true;
+ setStartRow('<button class="primary" style="flex:1" disabled>Mission starting…</button>');
+ if(S.own) add('<div class="who">You</div>'+S.own,'player');
+ if(document.getElementById('nocontracts').checked){add('<div class="who">Claudia</div><span class="dots"><span></span><span></span><span></span></span> <span class="muted small">planning from your words (as today)</span>');S.step='planning';show();return;}
+ S.step='checking';show();
+ const w=add('<div class="who">Mission Control · Contract check <span class="small">(the mod, no Claude)</span></div><span class="dots"><span></span><span></span><span></span></span> <span class="muted small">reading 7 accepted Contracts…</span>','mod');
+ setTimeout(()=>{w.remove();S.step='card';card=add(cardHtml(),'mod');wireCard();show();},900);}
+let card;
+function cardHtml(){const p=price(S.sel,S.own);const fits=p.spare>=0;
+ const pick=K.filter(k=>k.status==='fits'), out=K.filter(k=>k.status!=='fits');
+ const n=S.sel.size;const used=Math.round(p.total/(CRAFT)*100),res=Math.round(RESERVE/CRAFT*100);
+ return `<div class="who">Mission Control · Contract check <span class="small">(the mod, no Claude)</span></div>
+ <div><b>${n} of 7 Contracts</b>${S.own?' with your words':''} · route <b>${p.total.toLocaleString()}</b> m/s of ${CRAFT.toLocaleString()} · reserve ${RESERVE} · ${fits?`<b class="ok">${p.spare.toLocaleString()} to spare</b>`:`<b class="bad">${(-p.spare).toLocaleString()} m/s short</b>`}</div>
+ <div class="bar"><span style="width:${Math.min(used,100)}%;background:${fits?'var(--ok)':'var(--bad)'}"></span><span style="width:${res}%;background:var(--warn)"></span></div>
+ <table style="margin-top:6px"><tr><th></th><th>Contract</th><th>Phase</th><th class="num">+Δv</th><th class="num">deadline</th></tr>
+ ${pick.map(k=>{const on=S.sel.has(k.id);const m=marginal(S.sel,S.own,k.id);return `<tr data-id="${k.id}"><td><input type="checkbox" data-id="${k.id}" ${on?'checked':''}></td><td>${k.t}${k.manual?' <span class="chip later" style="border-style:dashed">you fly</span>':''}<div class="small muted">${k.band}</div></td><td class="small">${k.phase}</td><td class="num">${m?'+'+m.toLocaleString():'0'}</td><td class="num small">${k.dl}</td></tr>`}).join('')}</table>
+ <div class="small" style="margin-top:8px"><b>Not this flight</b></div>
+ ${out.map(k=>`<div class="small" style="margin-top:3px"><span class="chip ${k.status==='notyet'?'bad':'warn'}">${k.status==='notyet'?'not yet':'this craft can’t'}</span> ${k.t} <span class="muted">— ${k.reason}</span></div>`).join('')}
+ ${!S.sel.has('minmus')&&marginal(S.sel,S.own,'minmus')>p.spare?`<div class="small" style="margin-top:3px"><span class="chip warn">doesn’t fit with these</span> Survey Minmus <span class="muted">— ${(marginal(S.sel,S.own,'minmus')-p.spare).toLocaleString()} m/s short with the others</span> <button class="small" id="swap">Swap in for the Mun Contracts</button></div>`:''}
+ <div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="primary" id="plan" ${fits&&n?'':'disabled'}>${n?`Plan these ${n}`:'Pick a Contract'}</button><button id="plainplan">Plan without Contracts</button></div>
+ <div class="small muted" style="margin-top:5px">${fits?'Changes re-price here. No search, no Claude.':'Untick something, or Plan without Contracts.'}</div>`;}
+function rerender(flashId){card.innerHTML=cardHtml();card.classList.remove('grow');wireCard();if(flashId){const r=card.querySelector(`tr[data-id="${flashId}"]`);if(r)r.classList.add('flash');}show();}
+function wireCard(){card.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.onchange=()=>{cb.checked?S.sel.add(cb.dataset.id):S.sel.delete(cb.dataset.id);rerender(cb.dataset.id);});
+ const sw=card.querySelector('#swap');if(sw)sw.onclick=()=>{S.sel.delete('munorbit');S.sel.delete('flag');S.sel.add('minmus');rerender('minmus');};
+ const pl=card.querySelector('#plan');if(pl)pl.onclick=plan;card.querySelector('#plainplan').onclick=()=>{S.sel.clear();plan();};}
+function plan(){const chosen=K.filter(k=>S.sel.has(k.id));const p=price(S.sel,S.own);
+ card.style.maxHeight=card.scrollHeight+'px';requestAnimationFrame(()=>{card.classList.add('collapse');card.style.maxHeight='86px';card.style.opacity='.75';});
+ setTimeout(()=>{card.innerHTML=`<div class="who">Mission Control · Contract check</div><b>${chosen.length} of 7 Contracts</b> chosen · ${p.total.toLocaleString()} m/s · <span class="ok">${p.spare.toLocaleString()} to spare</span><div class="small muted">${chosen.map(k=>'✓ '+k.t).join(' · ')||'None: planning from your words only'}</div>`;card.style.maxHeight='none';},450);
+ S.step='planning';show();
+ const t=add('<div class="who">Claudia</div><span class="dots"><span></span><span></span><span></span></span> <span class="muted small">writing the Mission Plan</span>');
+ setTimeout(()=>{t.remove();proposal(chosen);},1600);}
+function tag(k){return `<span class="chip" style="color:${k.col};${k.manual?'border-style:dashed':''}">${k.t.replace('Test ','').replace(' booster',' test').replace(' parachute',' test')}${k.manual?' · you fly':''}</span>`;}
+function proposal(chosen){const has=id=>chosen.some(k=>k.id===id);const g=id=>K.find(k=>k.id===id);const mun=has('munorbit')||has('flag');const min=has('minmus');
+ const legs=[["launch → 80 km Kerbin orbit",has('hammer')?[g('hammer')]:[],has('hammer')?'the mod times the staging when altitude and speed are both in the band':'']];
+ if(S.own) legs.push(["science (Kerbin orbit)",[],'',true]);
+ if(mun) legs.push(["transfer_to Mun → capture 20 km",has('munorbit')?[g('munorbit')]:[],'']);
+ if(has('flag')) legs.push(["land near 2.4°N 81.0°E",[],''],["Manual stretch: plant the flag",[g('flag')],'hand back when done; the game confirms the flag'],["ascend to Mun orbit",[],'']);
+ if(min) legs.push([mun?"transfer_to Minmus → capture 25 km, 87° inclination":"transfer_to Minmus → capture 25 km, 87° inclination",[g('minmus')],'three passes over the waypoints; the mod runs the scan in the band']);
+ legs.push([mun||min?"return → reentry → splashdown":"deorbit → reentry → splashdown",has('mk16')?[g('mk16')]:[],has('mk16')?'the mod stages the chute when splashed and speed is in the band':'']);
+ add(`<div class="who">Claudia</div>Here's the Mission Plan${chosen.length?` for ${S.own?'your science and ':''}${chosen.length} Contract${chosen.length>1?'s':''}`:''}.${has('flag')?' The flag is yours to plant on EVA after I land; I hold until you hand back.':''}
+ <table style="margin-top:6px"><tr><th>#</th><th>Leg</th><th>Serves</th></tr>${legs.map((l,i)=>`<tr><td>${i+1}</td><td>${l[0]}${l[2]?`<div class="small muted">${l[2]}</div>`:''}</td><td>${l[1].map(tag).join('')}${l[3]?'<span class="chip" style="color:#aaa">your science</span>':''}${!l[1].length&&!l[3]?'<span class="muted small">—</span>':''}</td></tr>`).join('')}</table>
+ <div class="small muted" style="margin-top:5px">Tags come from the mod's plan check, not from Claudia's text.</div>
+ <div class="row" style="margin-top:8px"><button class="primary" id="approve">Approve</button><button>Change something</button><button>Ask a question</button></div>`);
+ S.step='proposed';show();
+ document.getElementById('approve').onclick=()=>{S.step='approved';add('Mission started · Sequence 1: launch','sys');show();};}
+document.getElementById('reset').onclick=reset;reset();
+</script></body></html>
