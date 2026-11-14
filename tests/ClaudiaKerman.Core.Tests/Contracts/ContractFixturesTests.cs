@@ -12,8 +12,8 @@ using Xunit;
 namespace ClaudiaKerman.Core.Tests.Contracts
 {
     /// <summary>
-    /// #1037: the stock-type Contract fixtures, one Game Snapshot per Contract as the capture button's dump writes them. Provisional
-    /// ones come from the research; the player's in-game dumps replace them (Fixtures/contracts/README.md says which is which).
+    /// #1037: the stock-type Contract fixtures, one Game Snapshot per Contract as the capture button writes them. Provisional
+    /// ones come from the research; the player's in-game recordings replace them (Fixtures/contracts/README.md says which is which).
     /// </summary>
     public sealed class ContractFixturesTests
     {

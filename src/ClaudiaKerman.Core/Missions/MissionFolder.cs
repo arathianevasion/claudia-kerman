@@ -137,11 +137,11 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// #1037's dump: one Game Snapshot per accepted Contract, carrying that Contract alone, in the recording form a Core test
+        /// #1037: one Game Snapshot per accepted Contract, carrying that Contract alone, in the recording form a Core test
         /// fixture holds, to the save's contracts folder, named by its kind, the start of its GUID and the UT. Returns the paths; none
         /// with no accepted Contract.
         /// </summary>
-        public static IList<string> WriteContractDumps(string saveDirectory, GameSnapshot snapshot)
+        public static IList<string> WriteContractSnapshots(string saveDirectory, GameSnapshot snapshot)
         {
             var written = new List<string>();
             if (snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0) return written;

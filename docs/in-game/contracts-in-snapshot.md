@@ -1,6 +1,6 @@
-# Accepted Contracts in the Game Snapshot, and the stock-type dump (#1037)
+# Accepted Contracts in the Game Snapshot, and a snapshot per stock Contract type (#1037)
 
-The mod now reads the player's accepted Contracts into the Game Snapshot (ADR 0021), from each Contract's saved form and the game's public members, and the debug capture button also writes one Game Snapshot per accepted Contract. Core tests cover the snapshot's form and the dump writer (`SnapshotContractsTests`, `ContractFixturesTests`, `MissionTests`); these checks need the game. Install and where to look are as in `phase-3-gate.md`. The snapshots are in the save's `ClaudiaKerman/snapshots` folder and the per-Contract dumps in `ClaudiaKerman/contracts`.
+The mod now reads the player's accepted Contracts into the Game Snapshot (ADR 0021), from each Contract's saved form and the game's public members, and the debug capture button also writes one Game Snapshot per accepted Contract. Core tests cover the snapshot's form and the per-Contract writer (`SnapshotContractsTests`, `ContractFixturesTests`, `MissionTests`); these checks need the game. Install and where to look are as in `phase-3-gate.md`. The snapshots are in the save's `ClaudiaKerman/snapshots` folder and the per-Contract snapshots in `ClaudiaKerman/contracts`.
 
 ## Check 1: the snapshot carries the accepted Contracts
 
@@ -22,8 +22,8 @@ The mod now reads the player's accepted Contracts into the Game Snapshot (ADR 00
 1. In the same Career, with no Contract accepted, capture a snapshot: it has no `contracts` entry.
 2. In a Science save and a Sandbox save, capture a snapshot: no `contracts` entry, and no `contracts` folder is written.
 
-## Check 4: the stock-type dump (slice 1)
+## Check 4: a snapshot of each stock Contract type (slice 1)
 
-For each stock Contract type the Career offers you (accept as many as Mission Control allows, capture, then cancel or finish them to make room for the next), capture once with it accepted. Commit each dump from `ClaudiaKerman/contracts` to `tests/ClaudiaKerman.Core.Tests/Fixtures/contracts/`, named for its type as the provisional ones are, replacing the provisional file of that type, and move its row in that folder's `README.md` to "Recorded in game", noting any setting that differs from the research's.
+For each stock Contract type the Career offers you (accept as many as Mission Control allows, capture, then cancel or finish them to make room for the next), capture once with it accepted. Commit each per-Contract snapshot from `ClaudiaKerman/contracts` to `tests/ClaudiaKerman.Core.Tests/Fixtures/contracts/`, named for its type as the provisional ones are, replacing the provisional file of that type, and move its row in that folder's `README.md` to "Recorded in game", noting any setting that differs from the research's.
 
 Tell the ticket which types were recorded, and any setting that differs from the provisional fixture.

@@ -694,9 +694,9 @@ namespace ClaudiaKerman.Core.Tests
 
             var whole = GameSnapshot.Parse(File.ReadAllText(Assert.Single(Directory.GetFiles(Path.Combine(_save.Path, "ClaudiaKerman", "snapshots")))));
             Assert.Equal(2, whole.Contracts.Accepted.Count);
-            var dumps = Directory.GetFiles(Path.Combine(_save.Path, "ClaudiaKerman", "contracts")).OrderBy(f => f, StringComparer.Ordinal).ToList();
-            Assert.Equal(new[] { "PartTest-aaaaaaaa-ut1203.json", "SurveyContract-bbbbbbbb-ut1203.json" }, dumps.Select(Path.GetFileName));
-            var survey = GameSnapshot.Parse(File.ReadAllText(dumps[1]));
+            var perContract = Directory.GetFiles(Path.Combine(_save.Path, "ClaudiaKerman", "contracts")).OrderBy(f => f, StringComparer.Ordinal).ToList();
+            Assert.Equal(new[] { "PartTest-aaaaaaaa-ut1203.json", "SurveyContract-bbbbbbbb-ut1203.json" }, perContract.Select(Path.GetFileName));
+            var survey = GameSnapshot.Parse(File.ReadAllText(perContract[1]));
             Assert.Equal("bbbbbbbb-0000-0000-0000-000000000002", Assert.Single(survey.Contracts.Accepted).Guid);
             Assert.Equal(7, survey.Contracts.Limit);
             Assert.Equal(2, survey.Contracts.Active);
