@@ -21,7 +21,7 @@ A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You 
 
 Claudia is also a Kerbal: a female crew member with the **Super Intelligence** role, which combines Pilot, Engineer and Scientist. She flies aboard crewed craft, or remotely from Mission Control for probes. If she dies aboard, the Mission is **Lost**, and she returns to the roster later.
 
-In Flight, the **Capcom strip** under the altimeter follows the Mission: Claudia's latest line, where the Mission is in its plan, the Spending Cap and what is locked. Its tab expands the Mission window docked to it, and it turns amber when she needs you. In the Space Center and Tracking Station, the **Missions list** shows every Mission in the save: the active one, Paused ones and finished ones with their final Debrief and cost.
+In Flight, the **Capcom strip** between the altimeter and the app launcher bar follows the Mission: Claudia's latest line, where the Mission is in its plan, the Spending Cap and what is locked. Its tab expands the Mission window docked to it, and it turns amber when she needs you. In the Space Center and Tracking Station, the **Missions list** shows every Mission in the save: the active one, Paused ones and finished ones with their final Debrief and cost.
 
 ## Building Blocks
 
@@ -92,7 +92,7 @@ Sandbox, Science and Career all work.
 
 Claudia uses the Claude API with your own key. Each Mission has its own **Spending Cap**, $10 by default, which you can raise later; the mod never sends a request that could go over it. When the cap has no room, the Mission is **Paused** until you raise it.
 
-The start form shows an estimate. As a rough guide, a Mun landing and return costs about $2.40 on Sonnet 5.5, about $0.12 on Haiku 5.5 (the default). Failed and retried legs cost the most, so a clean flight costs less.
+The start form shows an estimate. As a rough guide, a biome-specific Mun landing and return costs about $2.40 on Sonnet 5.5, about $0.12 on Haiku 5.5 (the default). Failed and retried legs cost the most, so a clean flight costs less.
 
 The key is stored as **plain text** in `~/Library/Application Support/ClaudiaKerman/`, readable only by you. If the `ANTHROPIC_API_KEY` environment variable is set, it is used instead. The key is never written to logs, saves or Mission records, and never placed under GameData.
 

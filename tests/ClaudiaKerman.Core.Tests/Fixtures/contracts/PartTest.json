@@ -1,0 +1,103 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000001",
+        "kind": "PartTest",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 14250.0,
+          "science": 2.0,
+          "reputation": 4.0
+        },
+        "settings": {
+          "type": "PartTest",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000001",
+          "state": "Active",
+          "prestige": "0",
+          "part": "solidBooster.sm.v2",
+          "haul": "False",
+          "dest": "1",
+          "sit": "FLYING"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000001/0",
+            "kind": "PartTest",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "PartTest",
+              "state": "Incomplete",
+              "part": "solidBooster.sm.v2",
+              "body": "1",
+              "situation": "FLYING",
+              "haul": "False",
+              "repeatability": "0",
+              "notes": "Stage it or use Run Test"
+            },
+            "requirements": [
+              {
+                "key": "0d5e8a10-1037-4a01-9f00-000000000001/0.0",
+                "kind": "ReachDestination",
+                "state": "Incomplete",
+                "optional": false,
+                "settings": {
+                  "name": "ReachDestination",
+                  "state": "Incomplete",
+                  "disableOnStateChange": "False",
+                  "dest": "1"
+                }
+              },
+              {
+                "key": "0d5e8a10-1037-4a01-9f00-000000000001/0.1",
+                "kind": "ReachSituation",
+                "state": "Incomplete",
+                "optional": false,
+                "settings": {
+                  "name": "ReachSituation",
+                  "state": "Incomplete",
+                  "disableOnStateChange": "False",
+                  "sit": "FLYING"
+                }
+              },
+              {
+                "key": "0d5e8a10-1037-4a01-9f00-000000000001/0.2",
+                "kind": "ReachAltitudeEnvelope",
+                "state": "Incomplete",
+                "optional": false,
+                "settings": {
+                  "name": "ReachAltitudeEnvelope",
+                  "state": "Incomplete",
+                  "disableOnStateChange": "False",
+                  "minAlt": "6000",
+                  "maxAlt": "10000"
+                }
+              },
+              {
+                "key": "0d5e8a10-1037-4a01-9f00-000000000001/0.3",
+                "kind": "ReachSpeedEnvelope",
+                "state": "Incomplete",
+                "optional": false,
+                "settings": {
+                  "name": "ReachSpeedEnvelope",
+                  "state": "Incomplete",
+                  "disableOnStateChange": "False",
+                  "minSpd": "210",
+                  "maxSpd": "280"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

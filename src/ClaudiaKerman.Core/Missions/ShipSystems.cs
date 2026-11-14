@@ -318,7 +318,8 @@ namespace ClaudiaKerman.Core.Missions
             return dt >= 0 ? dt : dt + 2 * Math.PI / motion;
         }
 
-        private static double MeanAnomaly(double trueAnomaly, double ecc)
+        /// <summary>The mean anomaly, radians, for a true anomaly in radians: Kepler's equation for a closed path, the hyperbolic one past it. Also <see cref="ClaudiaKerman.Core.Tools.BlockCalls.FallEta(double, double, double, double, double)"/>'s.</summary>
+        internal static double MeanAnomaly(double trueAnomaly, double ecc)
         {
             if (ecc < 1)
             {

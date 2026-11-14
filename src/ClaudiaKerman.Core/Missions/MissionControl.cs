@@ -151,6 +151,10 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is CraftLinkSeen) CraftLinkReported((CraftLinkSeen)input);
             else if (input is SetAutoMode) AutoModeSet(((SetAutoMode)input).On);
             else if (input is ChangeTarget) TargetChanged(((ChangeTarget)input).Pick);
+            else if (input is PlanContracts) ContractsPlanned();
+            else if (input is TickContract) { if (_contractCheck != null) _contractCheck.Tick(((TickContract)input).Guid, ((TickContract)input).Ticked); }
+            else if (input is SwapInContract) { if (_contractCheck != null) _contractCheck.SwapIn(((SwapInContract)input).Guid); }
+            else if (input is PlanWithoutContracts) PlannedWithoutContracts();
             CheckDue();
             CheckBlackout();
             CheckScriptWarp();
@@ -396,7 +400,9 @@ namespace ClaudiaKerman.Core.Missions
         private void Start(StartMission start)
         {
             var goal = (start.Goal ?? "").Trim();
-            if (goal.Length == 0 || start.SpendingCap <= 0 || !_config.Models.Contains(start.Model) || _saveDirectory == null) return;
+            if (start.SpendingCap <= 0 || !_config.Models.Contains(start.Model) || _saveDirectory == null) return;
+            // Nothing typed starts only from accepted Contracts (#1022).
+            if (goal.Length == 0 && AcceptedContracts == 0) return;
             // Another Mission in play pauses at its next sequence boundary first, before the new craft is checked (MissionControl.Missions.cs).
             if (!MissionOver && !MakeRoom(new QueuedSwitch { Kind = SwitchKind.Start, Start = start })) return;
             ForgetSavedOrbit();
@@ -407,6 +413,16 @@ namespace ClaudiaKerman.Core.Missions
             {
                 _pendingStart = null;
                 NeedsPlayer(_startRefusal);
+                return;
+            }
+            // #1022: with accepted Contracts, Mission Control's card comes first, before any request (MissionControl.Contracts.cs).
+            string contractsRefusal;
+            var held = HeldForContracts(start, out contractsRefusal);
+            if (held || contractsRefusal.Length > 0 || goal.Length == 0)
+            {
+                _pendingStart = null;
+                _startRefusal = contractsRefusal;
+                if (_startRefusal.Length > 0) NeedsPlayer(_startRefusal);
                 return;
             }
 
@@ -465,6 +481,7 @@ namespace ClaudiaKerman.Core.Missions
             // The form's goal is spent: no offer is worked out for it any more.
             _form = null;
             SaveSetupAsDefaults(start);
+            TakeContracts(mission, start);
             Note(LogKind.Player, "Mission Goal: " + goal);
             TakeTarget(mission, target);
             if (!window.IsNone) Note(LogKind.Player, "Transfer Window to " + window.Body + ": " + window.Kind + ".");
@@ -569,7 +586,7 @@ namespace ClaudiaKerman.Core.Missions
             Begin(new Turn
             {
                 Purpose = Purpose.MissionPlan,
-                UserText = "Mission Goal, in the player's words (quoted data): " + MissionPrompts.Quoted(mission.Goal) + "\n"
+                UserText = GoalText(mission)
                     + MissionPrompts.MissionMode(mission.Remote)
                     + MissionPrompts.ModeFacts(mission.Remote, _snapshot) + "\n"
                     + "Spending Cap: $" + mission.SpendingCap.ToString("0.00", CultureInfo.InvariantCulture) + ".\n"
@@ -870,9 +887,11 @@ namespace ClaudiaKerman.Core.Missions
             var mission = _mission;
             var due = PendingDueTime;
             if (mission == null || mission.DueNotified || !due.HasValue || _ut < due.Value) return;
+            // #967: back at a coast checkpoint, its check runs first; a plan it keeps is called on the next input.
+            if (CoastCheckRunsNow(mission, mission.PendingSequence)) return;
             mission.DueNotified = true;
             _commands.Add(new DropWarp());
-            // #967: a Due Time the player warped to under Auto Mode is not theirs to approve: Auto Mode's log line follows, or its stop line.
+            // #967: under Auto Mode, with the player in the craft, a reached Due Time is not theirs to approve: Auto Mode's log line follows, or its stop line.
             if (AutoModeTakesDue(mission, mission.PendingSequence)) return;
             var text = _ut - due.Value > 60
                 ? "Due Time missed by " + KerbinTime.Span(_ut - due.Value) + ": " + mission.PendingSequence.Name + " waits for your Approval."
@@ -2324,6 +2343,9 @@ namespace ClaudiaKerman.Core.Missions
             {
                 var path = MissionFolder.WriteSnapshot(_saveDirectory, _snapshot);
                 if (_mission != null) Note(LogKind.Notice, "Game Snapshot saved to " + path);
+                var perContract = MissionFolder.WriteContractSnapshots(_saveDirectory, _snapshot);
+                if (_mission != null && perContract.Count > 0)
+                    Note(LogKind.Notice, "A Game Snapshot for each accepted Contract (" + perContract.Count + ") saved to " + Path.GetDirectoryName(perContract[0]));
             }
             catch (Exception e) when (IsFileError(e))
             {
@@ -2499,6 +2521,8 @@ namespace ClaudiaKerman.Core.Missions
             view.PhysicsWarpAllowed = _config.PhysicsWarp;
             view.StartForm.DefaultRemote = _config.DefaultRemote;
             view.StartForm.Refusal = _startRefusal;
+            view.StartForm.ContractsAccepted = AcceptedContracts;
+            view.ContractCheck = ContractCheckView();
             view.StartForm.Targets = CurrentTargetFacts();
             // Worked out only for a goal the form has pinned, and only while it can start: a search is not for every keystroke or frame.
             if (view.StartForm.CanStart && _form != null) view.StartForm.Windows = OfferFor((_form.Goal ?? "").Trim(), _snapshot);

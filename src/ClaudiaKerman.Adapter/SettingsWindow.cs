@@ -43,7 +43,7 @@ namespace ClaudiaKerman.Adapter
         private readonly string _configDirectory;
         private readonly ChatWindow _chat;
         private readonly WindowFrame _frame =
-            new WindowFrame(0x434B01, "", "ClaudiaKermanSettings", MissionWindow.DefaultRect(DefaultSizes.Settings(ClaudiaSkin.FontScale, 200, 90)),new Vector2(DefaultSizes.SettingsMin(ClaudiaSkin.FontScale).Width, DefaultSizes.SettingsMin(ClaudiaSkin.FontScale).Height), true);
+            new WindowFrame(0x434B01, "", "ClaudiaKermanSettings", MissionWindow.DefaultRect(DefaultSizes.Settings(ClaudiaSkin.FontScale, 200, 90)),new Vector2(DefaultSizes.SettingsMin(ClaudiaSkin.FontScale).Width, DefaultSizes.SettingsMin(ClaudiaSkin.FontScale).Height), true, ClaudiaSkin.FontScale);
 
         private MissionView _view;
         private Context _context;
@@ -74,6 +74,7 @@ namespace ClaudiaKerman.Adapter
         private string _uninstallStatus = "";
 
         private Vector2 _scroll;
+        private GUIStyle _stylesFor;
         private GUIStyle _label, _dangerLabel, _note, _row, _rowOn, _tile, _header, _headerOpen, _uninstallBox, _radioOn, _radioOff;
         private Texture2D _portrait;
 
@@ -614,7 +615,9 @@ namespace ClaudiaKerman.Adapter
 
         private void BuildStyles()
         {
-            if (_label != null) return;
+            // Rebuilt when ClaudiaSkin's styles are (a new skin or UI scale).
+            if (_label != null && ReferenceEquals(_stylesFor, ClaudiaSkin.Body)) return;
+            _stylesFor = ClaudiaSkin.Body;
             _label = new GUIStyle(ClaudiaSkin.Body) { fontStyle = FontStyle.Bold };
             _dangerLabel = new GUIStyle(ClaudiaSkin.DangerText) { fontSize = ClaudiaSkin.Scaled(11), fontStyle = FontStyle.Bold };
             _note = new GUIStyle(ClaudiaSkin.Muted) { padding = new RectOffset(ClaudiaSkin.Padding, ClaudiaSkin.Padding, 10, 10) };

@@ -66,12 +66,22 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// The one Due Time that doesn't hold the player or Auto Mode back (#775): a coast checkpoint's, with the player still in the craft
+        /// The one Due Time that doesn't hold the player or Auto Mode back before it is reached (#775): a coast checkpoint's, with the player still in the craft
         /// (the script warps there on rails). Left, or not yet checked since, it holds as any Due Time does.
         /// </summary>
         private bool SoftDueTime(Mission mission, SequencePlan plan)
         {
             return CoastPlanToken(plan) != null && !mission.CheckPending && CraftActive;
+        }
+
+        /// <summary>
+        /// The check on return runs later in this same input (<see cref="CheckCoastReturn"/>): the Due Time's notice and Auto Mode's stop line
+        /// wait for its verdict rather than be logged and cleared at once (#967).
+        /// </summary>
+        private bool CoastCheckRunsNow(Mission mission, SequencePlan plan)
+        {
+            return mission == _mission && !MissionOver && mission.Stage == MissionStage.AwaitingSequenceApproval && plan == mission.PendingSequence
+                && mission.CheckPending && CoastPlanToken(plan) != null && CraftActive && !mission.SwitchingAway && !mission.InFlight && mission.Pending == null;
         }
 
         // ---- At a checkpoint ----
@@ -206,7 +216,7 @@ namespace ClaudiaKerman.Core.Missions
                 if (ElsewhereInFlight || _scene != GameScene.Flight) mission.CheckPending = true;
                 return;
             }
-            if (!CraftActive || mission.SwitchingAway || mission.InFlight || mission.Pending != null) return;
+            if (!CoastCheckRunsNow(mission, mission.PendingSequence)) return;
             mission.CheckPending = false;
             var verdict = CoastCheckpoints.Judge(_snapshot, token, _ut);
             Event(mission, "coast_check", verdict.Kind + ": " + verdict.Line);

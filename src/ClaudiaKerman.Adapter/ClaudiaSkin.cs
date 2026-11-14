@@ -49,13 +49,29 @@ namespace ClaudiaKerman.Adapter
 
         // ---- Spacing ----
 
+        private static float _fontScale = UiScale.Base;
+        private static int _fontScaleFrame = -1;
+
         /// <summary>
         /// The one place the text size is set: every font size and every fixed height that holds text is its design
-        /// value (14 px body, 36 px button...) times this, rounded to whole pixels. 1.2 is the 20% bump from the #138 feedback.
+        /// value (14 px body, 36 px button...) times this, rounded to whole pixels. It follows the game's UI Scale and
+        /// Apps scale (<see cref="UiScale.Factor"/>: 0.96 at 100% and 100%), read once a frame, so a change in the
+        /// settings resizes the windows on their next draw; the styles are rebuilt only when it changes.
         /// </summary>
-        public const float FontScale = 1.2f;
+        public static float FontScale
+        {
+            get
+            {
+                if (_fontScaleFrame != Time.frameCount)
+                {
+                    _fontScaleFrame = Time.frameCount;
+                    _fontScale = UiScale.Factor(GameSettings.UI_SCALE, GameSettings.UI_SCALE_APPS);
+                }
+                return _fontScale;
+            }
+        }
 
-        /// <summary><paramref name="designPx"/> times <see cref="FontScale"/>, rounded to whole pixels (14 gives 17, 12 gives 14, 11 gives 13, 16 gives 19).</summary>
+        /// <summary><paramref name="designPx"/> times <see cref="FontScale"/>, rounded to whole pixels (at 0.96: 14 gives 13, 12 gives 12, 11 gives 11, 16 gives 15).</summary>
         public static int Scaled(float designPx)
         {
             return Mathf.RoundToInt(designPx * FontScale);
@@ -63,15 +79,15 @@ namespace ClaudiaKerman.Adapter
 
         public const int Padding = 12;
         public const float Gap = 8;
-        public static readonly float ButtonHeight = Scaled(36);
-        /// <summary>Nothing clickable is smaller than this (28 px before scaling, so never under 28).</summary>
-        public static readonly float MinClickable = Scaled(28);
+        public static float ButtonHeight { get { return Scaled(36); } }
+        /// <summary>Nothing clickable is smaller than this: 28 px at scale 1, so it follows the UI scale (27 px at 100% and 100%, 35 at UI Scale 130%).</summary>
+        public static float MinClickable { get { return Scaled(28); } }
         /// <summary>The height of a checkbox row.</summary>
-        public static readonly float CheckboxHeight = Scaled(32);
+        public static float CheckboxHeight { get { return Scaled(32); } }
         /// <summary>The height of the title bar <see cref="Window"/> leaves for <see cref="DrawTitleBar"/>.</summary>
-        public static readonly int TitleBarHeight = Scaled(36);
+        public static int TitleBarHeight { get { return Scaled(36); } }
         /// <summary>The Capcom strip's segment track never squeezes a segment narrower than this; past it the track scrolls.</summary>
-        public static readonly float MinSegmentWidth = Scaled(110);
+        public static float MinSegmentWidth { get { return Scaled(110); } }
 
         public enum ChipKind
         {
@@ -106,6 +122,8 @@ namespace ClaudiaKerman.Adapter
         private static readonly Dictionary<string, Texture2D> Textures = new Dictionary<string, Texture2D>();
         private static readonly Dictionary<IconShape, Texture2D> Icons = new Dictionary<IconShape, Texture2D>();
         private static GUISkin _builtFrom;
+        private static float _builtScale;
+        private static Texture2D _windowTexture;
         private static Font _mono;
         private static GUIStyle _window, _body, _secondary, _muted, _section, _heading, _mono14, _textField;
         private static GUIStyle _primary, _secondaryButton, _danger, _segment, _segmentOn, _card, _box;
@@ -565,11 +583,14 @@ namespace ClaudiaKerman.Adapter
         private static void Build()
         {
             var skin = HighLogic.Skin;
-            if (_window != null && ReferenceEquals(skin, _builtFrom)) return;
+            if (_window != null && ReferenceEquals(skin, _builtFrom) && _builtScale == FontScale) return;
             _builtFrom = skin;
+            _builtScale = FontScale;
 
             _window = new GUIStyle(skin.window) { richText = false, padding = new RectOffset(Padding, Padding, TitleBarHeight + Padding, Padding), border = new RectOffset(2, 2, TitleBarHeight + 1, 2) };
-            var windowTexture = WindowTexture();
+            // Its title band is TitleBarHeight high, so a new scale needs a new one; the old one goes.
+            if (_windowTexture != null) UnityEngine.Object.Destroy(_windowTexture);
+            var windowTexture = _windowTexture = WindowTexture();
             SetBackground(_window, windowTexture);
             // The title is drawn by DrawTitleBar, beside its icon.
             _window.normal.textColor = _window.onNormal.textColor = Color.clear;

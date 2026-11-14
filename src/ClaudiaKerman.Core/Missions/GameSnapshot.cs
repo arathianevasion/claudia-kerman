@@ -251,6 +251,12 @@ namespace ClaudiaKerman.Core.Missions
         public uint CraftPersistentId;
 
         /// <summary>
+        /// The player's accepted Contracts (#1037, ADR 0021); null when not read (Science or Sandbox, or before the game's Contract
+        /// system has loaded). Only the recording form carries it, and only with an accepted Contract, so every other snapshot is as before.
+        /// </summary>
+        public Contracts.SnapshotContracts Contracts;
+
+        /// <summary>
         /// What the Mission Settings give a Planning Tool for the inputs Claudia leaves out: daylight landing on, and the time cap in
         /// hours. The Mission sets them on the turn's snapshot before a tool runs; they are not part of the snapshot's JSON.
         /// </summary>
@@ -545,6 +551,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             // The recording form (with bodies) is the one that keeps the target's id.
             if (Target != null) WriteTarget(json, Target, withBodies);
+            if (withBodies && Contracts != null && Contracts.Accepted.Count > 0) Contracts.Write(json);
             return json.EndObject().ToString();
         }
 
@@ -690,6 +697,7 @@ namespace ClaudiaKerman.Core.Missions
                 RcsOn = JsonNode.Bool(root["rcs_on"]),
                 _parsedImpactInS = JsonNode.Double(root["impact_in_s"]),
                 Target = ReadTarget(root["target"]),
+                Contracts = ClaudiaKerman.Core.Contracts.SnapshotContracts.Read(root["contracts"]),
             };
             var craft = root["craft"];
             if (craft != null)

@@ -46,6 +46,51 @@ namespace ClaudiaKerman.Core.Missions
         {
             Settings = settings;
         }
+
+        /// <summary>#1022: the player answered the Contract check card (Plan these, or Plan without Contracts), so it isn't posted again.</summary>
+        internal bool ContractsAnswered;
+        /// <summary>#1022: the Contracts "Plan these" chose; null for none. <see cref="Goal"/> is then the player's words with their route.</summary>
+        internal ClaudiaKerman.Core.Contracts.ContractChoice Contracts;
+
+        /// <summary>The same start, answered from the Contract check card: with <paramref name="contracts"/> (null for none), aiming at <paramref name="goal"/>.</summary>
+        internal StartMission Answered(string goal, ClaudiaKerman.Core.Contracts.ContractChoice contracts)
+        {
+            return new StartMission(goal, SpendingCap, Model, Settings, Remote, Target, Window) { ContractsAnswered = true, Contracts = contracts };
+        }
+    }
+
+    /// <summary>#1022: "Plan these N" on the Contract check card: the ticked Contracts go to Claudia with the player's words.</summary>
+    public sealed class PlanContracts : MissionInput
+    {
+    }
+
+    /// <summary>#1023: the player ticked or unticked a Contract on the card; it re-prices in place, with no search and no request.</summary>
+    public sealed class TickContract : MissionInput
+    {
+        public readonly string Guid;
+        public readonly bool Ticked;
+
+        public TickContract(string guid, bool ticked)
+        {
+            Guid = guid;
+            Ticked = ticked;
+        }
+    }
+
+    /// <summary>#1023: "Swap in" on the card: the Contract comes in and the ticked ones its swap names go out.</summary>
+    public sealed class SwapInContract : MissionInput
+    {
+        public readonly string Guid;
+
+        public SwapInContract(string guid)
+        {
+            Guid = guid;
+        }
+    }
+
+    /// <summary>#1022: "Plan without Contracts" on the Contract check card: the player's words alone.</summary>
+    public sealed class PlanWithoutContracts : MissionInput
+    {
     }
 
     /// <summary>Check the craft now, in the editor or in Flight, against the Mission Goal as typed so far.</summary>

@@ -1,0 +1,60 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000009",
+        "kind": "RecoverAsset",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 33000.0,
+          "science": 0.0,
+          "reputation": 8.0
+        },
+        "settings": {
+          "type": "RecoverAsset",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000009",
+          "state": "Active",
+          "prestige": "0",
+          "kerbalName": "Gusdun Kerman",
+          "partName": "mk1pod.v2",
+          "recoveryType": "1"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000009/0",
+            "kind": "AcquireCrew",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "AcquireCrew",
+              "state": "Incomplete",
+              "title": "Gusdun Kerman",
+              "failOn": "1",
+              "winOn": "0"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000009/1",
+            "kind": "RecoverKerbal",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "RecoverKerbal",
+              "state": "Incomplete",
+              "title": "Gusdun Kerman",
+              "failOn": "1",
+              "winOn": "0"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

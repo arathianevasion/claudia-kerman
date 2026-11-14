@@ -1,0 +1,55 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000003",
+        "kind": "ExplorationContract",
+        "state": "Active",
+        "rewards": {
+          "funds": 42000.0,
+          "science": 0.0,
+          "reputation": 12.0
+        },
+        "settings": {
+          "type": "ExplorationContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000003",
+          "state": "Active",
+          "prestige": "1",
+          "deadlineType": "None"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000003/0",
+            "kind": "ProgressTrackingParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "ProgressTrackingParameter",
+              "state": "Incomplete",
+              "targetBody": "Mun",
+              "targetType": "FLYBY"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000003/1",
+            "kind": "ProgressTrackingParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "ProgressTrackingParameter",
+              "state": "Incomplete",
+              "targetBody": "Mun",
+              "targetType": "ORBIT"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -25,8 +25,8 @@ namespace ClaudiaKerman.Adapter
         private const string InputControl = "ClaudiaMissionInput";
         private const string RaiseControl = "ClaudiaMissionRaise";
         private const int MaxPromptLines = 7;
-        private static readonly float SendSize = ClaudiaSkin.Scaled(32);
-        private static readonly float ControlBarHeight = ClaudiaSkin.Scaled(44);
+        private static float SendSize { get { return ClaudiaSkin.Scaled(32); } }
+        private static float ControlBarHeight { get { return ClaudiaSkin.Scaled(44); } }
 
         private readonly Action<MissionInput> _send;
         private readonly bool _debugTools;
@@ -657,7 +657,8 @@ namespace ClaudiaKerman.Adapter
             GUILayout.BeginHorizontal();
             GUILayout.Space(ClaudiaSkin.Padding);
             // Start Mission runs the Craft Check first; it is closed on a Blocker and until every Warning is acknowledged.
-            var canStart = _setup.SpendingCap > 0 && _goal.Length > 0 && form.Models.Count > 0 && check.StartAllowed && !form.WindowPickMissing;
+            // #1022: with accepted Contracts, nothing typed is a start too (the Contracts are the goal); pressed again, it posts a new Contract check card.
+            var canStart = _setup.SpendingCap > 0 && (_goal.Length > 0 || form.ContractsAccepted > 0) && form.Models.Count > 0 && check.StartAllowed && !form.WindowPickMissing;
             if (canStart)
             {
                 // The goal stays until the Mission has actually started: the Craft Check may still hold it back.

@@ -647,6 +647,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:BrakePath(lexicon()):clears.")]
         [InlineData("local b is addons:claudia:deorbitburn(lexicon(\"lat\", 0, \"lng\", -74)).")]
         [InlineData("local t is addons:claudia:entrytrim(lexicon(\"to_air\", 3000)).")]
+        [InlineData("print addons:claudia:falleta(lexicon(\"ecc\", 1.07)).")]
         [InlineData("print addons:claudia:reentryimpact(lexicon()):lat.")]
         [InlineData("local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).")]
         [InlineData("print addons:claudia:predictionmiss(lexicon(\"lat\", 0, \"lng\", 0)):km.")]

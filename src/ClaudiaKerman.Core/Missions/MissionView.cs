@@ -238,6 +238,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool DefaultRemote;
         /// <summary>Why the last Start Mission was turned away before the Craft Check (Claudia Missing for a crewed Mission, no link for a remote one); "" otherwise.</summary>
         public string Refusal = "";
+        /// <summary>#1022: how many Contracts are accepted; with any, Start Mission may go with nothing typed (the Contracts are the goal).</summary>
+        public int ContractsAccepted;
         /// <summary>
         /// What the Target Vessel line chooses from (#643), as of the latest snapshot: the form runs <see cref="TargetVessel.Choose"/>
         /// on it as the goal is typed, and lists <see cref="TargetVessel.Options"/> for Choose. The same object until the next snapshot.
@@ -289,6 +291,39 @@ namespace ClaudiaKerman.Core.Missions
         public double? ElectricChargePercent;
         /// <summary>Telemetry Checks crossed so far in this run.</summary>
         public int ChecksCrossed;
+    }
+
+    /// <summary>
+    /// #1022: Mission Control's Contract check card (the mod's, no Claude), posted at Start Mission with accepted Contracts: the Contracts
+    /// that fit, pre-ticked for the suggested set, the route against the craft and the reserve, and "Not this flight" with each reason.
+    /// </summary>
+    public sealed class ContractCheckView
+    {
+        public const string Label = "Mission Control · Contract check";
+        /// <summary>"Plan these" was pressed: the card is its one-line <see cref="Summary"/> until the Mission starts.</summary>
+        public bool Folded;
+        public string Summary = "";
+        /// <summary>How many Contracts are accepted.</summary>
+        public int Accepted;
+        /// <summary>The player's typed words, "" when none.</summary>
+        public string Words = "";
+        public IList<Contracts.ContractCheckRow> Rows = new List<Contracts.ContractCheckRow>();
+        public IList<Contracts.LeftOutContract> NotThisFlight = new List<Contracts.LeftOutContract>();
+        public double CraftDeltaV;
+        public double RouteDeltaV;
+        public int ReservePercent;
+        public double Reserve;
+        /// <summary>Left over the route and the reserve, m/s; below 0, the shortfall.</summary>
+        public double Spare;
+        /// <summary>The first line: how many Contracts, the route against the craft and the reserve, and the spare or the shortfall.</summary>
+        public string Headline = "";
+        /// <summary>"Plan these 2"; "Pick a Contract" when none is ticked.</summary>
+        public string PlanLabel = "";
+        public bool CanPlan;
+        /// <summary>#1023: why the ticked set doesn't fit, "410 m/s short", shown under the greyed "Plan these"; "" when it fits.</summary>
+        public string Shortfall = "";
+        /// <summary>"Plan without Contracts" needs words of the player's to plan.</summary>
+        public bool CanPlanWithout;
     }
 
     /// <summary>
@@ -491,6 +526,8 @@ namespace ClaudiaKerman.Core.Missions
         public DueTimeView DueTime = new DueTimeView();
 
         public IList<LogEntry> Log = new List<LogEntry>();
+        /// <summary>#1022: Mission Control's Contract check card, at the bottom of the transcript; null when none is posted.</summary>
+        public ContractCheckView ContractCheck;
 
         /// <summary>The read-only Missions list for the KSC and Tracking Station: the Mission in play, Paused Missions, then finished ones (history).</summary>
         public IList<MissionListEntry> Missions = new List<MissionListEntry>();
