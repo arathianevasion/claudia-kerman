@@ -13,6 +13,7 @@
 #   scriptcheck:  Script Check tests, Quarantine tests and their tracking-issue check (#1067), tests/blocks and tests/tools through KsCompile, undefined calls, fixtures
 # A push to main whose tree already passed on its PR skips the gate and names that run (#1050); the `check` job decides and
 # the `record` job saves each green run's pass. PR runs never skip.
+# Jobs: check (skip decision), gate (the matrix above), record (saves the pass when every gate job is green).
 # fail-fast is off so one failing job doesn't hide the others' results; any failing job fails the run.
 name: CI
 

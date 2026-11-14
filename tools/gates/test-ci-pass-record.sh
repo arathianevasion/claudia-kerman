@@ -2,7 +2,7 @@
 # Tests for ci-pass-record.sh (#1050), with a fake `gh` on PATH. Run: bash tools/gates/test-ci-pass-record.sh
 HERE=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT; mkdir "$tmp/bin"
-# Fake gh: echoes the URL it was asked for, then the real jq filter applied to $FAKE_JSON.
+# Fake gh (called as: gh api <url> --jq <filter>, so $2 is the URL and $4 the filter): echoes the URL it was asked for, then the real jq filter applied to $FAKE_JSON.
 cat > "$tmp/bin/gh" <<'EOS'
 #!/bin/bash
 echo "$2" >> "$FAKE_LOG"
