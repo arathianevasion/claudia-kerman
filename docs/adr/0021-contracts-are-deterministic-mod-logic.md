@@ -9,3 +9,7 @@ Everything computable about Contracts is deterministic mod logic in the Adapter 
 - **Fixtures from real play.** The capture button writes a Game Snapshot per accepted Contract beside the whole one; recorded in a 1.12 career, these are Core's test fixtures for each stock type, as recorded snapshots are for the craft.
 
 We rejected letting Claudia read the Contracts and plan them herself: the settings are machine-readable for every stock kind seen, so reasoning would add cost and a chance of a wrong plan where a table is exact. We rejected the typed private fields for settings, as above.
+
+## Claudia's copy of the snapshot
+
+Claudia's per-turn Game Snapshot does not carry raw accepted Contracts; she gets the Contract Route section instead (#1022). Only the recording form carries them. Reversing it is a one-line change in the snapshot's non-recording form.
