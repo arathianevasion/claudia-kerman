@@ -52,20 +52,25 @@ report() { [ -e "$dir/$1.shown" ] && return; : > "$dir/$1.shown"; want "$1" || {
     if [ "$rc" -eq 0 ]; then echo "PASS quarantine"; else echo "FAIL quarantine"; fail=1; fi; echo "$out" | sed 's/^/  /'; return; fi
   if [ "$rc" -eq 0 ]; then echo "PASS $1 $(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)"; echo "$out" | grep '^FLAKY '; else echo "FAIL $1"; echo "$out" | grep -E 'error|Failed!|FAIL' | head -20; echo "$out" | failed_tests; fail=1; fi; }
 
-# A tree that already passed is not gated again (#1005). Each pass records the committed tree it ran on, with the settings
-# below, in the repository's shared git directory, which every worktree of the clone sees. So when the orchestrator merges a
-# branch and main's tree comes out identical to the tree the agent gated in its worktree, the second run is skipped. Only a
-# clean checkout counts: no change, tracked or untracked, in anything the build or the tests read. GATES_NO_CACHE=1 runs anyway.
+# A tree that already passed is not gated again (#1005). Each pass records what the gate read, with the settings below, in the
+# repository's shared git directory, which every worktree of the clone sees. So when the orchestrator merges a branch and
+# main's gate inputs come out identical to the ones the agent gated in its worktree, the second run is skipped. The key is a
+# hash of the committed entries of the paths the gate reads (the ones the clean check below lists), not of the whole tree
+# (#1075): a commit that changes only docs/ or a root markdown file is still a hit. The "inputs:" prefix keeps a record
+# written under the old key (a bare tree hash) from ever matching. Only a clean checkout counts: no change, tracked or
+# untracked, in anything the build or the tests read. GATES_NO_CACHE=1 runs anyway; GATES_PRINT_KEY=1 prints the key and exits.
 record="$(git rev-parse --git-common-dir 2>/dev/null)/claudia-gates-passed"
 gate_key() {
   [ -z "$(git status --porcelain --untracked-files=all -- src tests tools kerboscript ClaudiaKerman.sln 'Directory.Build.*' global.json 2>/dev/null)" ] || return 1
-  echo "$(git rev-parse 'HEAD^{tree}') no_ksp=${GATES_NO_KSP:-0} $K sdk=$(dotnet --version 2>/dev/null)"
+  inputs=$(git ls-tree HEAD 2>/dev/null | awk -F'\t' '$2 ~ /^(src|tests|tools|kerboscript|ClaudiaKerman\.sln|Directory\.Build\..*|global\.json)$/' | git hash-object --stdin)
+  echo "inputs:$inputs no_ksp=${GATES_NO_KSP:-0} $K sdk=$(dotnet --version 2>/dev/null)"
 }
 key=$(gate_key)
+[ "${GATES_PRINT_KEY:-}" = 1 ] && { echo "$key"; exit 0; }
 if [ -n "$key" ] && [ -z "${GATES_ONLY:-}" ] && [ "${GATES_NO_CACHE:-}" != 1 ] && [ -f "$record" ]; then
   hit=$(awk -F'\t' -v k="$key" '$1 == k { line = $0 } END { print line }' "$record")
   if [ -n "$hit" ]; then
-    echo "PASS cached: this tree ($(echo "$key" | cut -c1-12)) passed gates.sh $(echo "$hit" | cut -f2) in $(echo "$hit" | cut -f3) at $(echo "$hit" | cut -f4) (GATES_NO_CACHE=1 runs it again)"
+    echo "PASS cached: these gate inputs ($(echo "$key" | cut -c1-19)) passed gates.sh $(echo "$hit" | cut -f2) in $(echo "$hit" | cut -f3) at $(echo "$hit" | cut -f4) (GATES_NO_CACHE=1 runs it again)"
     exit 0
   fi
 fi

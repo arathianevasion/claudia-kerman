@@ -21,9 +21,12 @@ name: CI
 on:
   # Branches get CI through their pull request; a push to main runs after merge.
   # (Before, a branch with a PR ran twice per commit: once for push, once for the PR.)
+  # A change that only touches docs/ or root markdown files starts no run (#1075): no gate step reads them.
   push:
     branches: [main]
+    paths-ignore: ['docs/**', '*.md']
   pull_request:
+    paths-ignore: ['docs/**', '*.md']
   workflow_dispatch:
     inputs:
       skip_if_passed:
