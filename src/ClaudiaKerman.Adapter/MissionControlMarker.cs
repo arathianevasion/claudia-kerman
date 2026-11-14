@@ -47,8 +47,17 @@ namespace ClaudiaKerman.Adapter
         private static Texture2D _flag;
         private static Texture2D _hollow;
 
-        /// <summary>Each row's Contract, as the game's setup calls gave it; weak, so a destroyed row lets its entry go.</summary>
-        private static readonly ConditionalWeakTable<MCListItem, Contract> RowContracts = new ConditionalWeakTable<MCListItem, Contract>();
+        /// <summary>
+        /// Each row's Contract GUID and mark, judged when the game's setup calls gave the row its Contract: plain data, as nothing holds
+        /// a game Contract (ADR 0021); weak, so a destroyed row lets its entry go.
+        /// </summary>
+        private static readonly ConditionalWeakTable<MCListItem, RowMark> RowMarks = new ConditionalWeakTable<MCListItem, RowMark>();
+
+        private sealed class RowMark
+        {
+            public Guid Guid;
+            public ContractMark Mark;
+        }
         /// <summary>The hover texts this marker added to a row itself, so a reused row's is rewritten, never another mod's.</summary>
         private static readonly ConditionalWeakTable<MCListItem, TooltipController_Text> OurTooltips = new ConditionalWeakTable<MCListItem, TooltipController_Text>();
         /// <summary>The mark per Contract GUID while Mission Control is open; judged once per visit, emptied when it closes.</summary>
@@ -101,7 +110,7 @@ namespace ClaudiaKerman.Adapter
             Debug.LogError(ModInfo.LogTag + " " + what + "; the marks are off for the rest of the session: " + e);
         }
 
-        // ---- The Harmony postfixes: they only record which Contract a row shows. Arguments come from __args, as stock names aren't API. ----
+        // ---- The Harmony postfixes: they only record the mark for the Contract a row shows. Arguments come from __args, as stock names aren't API. ----
 
         private static void AfterRowSetup(MCListItem __instance, object[] __args)
         {
@@ -128,8 +137,8 @@ namespace ClaudiaKerman.Adapter
                 var last = list.GetUilistItemAt(list.Count - 1);
                 var row = last != null ? last.GetComponent<MCListItem>() : null;
                 // The row's own Setup call is the surer source: this only fills a row it left unrecorded, so a mod that adds rows elsewhere can't remap one.
-                Contract had;
-                if (row != null && !RowContracts.TryGetValue(row, out had)) Remember(row, contract);
+                RowMark had;
+                if (row != null && !RowMarks.TryGetValue(row, out had)) Remember(row, contract);
             }
             catch (Exception e)
             {
@@ -141,14 +150,14 @@ namespace ClaudiaKerman.Adapter
         private static void Remember(MCListItem row, Contract contract)
         {
             if (row == null || contract == null) return;
-            Contract had;
-            if (RowContracts.TryGetValue(row, out had))
+            RowMark had;
+            if (RowMarks.TryGetValue(row, out had))
             {
-                if (had == contract) return;
-                RowContracts.Remove(row);
+                if (had.Guid == contract.ContractGuid) return;
+                RowMarks.Remove(row);
                 Unmark(row);
             }
-            RowContracts.Add(row, contract);
+            RowMarks.Add(row, new RowMark { Guid = contract.ContractGuid, Mark = MarkOf(contract) });
         }
 
         // ---- The sweep ----
@@ -165,24 +174,31 @@ namespace ClaudiaKerman.Adapter
                 var row = item != null ? item.GetComponent<MCListItem>() : null;
                 if (row == null || row.transform.Find(MarkName) != null) continue;
                 // No Contract behind it (a Contract Configurator group row): no mark.
-                var contract = ContractOf(row, item);
-                if (contract == null) continue;
-                Mark(row, MarkOf(contract));
+                var mark = MarkOf(row, item);
+                if (mark != null) Mark(row, mark);
             }
         }
 
-        /// <summary>The row's Contract: from the setup calls, or else any public <c>contract</c> on the row's data (Contract Configurator's container, a selection).</summary>
-        private static Contract ContractOf(MCListItem row, UIListItem item)
+        /// <summary>
+        /// The row's mark: as the setup calls recorded it, or else judged now from any public <c>contract</c> on the row's data (Contract
+        /// Configurator's container, a selection); null when the row has no Contract.
+        /// </summary>
+        private static ContractMark MarkOf(MCListItem row, UIListItem item)
         {
-            Contract contract;
-            if (RowContracts.TryGetValue(row, out contract)) return contract;
+            RowMark recorded;
+            if (RowMarks.TryGetValue(row, out recorded)) return recorded.Mark;
             var data = item.Data;
             if (data == null) return null;
             const BindingFlags Public = BindingFlags.Public | BindingFlags.Instance;
+            Contract contract;
             var field = data.GetType().GetField("contract", Public);
-            if (field != null) return field.GetValue(data) as Contract;
-            var property = data.GetType().GetProperty("contract", Public);
-            return property != null && property.GetIndexParameters().Length == 0 ? property.GetValue(data, null) as Contract : null;
+            if (field != null) contract = field.GetValue(data) as Contract;
+            else
+            {
+                var property = data.GetType().GetProperty("contract", Public);
+                contract = property != null && property.GetIndexParameters().Length == 0 ? property.GetValue(data, null) as Contract : null;
+            }
+            return contract != null ? MarkOf(contract) : null;
         }
 
         private static ContractMark MarkOf(Contract contract)
