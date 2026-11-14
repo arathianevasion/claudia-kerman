@@ -61,10 +61,11 @@ namespace ClaudiaKerman.Core.Contracts
             public bool Home;
         }
 
-        public static PlanServes Check(GameSnapshot snapshot, MissionPlan plan, IList<ChosenRequirement> chosen, string words, string home)
+        /// <param name="from">#1025: the first leg that may serve a Requirement; the legs before it are walked only for where the craft is.</param>
+        public static PlanServes Check(GameSnapshot snapshot, MissionPlan plan, IList<ChosenRequirement> chosen, string words, string home, int from = 0)
         {
             var result = new PlanServes();
-            var touches = Read(snapshot, plan, home);
+            var touches = Read(snapshot, plan, home).Where(t => t.Leg >= from).ToList();
             var tags = plan.Sequences.Select(_ => new List<string>()).ToList();
             var reading = WordsReading.Read(snapshot, words, home);
             foreach (var need in reading.Needs)

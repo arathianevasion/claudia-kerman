@@ -703,6 +703,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 Notice("Mission Plan approved.");
                 mission.MissionPlanApproved = true;
+                ApplyContractChanges(mission);
                 var newGoal = ApplyGoalChange(mission);
                 mission.Stage = MissionStage.Sequencing;
                 GroupChutes(mission);
@@ -1196,6 +1197,8 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             turn.UserText = DepartureLine(mission) + PlanStepLine(mission) + turn.UserText;
+            // #1025: the player's typed words, which alone may add a Contract to a revised plan.
+            if (!string.IsNullOrEmpty(turn.PlayerText) && mission.ChosenRequirements.Count > 0) mission.PlayerAsked.Add(turn.PlayerText);
             if (turn.Purpose == Purpose.Debrief && PrepareDebrief(mission, turn)) return;
             if (turn.Purpose == Purpose.MissionPlan || (turn.Purpose == Purpose.SequencePlan && !turn.ScriptRewrite)) turn.UserText = WithGoalBiomes(mission, turn.UserText);
             mission.Pending = turn;
@@ -2104,7 +2107,7 @@ namespace ClaudiaKerman.Core.Missions
             if (underMap.Length > 0) Event(mission, "leg_under_map", underMap.Trim());
             // Each Entry's Chute Group and predicted touchdown, from the craft as it is (only Flight's snapshot has the chutes' numbers).
             var groups = _snapshot == null || _scene != GameScene.Flight ? "" : ChuteGroups.Of(_snapshot, plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId).Describe();
-            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName, mission.ServesTags) + underMap + (groups.Length > 0 ? "\nChutes: " + groups : ""), plan.Why);
+            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName, mission.ServesTags) + ContractPlanLines(mission) + underMap + (groups.Length > 0 ? "\nChutes: " + groups : ""), plan.Why);
             PlanNews("Claudia has a Mission Plan for your Approval.");
         }
 

@@ -177,6 +177,36 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("\"Explore the Mun\": \"orbit the Mun\" fell back to unmet", LastUserText(transport.Requests.Last(IsMission)));
         }
 
+        // ---- The replan drops the Contract with the reason, for Approval ----
+
+        [Fact]
+        public void TheRevisedPlanDropsTheFailedContractWithTheReasonOnItsCardAndApprovalDropsIt()
+        {
+            var transport = Transport(OffNominalRevise(),
+                ToolUseStreams.ToolUse("home", (ProposedPlans.ToolName, PlanJson("Transfer to the Mun and capture into low orbit", "Return to Kerbin"))),
+                MissionPlanKind());
+            var mission = Running(transport, out var start);
+            mission.Send(At(EndedAt - 2, "Kerbin", "ORBITING", "Incomplete"));
+            mission.Send(Finished(EndedAt - 1, "Kerbin", "ORBITING", "Failed"));
+            mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
+            mission.Send(Finished(EndedAt, "Kerbin", "ORBITING", "Failed"));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            var card = mission.View.Log.Last(e => e.Kind == LogKind.MissionPlan);
+            Assert.Contains("Drops: Explore the Mun: the game failed it", card.Text);
+
+            mission.Send(new Approve());
+            Assert.Contains(mission.View.Log, e => e.Text == "Contract dropped from the Mission: Explore the Mun: the game failed it.");
+        }
+
+        private static ScriptedResponse OffNominalRevise()
+        {
+            return Reply("{\"kind\":\"debrief\",\"say\":\"Off-Nominal: the Contract failed.\",\"reply_intent\":\"none\",\"unsure_because\":\"\",\"sequence_plan\":null,\"alert\":null,"
+                + "\"debrief\":{\"outcome\":\"Off-Nominal\",\"why\":\"The game failed the Contract.\",\"what_happened\":\"It failed.\",\"goal_reached\":false,"
+                + "\"next\":\"Drop it and come home.\",\"follow_up\":\"revised_plan\"}}");
+        }
+
         // ---- Helpers ----
 
         /// <summary>The chosen Contract gone from the accepted list, finished in <paramref name="state"/>.</summary>
@@ -231,6 +261,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return mission;
         }
 
+        /// <summary>The plan, its reply and the Sequence Plan; then <paramref name="after"/>, or the fixture's Nominal Debrief with none.</summary>
         private static StreamingFakeTransport Transport(params ScriptedResponse[] after)
         {
             var responses = new List<ScriptedResponse>
@@ -238,8 +269,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
                 ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, PlanJson("Transfer to the Mun and capture into low orbit", "Return to Kerbin"))),
                 MissionPlanKind(),
                 ScriptedResponse.Fixture("mission-sequence-plan.sse"),
-                ScriptedResponse.Fixture("mission-debrief-next.sse"),
             };
+            if (after.Length == 0) responses.Add(ScriptedResponse.Fixture("mission-debrief-next.sse"));
             responses.AddRange(after);
             return new StreamingFakeTransport(responses.ToArray());
         }

@@ -38,8 +38,14 @@ namespace ClaudiaKerman.Core.Contracts
         private readonly Dictionary<string, string> _requirementStates = new Dictionary<string, string>();
         private readonly Dictionary<string, SnapshotContract> _contracts = new Dictionary<string, SnapshotContract>();
         private readonly List<string> _news = new List<string>();
-        /// <summary>The chosen Contracts that ended other than completed (failed, expired, cancelled, gone), by GUID.</summary>
+        /// <summary>The chosen Contracts that ended other than completed (failed, expired, cancelled, gone), by GUID: they can't complete.</summary>
         private readonly HashSet<string> _ended = new HashSet<string>();
+
+        /// <summary>The chosen Contracts that can't complete any more, by GUID: the next revised plan drops them whatever its legs.</summary>
+        public ICollection<string> Ended
+        {
+            get { return _ended; }
+        }
         /// <summary>The chosen Contracts that can't complete any more, or may not, by GUID, with the reason: a revised plan may drop them.</summary>
         private readonly Dictionary<string, string> _droppable = new Dictionary<string, string>();
 

@@ -121,5 +121,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Null(read.Contracts.Accepted[0].DeadlineUt);
             Assert.DoesNotContain("deadline_ut", json);
         }
+
+        [Fact]
+        public void TheFinishedContractsRoundTripAndClaudiasTurnsNeverCarryThem()
+        {
+            var snapshot = CareerWithPartTest();
+            snapshot.Contracts.Finished.Add(new FinishedContract { Guid = "done-1", State = "Completed" });
+
+            var read = GameSnapshot.Parse(snapshot.ToJson());
+
+            var finished = Assert.Single(read.Contracts.Finished);
+            Assert.Equal("done-1", finished.Guid);
+            Assert.Equal("Completed", finished.State);
+            Assert.DoesNotContain("done-1", snapshot.ToJson(false));
+        }
     }
 }
