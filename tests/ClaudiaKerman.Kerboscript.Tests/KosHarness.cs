@@ -130,6 +130,12 @@ namespace ClaudiaKerman.Kerboscript.Tests
         /// <summary>How many times this process has compiled the Core Library for <see cref="Run(string)"/>.</summary>
         public static int LibraryCompiles { get; private set; }
 
+        /// <summary>How many rigs have <see cref="Register"/>ed their functions so far.</summary>
+        public static int Registrations
+        {
+            get { lock (Gate) return Registered.Count; }
+        }
+
         /// <summary>
         /// The Core Library compiled for <see cref="Run(string)"/>, per leading directives and <see cref="Register"/> state: the
         /// directives decide how the library compiles in a bundle, and so do the registered [Function]s, which the compiler
