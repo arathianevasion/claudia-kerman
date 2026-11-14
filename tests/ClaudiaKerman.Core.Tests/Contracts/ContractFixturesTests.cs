@@ -61,6 +61,20 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             }
         }
 
+        /// <summary>
+        /// The keys' GUID is the one the save file writes for the Contract (its saved <c>guid</c>), which a load reads back, so a
+        /// recording whose keys used any other id would fail here.
+        /// </summary>
+        [Theory]
+        [MemberData(nameof(Fixtures))]
+        public void TheKeysGuidIsTheOneTheSaveWrites(string file)
+        {
+            var contract = GameSnapshot.Parse(File.ReadAllText(Path.Combine(Folder, file))).Contracts.Accepted[0];
+
+            Assert.Equal(contract.Guid, Assert.Single(contract.Settings, s => s.Name == "guid").Value);
+            Assert.StartsWith(contract.Guid + "/", contract.Requirements[0].Key);
+        }
+
         [Theory]
         [MemberData(nameof(Fixtures))]
         public void EachFixtureSurvivesTheRecordingForm(string file)
