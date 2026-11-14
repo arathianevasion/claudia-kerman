@@ -2085,6 +2085,7 @@ namespace ClaudiaKerman.Core.Missions
             var first = mission.Plan == null;
             mission.Plan = plan;
             mission.PlanBaseline = _snapshot;
+            ServePlan(mission, plan);
             PlanOffered(mission);
             PlanChildVessels(mission, plan);
             mission.Stage = MissionStage.AwaitingPlanApproval;
@@ -2102,7 +2103,7 @@ namespace ClaudiaKerman.Core.Missions
             if (underMap.Length > 0) Event(mission, "leg_under_map", underMap.Trim());
             // Each Entry's Chute Group and predicted touchdown, from the craft as it is (only Flight's snapshot has the chutes' numbers).
             var groups = _snapshot == null || _scene != GameScene.Flight ? "" : ChuteGroups.Of(_snapshot, plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId).Describe();
-            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName) + underMap + (groups.Length > 0 ? "\nChutes: " + groups : ""), plan.Why);
+            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName, mission.ServesTags) + underMap + (groups.Length > 0 ? "\nChutes: " + groups : ""), plan.Why);
             PlanNews("Claudia has a Mission Plan for your Approval.");
         }
 

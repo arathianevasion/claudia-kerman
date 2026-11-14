@@ -94,6 +94,8 @@ namespace ClaudiaKerman.Core.Contracts
         public string RouteWords = "";
         /// <summary>#1036: the route's legs and what each serves.</summary>
         public List<RouteLeg> Legs = new List<RouteLeg>();
+        /// <summary>#1024: every Contract Requirement chosen, which the Mission's plan proposal is checked against.</summary>
+        public List<ChosenRequirement> Requirements = new List<ChosenRequirement>();
         /// <summary>The request's Contract Route section (<see cref="ContractCheck.Choose"/>).</summary>
         public string Section = "";
         /// <summary>The card folded to one line.</summary>
@@ -548,6 +550,8 @@ namespace ClaudiaKerman.Core.Contracts
                 return choice;
             }
             var route = Route(set);
+            choice.Requirements = set.SelectMany(p => p.Requirements.Select(r => new ChosenRequirement
+                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return })).ToList();
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);

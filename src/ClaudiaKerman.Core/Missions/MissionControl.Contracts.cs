@@ -28,6 +28,33 @@ namespace ClaudiaKerman.Core.Missions
             public string ContractWords = "";
             /// <summary>#1022: the Contract Route section of its first request; "" with no Contracts chosen.</summary>
             public string ContractRoute = "";
+            /// <summary>#1024: the Contract Requirements the player chose; the plan proposal is checked against them. Empty with none chosen.</summary>
+            public List<ChosenRequirement> ChosenRequirements = new List<ChosenRequirement>();
+            /// <summary>#1024: the Contract Route's record of the leg serving each chosen Requirement, from the plan on offer.</summary>
+            public List<ServedRequirement> ServedBy = new List<ServedRequirement>();
+            /// <summary>#1024: the Serves tags of each leg of the plan on offer, from the mod; empty with none chosen.</summary>
+            public IList<string[]> ServesTags = new List<string[]>();
+        }
+
+        /// <summary>
+        /// #1024: the chosen Contract Requirements a proposed Mission Plan leaves unserved or can't meet, as findings for Claudia; the Serves
+        /// tags and the Contract Route's record are made when the plan is offered (<see cref="OfferMissionPlan"/>).
+        /// </summary>
+        private static IList<string> ContractProblems(GameSnapshot snapshot, MissionPlan plan, IList<ChosenRequirement> chosen, string words)
+        {
+            if (snapshot == null || chosen.Count == 0) return new string[0];
+            return PlanServes.Check(snapshot, plan, chosen, words, CraftCheckFlow.HomeBody).Problems;
+        }
+
+        /// <summary>#1024: the plan's Serves tags and the Contract Route's record, set on the Mission as the plan is offered.</summary>
+        private void ServePlan(Mission mission, MissionPlan plan)
+        {
+            mission.ServedBy = new List<ServedRequirement>();
+            mission.ServesTags = new List<string[]>();
+            if (_snapshot == null || mission.ChosenRequirements.Count == 0 || plan.Sequences.Count == 0) return;
+            var served = PlanServes.Check(_snapshot, plan, mission.ChosenRequirements, mission.ContractWords, CraftCheckFlow.HomeBody);
+            mission.ServedBy = served.Record;
+            mission.ServesTags = served.Legs;
         }
 
         /// <summary>How many Contracts the latest Game Snapshot has accepted.</summary>
@@ -98,6 +125,7 @@ namespace ClaudiaKerman.Core.Missions
             if (start.Contracts == null || start.Contracts.Guids.Count == 0) return;
             mission.ContractWords = start.Contracts.Words;
             mission.ContractRoute = start.Contracts.Section;
+            mission.ChosenRequirements = start.Contracts.Requirements;
             Note(LogKind.Notice, start.Contracts.Summary);
             _folded = null;
         }
