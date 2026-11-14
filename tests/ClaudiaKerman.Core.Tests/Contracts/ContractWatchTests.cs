@@ -208,6 +208,78 @@ namespace ClaudiaKerman.Core.Tests.Contracts
                 + "\"next\":\"Drop it and come home.\",\"follow_up\":\"revised_plan\"}}");
         }
 
+        // ---- #1026: the deadline recheck at every Debrief and Due Time, from priced figures ----
+
+        private const double Day = 21600;
+
+        [Fact]
+        public void ADebriefCarriesAFindingForAContractWhosePlannedCompletionNowBreaksTheSpareRule()
+        {
+            var transport = Transport();
+            var mission = Running(transport, out var start);
+            mission.Send(At(EndedAt, "Kerbin", "SUB_ORBITAL", "Incomplete", deadlineUt: EndedAt + Day));
+
+            mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
+            DrainUntil(mission, v => MissionRequests(transport) >= 4);
+
+            var debrief = DebriefText(transport);
+            Assert.Contains("\"Explore the Mun\" is planned to finish about", debrief);
+            Assert.Contains("too near its deadline", debrief);
+            Assert.Contains("propose dropping it, with the reason", debrief);
+        }
+
+        [Fact]
+        public void ADebriefForAContractStillOnTimeCarriesNoDeadlineFinding()
+        {
+            var transport = Transport();
+            var mission = Running(transport, out var start);
+            mission.Send(At(EndedAt, "Kerbin", "SUB_ORBITAL", "Incomplete", deadlineUt: EndedAt + 1000 * Day));
+
+            mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
+            DrainUntil(mission, v => MissionRequests(transport) >= 4);
+
+            Assert.DoesNotContain("too near its deadline", DebriefText(transport));
+        }
+
+        [Fact]
+        public void AtADueTimeAContractThatNowBreaksTheSpareRuleIsAFindingInTheLogAndDroppableAtTheNextDebrief()
+        {
+            const double Due = 460000;
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, PlanJson("Transfer to the Mun and capture into low orbit", "Return to Kerbin"))),
+                MissionPlanKind(),
+                Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Mun transfer.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                    + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Mun transfer\",\"intent\":\"Burn for the Mun.\",\"why\":\"The window.\",\"target\":\"Mun encounter\","
+                    + "\"tolerances\":\"Pe within 20 km\",\"expected_delta_v\":100,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
+                    + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"print \\\"go\\\".\\n\",\"due_time_ut\":" + Due + ",\"window_closes_ut\":null,\"late_window_dv\":null},\"debrief\":null}"));
+            var mission = AtSequencePlan(transport);
+
+            mission.Send(At(Due - 10, "Kerbin", "ORBITING", "Incomplete", deadlineUt: Due + Day));
+            mission.Send(new UtAdvanced(Due));
+
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("\"Explore the Mun\" is planned to finish about") && e.Text.Contains("too near its deadline"));
+        }
+
+        [Fact]
+        public void AtADueTimeAContractStillOnTimeGivesNoFinding()
+        {
+            const double Due = 460000;
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, PlanJson("Transfer to the Mun and capture into low orbit", "Return to Kerbin"))),
+                MissionPlanKind(),
+                Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Mun transfer.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                    + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Mun transfer\",\"intent\":\"Burn for the Mun.\",\"why\":\"The window.\",\"target\":\"Mun encounter\","
+                    + "\"tolerances\":\"Pe within 20 km\",\"expected_delta_v\":100,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
+                    + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"print \\\"go\\\".\\n\",\"due_time_ut\":" + Due + ",\"window_closes_ut\":null,\"late_window_dv\":null},\"debrief\":null}"));
+            var mission = AtSequencePlan(transport);
+
+            mission.Send(At(Due - 10, "Kerbin", "ORBITING", "Incomplete", deadlineUt: Due + 1000 * Day));
+            mission.Send(new UtAdvanced(Due));
+
+            Assert.Contains(mission.View.Log, e => e.Text.Contains("Due Time reached"));
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("too near its deadline"));
+        }
+
         // ---- Helpers ----
 
         /// <summary>The chosen Contract gone from the accepted list, finished in <paramref name="state"/>.</summary>
@@ -240,9 +312,11 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return LastUserText(mission[3]);
         }
 
-        internal static GameSnapshot At(double ut, string body, string situation, string state, string contractState = "Active")
+        internal static GameSnapshot At(double ut, string body, string situation, string state, string contractState = "Active", double? deadlineUt = null)
         {
-            var snapshot = ContractCheckTests.With(Contract(state, contractState));
+            var contract = Contract(state, contractState);
+            contract.DeadlineUt = deadlineUt;
+            var snapshot = ContractCheckTests.With(contract);
             snapshot.Ut = ut;
             snapshot.Body = body;
             snapshot.Situation = situation;
@@ -259,6 +333,15 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
         private MissionControl Running(StreamingFakeTransport transport, out StartScript start)
         {
+            var mission = AtSequencePlan(transport);
+            mission.Send(new Approve());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            start = mission.TakeCommands().OfType<StartScript>().Single();
+            return mission;
+        }
+
+        private MissionControl AtSequencePlan(StreamingFakeTransport transport)
+        {
             var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-fake-key-0123456789", l => { });
             client.Timing.Wait = (d, c) => { };
             var mission = new MissionControl(client, _background, new PlayerConfig { CheckDurationPercent = 1000 }, () => true, new PassingScriptCheck());
@@ -272,9 +355,6 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
-            mission.Send(new Approve());
-            Assert.Equal(MissionStage.Running, mission.View.Stage);
-            start = mission.TakeCommands().OfType<StartScript>().Single();
             return mission;
         }
 

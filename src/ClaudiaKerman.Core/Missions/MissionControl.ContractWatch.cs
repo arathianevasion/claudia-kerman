@@ -96,11 +96,37 @@ namespace ClaudiaKerman.Core.Missions
             return served.Where(r => readings.Any(x => x.Key == r.Key && x.State == "not met")).ToList();
         }
 
+        /// <summary>
+        /// #1026: each chosen Contract's planned completion against its deadline and the spare rule, from priced figures (no planner search,
+        /// no request): the Contracts it finds too late may be dropped by the next revised plan.
+        /// </summary>
+        private List<LateContract> RecheckDeadlines(Mission mission)
+        {
+            List<string> rechecked;
+            var closed = new HashSet<string>(mission.Contracts.Completed.Concat(mission.Contracts.Ended));
+            var late = ContractRecheck.Check(_snapshot, mission.ChosenRequirements, mission.ContractWords, CraftCheckFlow.HomeBody, closed, out rechecked);
+            mission.Contracts.Rechecked(late, rechecked);
+            return late;
+        }
+
+        /// <summary>#1026: at a Due Time the chosen Contracts' deadlines are rechecked; each one now too late is a line in the log.</summary>
+        private void DueTimeDeadlines(Mission mission)
+        {
+            if (mission.ChosenRequirements.Count == 0) return;
+            foreach (var late in RecheckDeadlines(mission))
+                Note(LogKind.Notice, "Contract deadline at risk: \"" + late.Title + "\" is " + late.Reason + ". The next Debrief proposes dropping it.");
+        }
+
         /// <summary>The Debrief's Contract data: what changed since the last Debrief, and the state of each Requirement the flown leg served.</summary>
         private string ContractDebriefText(Mission mission)
         {
             if (mission.ChosenRequirements.Count == 0) return "";
             var text = "";
+            var late = RecheckDeadlines(mission);
+            if (late.Count > 0)
+                text += "Contract deadlines at risk (the mod's reading of its priced figures, data): "
+                    + string.Join("; ", late.Select(l => "\"" + l.Title + "\" is " + l.Reason).ToArray()) + ".\n"
+                    + "For a Contract that will miss, propose dropping it, with the reason, in a revised Mission Plan for the player's Approval.\n";
             var served = ServedByFlownLeg(mission);
             if (served.Count > 0)
                 text += ContractWatch.Line(mission.Contracts.Read(_snapshot == null ? null : _snapshot.Contracts, served, mission.ContractGaps));
