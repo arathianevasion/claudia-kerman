@@ -39,6 +39,8 @@ namespace ClaudiaKerman.Adapter
         private string _seenCheckResult = "";
         // When the current result first reached the view, for the card's "in -2m" time.
         private double _checkedAt;
+        // The Contract check card last drawn: "", "open" or "folded"; a change brings the transcript to the bottom.
+        private string _seenCard = "";
         // The approval checkbox appeared: the transcript follows it to the bottom.
         private bool _seenConfirm;
         // The width the entries get; the facts row wraps at it.
@@ -90,6 +92,14 @@ namespace ClaudiaKerman.Adapter
                 _scroll.y = float.MaxValue;
             }
             _seenConfirm = confirming;
+            // #1022: Mission Control's Contract check card grows in at the bottom, like a new message: the transcript follows it.
+            var card = _send != null ? view.ContractCheck : null;
+            var cardState = card == null ? "" : card.Folded ? "folded" : "open";
+            if (cardState != _seenCard)
+            {
+                _seenCard = cardState;
+                if (card != null) _scroll.y = float.MaxValue;
+            }
             _scroll = GUILayout.BeginScrollView(_scroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar, GUIStyle.none, options);
             // The first item of a full transcript; drawing only, never a log entry.
             if (_send != null) _banner.Draw(view, width, SetupModel, SetupRemote, GoalSet);
@@ -101,6 +111,7 @@ namespace ClaudiaKerman.Adapter
             for (var i = hidden; i < view.Log.Count; i++) DrawEntry(view.Log[i], view.Ut, width);
             if (_send != null && !view.StartForm.CanStart && WindowChoice != null) WindowChoice();
             if (_send != null && confirming) DrawApproval(view);
+            if (card != null) DrawContractCheck(card, view.Ut);
             GUILayout.EndScrollView();
         }
 
@@ -488,6 +499,82 @@ namespace ClaudiaKerman.Adapter
                 if (acknowledged && !finding.Acknowledged) _send(new AcknowledgeWarning(finding.Code));
             }
             GUILayout.EndVertical();
+        }
+
+        // ---- #1022: Mission Control's Contract check card (the mod's, no Claude) ----
+
+        private void DrawContractCheck(ContractCheckView card, double now)
+        {
+            Styles();
+            ClaudiaSkin.BeginCard();
+            GUILayout.BeginVertical(ClaudiaSkin.CardHeaderRow);
+            GUILayout.Label(ContractCheckView.Label.ToUpperInvariant() + "  (the mod, no Claude)", ClaudiaSkin.KindLabel);
+            GUILayout.EndVertical();
+            if (card.Folded)
+            {
+                GUILayout.Label(card.Summary, ClaudiaSkin.Secondary);
+                ClaudiaSkin.EndCard();
+                return;
+            }
+            var ticked = 0;
+            foreach (var row in card.Rows) if (row.Ticked) ticked++;
+            GUILayout.Label(ticked + " of " + card.Accepted + " Contracts" + (card.Words.Length > 0 ? " with your words" : "") + " · route " + Whole(card.RouteDeltaV)
+                + " m/s of " + Whole(card.CraftDeltaV) + " · reserve " + Whole(card.Reserve) + " (" + card.ReservePercent + "%) · "
+                + (card.Spare >= 0 ? Whole(card.Spare) + " m/s to spare" : Whole(-card.Spare) + " m/s short"), _bold);
+            DrawRouteBar(card);
+            foreach (var row in card.Rows)
+            {
+                var on = ClaudiaSkin.Checkbox(row.Ticked, row.Title);
+                if (on != row.Ticked) _send(new TickContract(row.Guid, on));
+                GUILayout.Label(row.Phase + " · +" + Whole(row.AddedDeltaV) + " m/s · " + (row.DeadlineUt.HasValue ? "deadline " + KerbinTime.ShortDate(row.DeadlineUt.Value)
+                    + " (" + KerbinTime.FromNow(row.DeadlineUt.Value, now) + ")" : "no deadline"), ClaudiaSkin.Secondary);
+                if (row.Note.Length > 0) GUILayout.Label(row.Note, ClaudiaSkin.Secondary);
+            }
+            if (card.NotThisFlight.Count > 0)
+            {
+                GUILayout.Label("Not this flight", _bold);
+                foreach (var left in card.NotThisFlight)
+                {
+                    GUILayout.BeginHorizontal();
+                    ClaudiaSkin.Chip(left.Reason.StartsWith("not yet", StringComparison.Ordinal) ? "not yet" : left.Reason.StartsWith("completes later", StringComparison.Ordinal) ? "completes later" : "this craft can't",
+                        left.Reason.StartsWith("not yet", StringComparison.Ordinal) ? ClaudiaSkin.ChipKind.Danger : ClaudiaSkin.ChipKind.Attention);
+                    GUILayout.Label(left.Title + " — " + left.Reason, ClaudiaSkin.Secondary);
+                    GUILayout.EndHorizontal();
+                }
+            }
+            GUILayout.BeginHorizontal();
+            if (card.CanPlan)
+            {
+                if (ClaudiaSkin.PrimaryButton(card.PlanLabel, GUILayout.ExpandWidth(false))) _send(new PlanContracts());
+            }
+            else ClaudiaSkin.DisabledButton(card.PlanLabel, GUILayout.ExpandWidth(false));
+            if (card.CanPlanWithout)
+            {
+                if (ClaudiaSkin.SecondaryButton("Plan without Contracts", GUILayout.ExpandWidth(false))) _send(new PlanWithoutContracts());
+            }
+            else ClaudiaSkin.DisabledButton("Plan without Contracts", GUILayout.ExpandWidth(false));
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            if (!card.CanPlanWithout) GUILayout.Label("Type your own words to plan without Contracts.", ClaudiaSkin.Secondary);
+            ClaudiaSkin.EndCard();
+        }
+
+        /// <summary>The route against the craft: the route's share, then the reserve's, green when the set fits and red when it is short.</summary>
+        private static void DrawRouteBar(ContractCheckView card)
+        {
+            var rect = GUILayoutUtility.GetRect(0, ClaudiaSkin.Scaled(8), GUILayout.ExpandWidth(true));
+            GUI.DrawTexture(rect, ClaudiaSkin.Solid(ClaudiaSkin.Border));
+            var whole = Math.Max(card.CraftDeltaV, card.RouteDeltaV + card.Reserve);
+            if (whole <= 0) return;
+            var route = (float)(card.RouteDeltaV / whole);
+            var reserve = (float)(card.Reserve / whole);
+            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width * route, rect.height), ClaudiaSkin.Solid(card.Spare >= 0 ? ClaudiaSkin.Success : ClaudiaSkin.Danger));
+            GUI.DrawTexture(new Rect(rect.x + rect.width * route, rect.y, rect.width * reserve, rect.height), ClaudiaSkin.Solid(ClaudiaSkin.Attention));
+        }
+
+        private static string Whole(double value)
+        {
+            return Math.Round(value).ToString("#,0", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         // ---- Approval: a typed reply that reads like an approval ends the transcript with a checkbox ----
