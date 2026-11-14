@@ -9,6 +9,8 @@ namespace ClaudiaKerman.Core.Contracts
     /// <summary>What the leg serving a Contract Requirement must achieve at its body, in the order a visit reaches them.</summary>
     public enum ContractReach
     {
+        /// <summary>#1048: fly through a band below orbit over the launch body, on a hop (<see cref="ReadRequirement.Band"/>).</summary>
+        Hop = 0,
         /// <summary>Pass the body: a trip there, no capture.</summary>
         Flyby = 1,
         /// <summary>Be in orbit round it: the trip and its capture.</summary>
@@ -32,6 +34,8 @@ namespace ClaudiaKerman.Core.Contracts
         public string Phase = "";
         /// <summary>What it asks, in words for the card and the request: "orbit the Mun".</summary>
         public string Words = "";
+        /// <summary>#1048: the band a <see cref="ContractReach.Hop"/> flies through; null for every other reach.</summary>
+        public HopBand Band;
 
         public bool Plannable
         {
@@ -42,13 +46,19 @@ namespace ClaudiaKerman.Core.Contracts
     /// <summary>
     /// #1022: the kinds of Contract Requirement Core can plan (ADR 0021: anything else is "not yet", never improvised). So far the
     /// exploration (world-first) ones: a ProgressTrackingParameter of an ExplorationContract, by its <c>targetType</c> and
-    /// <c>targetBody</c>. Every other Contract type is "not yet" as a whole. Requirements met below orbit (reach space, records, the first
-    /// launch) are "not yet" until the Craft Check can price a suborbital flight (#1048), since it prices every route to orbit.
+    /// <c>targetBody</c>; and (#1048) the Requirements met on a hop below orbit over the launch body: reaching space, and a part test
+    /// FLYING or SUB_ORBITAL in an altitude band, read whole from its PartTest node's conditions. Every other Contract type is "not
+    /// yet" as a whole, and so are records and the first launch, whose saved settings give no band to price a hop to.
     /// </summary>
     public static class ContractKinds
     {
         public const string Exploration = "ExplorationContract";
-        public const string Suborbital = "not yet: suborbital flights aren't priced yet (#1048)";
+        public const string PartTest = "PartTest";
+        public const string RecordNotYet = "not yet: records and the first launch aren't planned yet";
+        public const string HaulNotYet = "not yet: hauls aren't planned yet";
+        public const string AwayHopNotYet = "not yet: hops over other bodies aren't planned yet";
+        /// <summary>The launch body's index in the game's body list, as a part test's <c>body</c> setting names it: Kerbin, in the stock system.</summary>
+        public const string HomeIndex = "1";
 
         private static readonly Dictionary<string, ContractReach> Reaches = new Dictionary<string, ContractReach>
         {
@@ -58,7 +68,7 @@ namespace ClaudiaKerman.Core.Contracts
 
         private static readonly HashSet<string> BelowOrbit = new HashSet<string>
         {
-            "FIRSTLAUNCH", "REACHSPACE", "ALTITUDERECORD", "SPEEDRECORD", "DISTANCERECORD", "DEPTHRECORD",
+            "FIRSTLAUNCH", "ALTITUDERECORD", "SPEEDRECORD", "DISTANCERECORD", "DEPTHRECORD",
         };
 
         private static readonly Dictionary<string, string> OtherReasons = new Dictionary<string, string>
@@ -111,6 +121,11 @@ namespace ClaudiaKerman.Core.Contracts
             foreach (var requirement in requirements)
             {
                 if (requirement.State == "Complete") continue;
+                if (contract.Kind == PartTest && requirement.Kind == PartTest)
+                {
+                    read.Add(ReadPartTest(requirement, home));
+                    continue;
+                }
                 if (requirement.Requirements.Count > 0)
                 {
                     Walk(contract, requirement.Requirements, home, read);
@@ -132,7 +147,8 @@ namespace ClaudiaKerman.Core.Contracts
             var body = Setting(requirement, "targetBody");
             ContractReach reach;
             string reason;
-            if (BelowOrbit.Contains(type)) one.NotYet = Suborbital;
+            if (type == "REACHSPACE") return body != home ? NotYet(one, AwayHopNotYet) : Hop(one, home, new HopBand { AboveAir = true });
+            if (BelowOrbit.Contains(type)) one.NotYet = RecordNotYet;
             else if (OtherReasons.TryGetValue(type, out reason)) one.NotYet = "not yet: " + reason;
             else if (!Reaches.TryGetValue(type, out reach)) one.NotYet = "not yet: " + (type.Length > 0 ? type : "an unnamed milestone") + " isn't a Contract Requirement Claudia can plan yet";
             else if (body.Length == 0) one.NotYet = "not yet: the Contract names no body";
@@ -147,6 +163,53 @@ namespace ClaudiaKerman.Core.Contracts
                     : "come home from " + (reach == ContractReach.Flyby ? "a flyby of " : reach == ContractReach.Orbit ? "orbit of " : "the surface of ") + Named(body);
             }
             return one;
+        }
+
+        /// <summary>
+        /// #1048: a part test, whole: a hop when it is no haul, FLYING or SUB_ORBITAL over the launch body, in the altitude band (and
+        /// speed band, when given) its conditions set. The test itself (staging the part, Run Test) isn't flown yet (#1029).
+        /// </summary>
+        private static ReadRequirement ReadPartTest(ContractRequirement requirement, string home)
+        {
+            var one = new ReadRequirement { Requirement = requirement };
+            if (Setting(requirement, "haul").ToUpperInvariant() == "TRUE") return NotYet(one, HaulNotYet);
+            var situation = Setting(requirement, "situation").ToUpperInvariant();
+            var conditions = requirement.Requirements;
+            var altitude = conditions.FirstOrDefault(c => c.Kind == "ReachAltitudeEnvelope");
+            if ((situation != "FLYING" && situation != "SUB_ORBITAL") || altitude == null) return NotYet(one, TypeNotYet(PartTest));
+            if (Setting(requirement, "body") != HomeIndex) return NotYet(one, AwayHopNotYet);
+            var speed = conditions.FirstOrDefault(c => c.Kind == "ReachSpeedEnvelope");
+            var band = new HopBand
+            {
+                MinAltitude = Number(altitude, "minAlt"), MaxAltitude = Number(altitude, "maxAlt"),
+                MinSpeed = speed == null ? null : Number(speed, "minSpd"), MaxSpeed = speed == null ? null : Number(speed, "maxSpd"),
+            };
+            if (!band.MinAltitude.HasValue) return NotYet(one, TypeNotYet(PartTest));
+            Hop(one, home, band);
+            one.Words = "test " + Setting(requirement, "part") + " " + band.Words(home).Substring("hop ".Length);
+            return one;
+        }
+
+        private static ReadRequirement Hop(ReadRequirement one, string home, HopBand band)
+        {
+            one.Body = home;
+            one.Reach = ContractReach.Hop;
+            one.Band = band;
+            one.Phase = home + " hop";
+            one.Words = band.Words(home);
+            return one;
+        }
+
+        private static ReadRequirement NotYet(ReadRequirement one, string why)
+        {
+            one.NotYet = why;
+            return one;
+        }
+
+        private static double? Number(ContractRequirement requirement, string name)
+        {
+            double value;
+            return double.TryParse(Setting(requirement, name), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value) ? value : (double?)null;
         }
 
         private static string Verb(ContractReach reach)
