@@ -128,7 +128,12 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         /// <summary>How many times this process has compiled the Core Library for <see cref="Run(string)"/>.</summary>
-        public static int LibraryCompiles { get; private set; }
+        public static int LibraryCompiles
+        {
+            get { lock (Gate) return _libraryCompiles; }
+        }
+
+        private static int _libraryCompiles;
 
         /// <summary>How many rigs have <see cref="Register"/>ed their functions so far.</summary>
         public static int Registrations
@@ -187,7 +192,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var context = Contexts(compiler)["library"];
             library = new CompiledLibrary { Parts = parts, Labels = context.LabelIndex, Scopes = context.MaxScopeIdSoFar };
             Libraries.Add(key, library);
-            LibraryCompiles++;
+            _libraryCompiles++;
             return library;
         }
 

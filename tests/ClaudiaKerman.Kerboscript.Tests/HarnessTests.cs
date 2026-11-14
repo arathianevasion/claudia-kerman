@@ -34,11 +34,13 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void A_bundle_compiles_only_its_Mission_Script_once_the_Core_Library_is_compiled()
         {
-            // Test classes run in parallel, and a rig registering its functions meanwhile rightly makes the next bundle recompile it.
+            // A directive line no other test uses, so no other class's bundle compiles this library meanwhile; a rig registering
+            // its functions meanwhile still rightly makes the next bundle recompile it, as test classes run in parallel.
+            const string Own = "@clobberbuiltins off.\n";
             var registrations = KosHarness.Registrations;
-            KosHarness.Run(CoreLibrary.Bundle("print claudia_warp_end(5400, 30)."));
+            KosHarness.Run(CoreLibrary.Bundle(Own + "print claudia_warp_end(5400, 30)."));
             var compiles = KosHarness.LibraryCompiles;
-            Assert.Equal(new[] { "5370", "7" }, KosHarness.Run(CoreLibrary.Bundle("local x is 7.\nprint claudia_warp_end(5400, 30).\nprint x.")));
+            Assert.Equal(new[] { "5370", "7" }, KosHarness.Run(CoreLibrary.Bundle(Own + "local x is 7.\nprint claudia_warp_end(5400, 30).\nprint x.")));
             Assert.True(KosHarness.LibraryCompiles == compiles || KosHarness.Registrations > registrations);
         }
 

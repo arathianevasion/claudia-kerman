@@ -3,8 +3,9 @@
 *Measured 2026-11-14 on the Mac (M-series, 14 cores), Release build, one `dotnet test` process per class.*
 
 **Answer: sharing works.** `KosHarness.Run` now compiles the Core Library once per process and links each test's freshly compiled
-Mission Script after it. All 1,229 existing Kerboscript tests pass with no assertion changed. The whole Kerboscript project takes
-79 s in one process, and the sharded gate step (`tools/gates/kerboscript.sh`, 10 processes) takes 39 s.
+Mission Script after it. All 1,229 existing Kerboscript tests pass with no assertion changed (1,232 with the three new `HarnessTests`). The whole Kerboscript
+project takes 79 s in one process, and the sharded gate step (`tools/gates/kerboscript.sh`, 10 processes) takes 39 s. The rest of
+the full local gate (`tools/gates/gates.sh`) is left to the run's merge gate on the Mac.
 
 ## 1. Where a test's time went: compile against run
 
@@ -59,6 +60,9 @@ alone. Running the script is almost free, except in LandAscendTests, whose rig s
 
 - **Line numbers in errors from library code** count from the start of the library's own compile, not from the end of the Mission
   Script. Errors in Mission Script lines are unchanged, because the script still starts at line 1.
+- **Locks and triggers:** the Mission Script compiles in a fresh context that carries over only the library's label and scope
+  counters, not its locks or user functions. In a bundle, a `lock` the Mission Script and a block both declare under the same name
+  shares one entry; with sharing, each half gets its own. No current test declares such a lock.
 - **`defined <block name>`:** in a bundle this probe failed with "Number of arguments passed in didn't match"; with sharing it
   prints `False`. Neither form is a meaningful way to test for a block.
 
@@ -75,11 +79,11 @@ compile it would save is rare.
 | DeorbitTests | 39 s | 1 s | about 40× |
 | LandAscendTests | 529 s | 35 s | 15×; what remains is run time |
 | ReentryBrakeFlowTests | 28 s | 1 s | about 28× |
-| Whole Kerboscript project, 1 process | (CI: 11 min across cores, run 43627861755) | 79 s | |
+| Whole Kerboscript project, 1 process | not measured; CI took 11 min sharded across cores (run 43627861755) | 79 s | |
 | `tools/gates/kerboscript.sh`, 10 processes | | 39 s | |
 
 ## Recommendation
 
 Merge the shared library into `KosHarness`. It changes no test, no `CoreLibrary` code and nothing the game runs, and it takes the
 Kerboscript step from the longest part of CI to well under a minute. The remaining time is LandAscendTests' run time, and with
-that, one process per core buys only 2× (79 s → 39 s). Reducing the shard count is out of scope here and is filed as a finding.
+that, one process per core buys only 2× (79 s → 39 s). Reducing the shard count is out of scope here; it went to the run as a finding for triage.
