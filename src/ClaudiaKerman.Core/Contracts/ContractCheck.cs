@@ -230,6 +230,12 @@ namespace ClaudiaKerman.Core.Contracts
             return clause == null ? null : "can't with your words: \"" + clause + "\" rules out \"" + requirement.Words + "\"";
         }
 
+        /// <summary>The Contract's title as the card and the Contract Route give it (#1025: a revised plan names one by it).</summary>
+        internal static string TitleOf(SnapshotContract contract, string home)
+        {
+            return Title(contract, ContractKinds.Read(contract, home));
+        }
+
         private static string Title(SnapshotContract contract, List<ReadRequirement> read)
         {
             if (contract.Kind != ContractKinds.Exploration) return contract.Kind;
@@ -583,7 +589,7 @@ namespace ClaudiaKerman.Core.Contracts
                 .Concat(_planned.Where(p => !chosen.Contains(p.Contract.Guid) && NotThisFlight.All(l => l.Guid != p.Contract.Guid)).Select(p => MissionPrompts.Quoted(p.Title) + ": the player left it out"))
                 .ToList();
             if (left.Count > 0) text.Append("Not this flight: ").Append(string.Join("; ", left.ToArray())).Append(".\n");
-            text.Append("Plan the Mission to serve every chosen Contract Requirement in the phase given, with the player's words; never add a Contract.\n");
+            text.Append("Plan the Mission to serve every chosen Contract Requirement in the phase given, with the player's words; never add a Contract the player didn't ask for (one they ask for later is added by naming its title in a revised plan's why).\n");
             choice.Section = text.ToString();
             return choice;
         }

@@ -20,6 +20,11 @@ namespace ClaudiaKerman.Core.Contracts
         public int Active;
         /// <summary>The accepted Contracts, in the game's order.</summary>
         public List<SnapshotContract> Accepted = new List<SnapshotContract>();
+        /// <summary>
+        /// #1025: the Contracts the game finished most recently (completed, failed, expired or cancelled), newest last, their GUID and
+        /// state only: a chosen Contract leaving the accepted list is told apart by it.
+        /// </summary>
+        public List<FinishedContract> Finished = new List<FinishedContract>();
 
         internal void Write(JsonWriter json)
         {
@@ -35,7 +40,14 @@ namespace ClaudiaKerman.Core.Contracts
                 WriteRequirements(json, contract.Requirements);
                 json.EndObject();
             }
-            json.EndArray().EndObject();
+            json.EndArray();
+            if (Finished.Count > 0)
+            {
+                json.Name("finished").BeginArray();
+                foreach (var finished in Finished) json.BeginObject().Field("guid", finished.Guid).Field("state", finished.State).EndObject();
+                json.EndArray();
+            }
+            json.EndObject();
         }
 
         private static void WriteSettings(JsonWriter json, List<ContractSetting> settings)
@@ -65,6 +77,10 @@ namespace ClaudiaKerman.Core.Contracts
             if (node == null || node.Kind != JsonKind.Object) return null;
             var limit = JsonNode.Long(node["limit"]);
             var read = new SnapshotContracts { Limit = limit.HasValue ? (int?)limit.Value : null, Active = (int)(JsonNode.Long(node["active"]) ?? 0) };
+            var finished = node["finished"];
+            if (finished != null)
+                foreach (var item in finished.Items)
+                    read.Finished.Add(new FinishedContract { Guid = JsonNode.Str(item["guid"]) ?? "", State = JsonNode.Str(item["state"]) ?? "" });
             var accepted = node["accepted"];
             if (accepted == null) return read;
             foreach (var item in accepted.Items)
@@ -105,6 +121,13 @@ namespace ClaudiaKerman.Core.Contracts
                 Requirements = ReadRequirements(item["requirements"]),
             }).ToList();
         }
+    }
+
+    /// <summary>#1025: a Contract the game has finished: its GUID and the game's state name (Completed, Failed, DeadlineExpired, Cancelled).</summary>
+    public sealed class FinishedContract
+    {
+        public string Guid = "";
+        public string State = "";
     }
 
     /// <summary>One accepted Contract.</summary>
