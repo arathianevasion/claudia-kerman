@@ -1,2 +1,3 @@
 estimate_multipliers: {'all': 0.6}
-merge_gate_skip_paths: ['docs/**', '*.md']
+# '*' crosses '/' here, so the ! lines keep nested markdown (a test fixture) from skipping the gate (#1075)
+merge_gate_skip_paths: ['docs/**', '*.md', '!src/**', '!tests/**', '!tools/**', '!kerboscript/**']
