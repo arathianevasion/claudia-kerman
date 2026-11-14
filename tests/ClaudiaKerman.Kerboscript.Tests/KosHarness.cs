@@ -5,6 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
+using System.Text.RegularExpressions;
+using ClaudiaKerman.Core.Kos;
 using kOS.Safe;
 using kOS.Safe.Binding;
 using kOS.Safe.Callback;
@@ -106,9 +109,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 cpu.Boot();
                 printed.Clear();
 
-                var parts = shared.ScriptHandler.Compile(GlobalPath.FromString("0:/test.ks"), 1,
-                    source + "\nprint \"" + Done + "\".\n", "test", Options(shared));
-                cpu.GetCurrentContext().AddParts(parts);
+                cpu.GetCurrentContext().AddParts(Link(source, shared));
 
                 steps = 0;
                 for (var step = 0; step < maxSteps; step++)
@@ -124,6 +125,78 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 }
                 throw new InvalidOperationException("script did not finish: " + string.Join("\n", errors.Concat(screen.All)));
             }
+        }
+
+        /// <summary>How many times this process has compiled the Core Library for <see cref="Run(string)"/>.</summary>
+        public static int LibraryCompiles { get; private set; }
+
+        /// <summary>
+        /// The Core Library compiled for <see cref="Run(string)"/>, per leading directives and <see cref="Register"/> state: the
+        /// directives decide how the library compiles in a bundle, and so do the registered [Function]s, which the compiler
+        /// calls as built-ins where a name is one. Each entry's counters say where its labels and scope ids end.
+        /// </summary>
+        private static readonly Dictionary<string, CompiledLibrary> Libraries = new Dictionary<string, CompiledLibrary>();
+
+        private sealed class CompiledLibrary
+        {
+            public List<CodePart> Parts;
+            public int Labels;
+            public short Scopes;
+        }
+
+        /// <summary>kOS keeps a compile's label and scope counters in a per-KSScript context it doesn't expose (#1074).</summary>
+        private static readonly FieldInfo ContextsField = typeof(KSScript).GetField("contexts", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("kOS.Safe's KSScript has no 'contexts' field: the shared Core Library needs it");
+
+        private static readonly Regex Directive = new Regex(@"\G(?:\s+|//[^\n]*|(@(?:lazyglobal|clobberbuiltins)\s+(?:on|off)\s*\.))",
+            RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// The program for <paramref name="source"/>, with the end marker after the Mission Script. A <see cref="CoreLibrary.Bundle"/>
+        /// is not compiled whole (#1074): its Core Library is compiled once and shared, then its Mission Script is compiled in
+        /// a context that numbers labels and scopes on from the library's, and the library's parts go first, so its hoisted
+        /// functions are stored before the Mission Script runs, as they are at the top of a bundle.
+        /// </summary>
+        private static List<CodePart> Link(string source, SafeSharedObjects shared)
+        {
+            var path = GlobalPath.FromString("0:/test.ks");
+            var libraryStart = CoreLibrary.LibraryStartLine(source);
+            if (libraryStart == int.MaxValue)
+                return shared.ScriptHandler.Compile(path, 1, source + "\nprint \"" + Done + "\".\n", "test", Options(shared));
+
+            var script = string.Join("\n", source.Replace("\r\n", "\n").Split('\n').Take(libraryStart - 1));
+            var library = Library(LeadingDirectives(script), shared);
+            Contexts(shared.ScriptHandler)["test"] = new Context { LabelIndex = library.Labels, MaxScopeIdSoFar = library.Scopes };
+            var own = shared.ScriptHandler.Compile(path, 1, script + "\nprint \"" + Done + "\".\n", "test", Options(shared));
+            return library.Parts.Concat(own).ToList();
+        }
+
+        private static CompiledLibrary Library(string directives, SafeSharedObjects shared)
+        {
+            var key = directives + "|" + string.Join(",", Registered.Select(t => t.FullName).OrderBy(n => n, StringComparer.Ordinal));
+            CompiledLibrary library;
+            if (Libraries.TryGetValue(key, out library)) return library;
+            var compiler = new KSScript();
+            var parts = compiler.Compile(GlobalPath.FromString("0:/test.ks"), 1, directives + CoreLibrary.Bundle(""), "library", Options(shared));
+            var context = Contexts(compiler)["library"];
+            library = new CompiledLibrary { Parts = parts, Labels = context.LabelIndex, Scopes = context.MaxScopeIdSoFar };
+            Libraries.Add(key, library);
+            LibraryCompiles++;
+            return library;
+        }
+
+        private static Dictionary<string, Context> Contexts(object scriptHandler)
+        {
+            return (Dictionary<string, Context>)ContextsField.GetValue(scriptHandler);
+        }
+
+        /// <summary>The <c>@lazyglobal</c> and <c>@clobberbuiltins</c> lines kOS reads at the top of <paramref name="script"/>.</summary>
+        private static string LeadingDirectives(string script)
+        {
+            var text = new StringBuilder();
+            for (var match = Directive.Match(script); match.Success && match.Length > 0; match = match.NextMatch())
+                if (match.Groups[1].Success) text.Append(match.Groups[1].Value).Append('\n');
+            return text.ToString();
         }
 
         private static CompilerOptions Options(SafeSharedObjects shared)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using ClaudiaKerman.Core.Kos;
 using Xunit;
 
 namespace ClaudiaKerman.Kerboscript.Tests
@@ -28,6 +29,30 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             // So the bundle drops the Core Library files' own @lazyglobal lines.
             Assert.Contains("LAZYGLOBAL", KosHarness.CompileError("@lazyglobal off.\nprint 1.\n@lazyglobal off.\nprint 2."));
+        }
+
+        [Fact]
+        public void A_bundle_compiles_only_its_Mission_Script_once_the_Core_Library_is_compiled()
+        {
+            KosHarness.Run(CoreLibrary.Bundle("print claudia_warp_end(5400, 30)."));
+            var compiles = KosHarness.LibraryCompiles;
+            Assert.Equal(new[] { "5370", "7" }, KosHarness.Run(CoreLibrary.Bundle("local x is 7.\nprint claudia_warp_end(5400, 30).\nprint x.")));
+            Assert.Equal(compiles, KosHarness.LibraryCompiles);
+        }
+
+        [Fact]
+        public void The_Core_Library_runs_under_the_Mission_Scripts_own_directives()
+        {
+            // As in a bundle, where the Mission Script's @lazyglobal line is the only one and covers the library too.
+            Assert.Equal(new[] { "5370" }, KosHarness.Run(CoreLibrary.Bundle("@lazyglobal off.\nprint claudia_warp_end(5400, 30).")));
+            Assert.Equal(new[] { "5370" }, KosHarness.Run(CoreLibrary.Bundle("// a comment first\n@lazyglobal off. @clobberbuiltins on.\nprint claudia_warp_end(5400, 30).")));
+        }
+
+        [Fact]
+        public void A_Mission_Script_function_with_a_library_blocks_name_wins_as_it_does_in_a_bundle()
+        {
+            Assert.Equal(new[] { "1" }, KosHarness.Run(CoreLibrary.Bundle(
+                "function claudia_warp_end { parameter a, b. return 1. }\nprint claudia_warp_end(5400, 30).")));
         }
 
         [Fact]
