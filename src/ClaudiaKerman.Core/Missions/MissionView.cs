@@ -320,6 +320,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>"Plan these 2"; "Pick a Contract" when none is ticked.</summary>
         public string PlanLabel = "";
         public bool CanPlan;
+        /// <summary>#1023: why the ticked set doesn't fit, "410 m/s short", shown under the greyed "Plan these"; "" when it fits.</summary>
+        public string Shortfall = "";
         /// <summary>"Plan without Contracts" needs words of the player's to plan.</summary>
         public bool CanPlanWithout;
     }

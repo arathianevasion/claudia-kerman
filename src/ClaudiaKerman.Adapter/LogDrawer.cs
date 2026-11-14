@@ -521,20 +521,23 @@ namespace ClaudiaKerman.Adapter
             DrawRouteBar(card);
             foreach (var row in card.Rows)
             {
-                // The suggested set, ticked; ticking and unticking come with re-pricing (#1023).
-                ClaudiaSkin.Checkbox(row.Ticked, row.Title, false);
+                // #1023: a click ticks or unticks, and the card re-prices at once (the mod's own pricing: no search, no request).
+                if (ClaudiaSkin.Checkbox(row.Ticked, row.Title)) _send(new TickContract(row.Guid, !row.Ticked));
                 GUILayout.Label(row.Detail(now), ClaudiaSkin.Secondary);
                 if (row.Note.Length > 0) GUILayout.Label(row.Note, ClaudiaSkin.Secondary);
+                if (row.Swap != null) DrawSwap(row.Swap);
             }
             if (card.NotThisFlight.Count > 0)
             {
                 GUILayout.Label("Not this flight", _bold);
                 foreach (var left in card.NotThisFlight)
                 {
+                    if (left.Tickable && ClaudiaSkin.Checkbox(left.Ticked, left.Title)) _send(new TickContract(left.Guid, !left.Ticked));
                     GUILayout.BeginHorizontal();
-                    ClaudiaSkin.Chip(ChipText(left.Kind), left.Kind == LeftOutKind.NotYet ? ClaudiaSkin.ChipKind.Danger : ClaudiaSkin.ChipKind.Attention);
-                    GUILayout.Label(left.Title + " — " + left.Reason, ClaudiaSkin.Secondary);
+                    if (!left.Ticked) ClaudiaSkin.Chip(ChipText(left.Kind), left.Kind == LeftOutKind.NotYet ? ClaudiaSkin.ChipKind.Danger : ClaudiaSkin.ChipKind.Attention);
+                    GUILayout.Label((left.Tickable ? "" : left.Title + " — ") + left.Reason, ClaudiaSkin.Secondary);
                     GUILayout.EndHorizontal();
+                    if (left.Swap != null) DrawSwap(left.Swap);
                 }
             }
             GUILayout.BeginHorizontal();
@@ -543,6 +546,7 @@ namespace ClaudiaKerman.Adapter
                 if (ClaudiaSkin.PrimaryButton(card.PlanLabel, GUILayout.ExpandWidth(false))) _send(new PlanContracts());
             }
             else ClaudiaSkin.DisabledButton(card.PlanLabel, GUILayout.ExpandWidth(false));
+            if (card.Shortfall.Length > 0) GUILayout.Label(card.Shortfall, ClaudiaSkin.Secondary);
             if (card.CanPlanWithout)
             {
                 if (ClaudiaSkin.SecondaryButton("Plan without Contracts", GUILayout.ExpandWidth(false))) _send(new PlanWithoutContracts());
@@ -552,6 +556,14 @@ namespace ClaudiaKerman.Adapter
             GUILayout.EndHorizontal();
             if (!card.CanPlanWithout) GUILayout.Label("Type your own words to plan without Contracts.", ClaudiaSkin.Secondary);
             ClaudiaSkin.EndCard();
+        }
+
+        private void DrawSwap(SwapOffer swap)
+        {
+            GUILayout.BeginHorizontal();
+            if (ClaudiaSkin.SecondaryButton(swap.Label, GUILayout.ExpandWidth(false))) _send(new SwapInContract(swap.Guid));
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
         }
 
         /// <summary>The route against the craft: the route's share, then the reserve's, green when the set fits and red when it is short.</summary>
