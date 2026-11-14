@@ -126,7 +126,10 @@ namespace ClaudiaKerman.Adapter
                 var list = __instance != null ? __instance.scrollListContracts : null;
                 if (contract == null || list == null || list.Count == 0) return;
                 var last = list.GetUilistItemAt(list.Count - 1);
-                Remember(last != null ? last.GetComponent<MCListItem>() : null, contract);
+                var row = last != null ? last.GetComponent<MCListItem>() : null;
+                // The row's own Setup call is the surer source: this only fills a row it left unrecorded, so a mod that adds rows elsewhere can't remap one.
+                Contract had;
+                if (row != null && !RowContracts.TryGetValue(row, out had)) Remember(row, contract);
             }
             catch (Exception e)
             {
@@ -188,7 +191,8 @@ namespace ClaudiaKerman.Adapter
             if (Marks.TryGetValue(contract.ContractGuid, out mark)) return mark;
             // A Contract type outside the game's own assembly is a mod's: "not yet" whatever it is called.
             var fromMod = contract.GetType().Assembly != typeof(Contract).Assembly;
-            mark = ContractMarks.Of(ContractReader.Of(contract), fromMod);
+            // A mod's Contract isn't read at all: its answer is always "not yet", and its own Save mustn't turn the marks off.
+            mark = ContractMarks.Of(fromMod ? new SnapshotContract { Kind = contract.GetType().Name } : ContractReader.Of(contract), fromMod);
             Marks[contract.ContractGuid] = mark;
             return mark;
         }
@@ -197,6 +201,8 @@ namespace ClaudiaKerman.Adapter
 
         private static void Mark(MCListItem row, ContractMark mark)
         {
+            // The texture first: one that fails to load leaves no empty mark behind.
+            var texture = mark.Plannable ? Flag() : Hollow();
             var rowRect = (RectTransform)row.transform;
             var go = new GameObject(MarkName, typeof(RectTransform));
             go.layer = row.gameObject.layer;
@@ -208,7 +214,7 @@ namespace ClaudiaKerman.Adapter
             rect.sizeDelta = new Vector2(Width, Height);
             rect.anchoredPosition = new Vector2(RightOffset(row, rowRect), 0f);
             var image = go.AddComponent<RawImage>();
-            image.texture = mark.Plannable ? Flag() : Hollow();
+            image.texture = texture;
             image.raycastTarget = false;
 
             // Hover over the whole row: the row's own background takes the pointer. A row with another's hover text keeps it, and the mark carries ours.
