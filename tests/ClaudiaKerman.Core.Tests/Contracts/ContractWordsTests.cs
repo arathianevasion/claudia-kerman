@@ -124,5 +124,37 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("Not this flight: ", chosen.Section);
             Assert.Contains("can't with your words: ", chosen.Section);
         }
+
+        [Fact]
+        public void AClauseThatLandsAtHomeIsNotReadAsALandingOnTheBodyBeforeIt()
+        {
+            var together = Check("Orbit the Mun, then land safely on Kerbin", "Mun:ORBIT");
+
+            var choice = together.Choose(together.TickedGuids);
+            Assert.Equal("orbit the Mun", choice.Legs[0].Text);
+            Assert.DoesNotContain(choice.Legs, l => l.Text == "land on the Mun");
+        }
+
+        [Fact]
+        public void ANotWithinAClauseLimitsOnlyTheBodyAfterIt()
+        {
+            var check = ContractCheck.Work(ContractCheckTests.With(
+                ContractCheckTests.Exploration("minmus", 10000, "Minmus:LANDING"), ContractCheckTests.Exploration("mun", 10000, "Mun:LANDING")),
+                "Land on Minmus not the Mun", false, ContractCheckTests.Margin);
+
+            Assert.Equal("minmus", Assert.Single(check.Fitting).Guid);
+            var left = Assert.Single(check.NotThisFlight);
+            Assert.Equal("mun", left.Guid);
+            Assert.Equal(LeftOutKind.CantWithWords, left.Kind);
+        }
+
+        [Fact]
+        public void ANoLandingAtHomeRulesOutNoContractAtAnotherBody()
+        {
+            var check = Check("Don't land on Kerbin", "Mun:LANDING");
+
+            Assert.Single(check.Fitting);
+            Assert.Empty(check.NotThisFlight);
+        }
     }
 }

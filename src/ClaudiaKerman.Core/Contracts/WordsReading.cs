@@ -46,14 +46,19 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 var clause = raw.Trim();
                 if (clause.Length == 0) continue;
-                var named = bodies.Where(b => Regex.IsMatch(clause, @"\b" + Regex.Escape(b) + @"\b", RegexOptions.IgnoreCase)).ToList();
+                var named = bodies.Where(b => Names(clause, b)).ToList();
+                var namesHome = Names(clause, home);
                 var landing = SequenceWords.Landing.IsMatch(clause);
                 var flyby = SequenceWords.Flyby.IsMatch(clause);
                 var orbit = Orbit.IsMatch(clause) || SequenceWords.Capture.IsMatch(clause);
-                if (Negated.IsMatch(clause) && (landing || orbit || flyby))
+                var not = Negated.Match(clause);
+                if (not.Success && (landing || orbit || flyby))
                 {
-                    // "don't land" holds the body to an orbit; "don't orbit" to a flyby.
-                    read.Limit(named, landing ? ContractReach.Orbit : ContractReach.Flyby, clause);
+                    // "don't land" holds the body to an orbit; "don't orbit" to a flyby. Only the bodies after the "not" are held:
+                    // "land on Minmus not the Mun" lands on Minmus.
+                    var after = named.Where(b => Regex.IsMatch(clause.Substring(not.Index), @"\b" + Regex.Escape(b) + @"\b", RegexOptions.IgnoreCase)).ToList();
+                    if (after.Count == 0 && (named.Count > 0 || namesHome)) continue;
+                    read.Limit(after, landing ? ContractReach.Orbit : ContractReach.Flyby, clause);
                     continue;
                 }
                 if (Only.IsMatch(clause) && flyby)
@@ -65,12 +70,17 @@ namespace ClaudiaKerman.Core.Contracts
                 var reach = landing ? ContractReach.Land : orbit ? ContractReach.Orbit : flyby || Goes.IsMatch(clause) ? ContractReach.Flyby : (ContractReach?)null;
                 if (reach == null) continue;
                 // "fly to Minmus and capture into orbit": the clause that names no body is about the one before it.
-                if (named.Count == 0 && lastBody != null && reach != ContractReach.Flyby) named = new List<string> { lastBody };
+                if (named.Count == 0 && !namesHome && lastBody != null && reach != ContractReach.Flyby) named = new List<string> { lastBody };
                 if (named.Count == 0) continue;
                 read.Need(named, reach.Value, clause);
                 lastBody = named[named.Count - 1];
             }
             return read;
+        }
+
+        private static bool Names(string clause, string body)
+        {
+            return Regex.IsMatch(clause, @"\b" + Regex.Escape(body) + @"\b", RegexOptions.IgnoreCase);
         }
 
         private void Need(IEnumerable<string> bodies, ContractReach reach, string clause)
