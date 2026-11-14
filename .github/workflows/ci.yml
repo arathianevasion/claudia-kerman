@@ -13,6 +13,7 @@
 #   scriptcheck:  Script Check tests, Quarantine tests and their tracking-issue check (#1067), tests/blocks and tests/tools through KsCompile, undefined calls, fixtures
 # A push to main whose tree already passed on its PR skips the gate and names that run (#1050); the `check` job decides and
 # the `record` job saves each green run's pass. PR runs never skip.
+# The gate jobs cache ~/.nuget/packages with actions/cache, keyed on the csproj and Directory.Build files (#1052).
 # Jobs: check (skip decision), gate (the matrix above), record (saves the pass when every gate job is green).
 # fail-fast is off so one failing job doesn't hide the others' results; any failing job fails the run.
 name: CI
@@ -105,6 +106,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+
+      # NuGet packages (#1052), keyed on every file that names a package version. No lock files: they would add a
+      # packages.lock.json per project and a --locked-mode restore to keep in step with every version bump.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props', '**/Directory.Build.targets', '**/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: Fetch kOS.Safe from the kOS release
         env:
