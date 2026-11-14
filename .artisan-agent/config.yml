@@ -1,0 +1,110 @@
+# .artisan-agent/config.yml: the project's settings. Committed.
+#
+# Every number the pipeline uses lives here as a product guardrail; the values
+# below are the Artisan's own preferences, used as defaults. A key left out
+# (or left empty) falls back to the default shown here, so this file only
+# needs the keys a project changes. A lasting change is job 23; a change for
+# one run only is an override at the plan step, written to that run's state
+# file and never here.
+#
+# Read by scripts/config.sh. Plain YAML: maps, scalars, [flow, lists] and
+# "- item" lists of scalars. Key spellings: see scripts/README.md (Config).
+
+# Workers in flight at once. Review capacity comes from this and the gates.
+max_agents: 5
+
+# How often the orchestrator sweeps the run folder, in minutes.
+sweep_minutes: 5
+
+# Context drain rules, as a percentage of the context window.
+context:
+  drain_percent: 30     # dispatch nothing new, hand off once idle
+  review_percent: 50    # every merge from here gets a risk gate
+
+# The Engineering chat's context: it never asks the Artisan to compact.
+# Above warn_percent every message ends with a one-line warning; Claude Code
+# compacts the chat on its own at compact_percent (setup writes it to the
+# project settings as CLAUDE_AUTOCOMPACT_PCT_OVERRIDE); if the chat passes
+# compact_percent + 15 without that having happened, it asks once for /compact.
+# window_tokens is the window the chat is expected to have (Opus, 1M); it is
+# recorded, not forced, because the settings env applies to every session.
+chat_context:
+  warn_percent: 30
+  compact_percent: 70
+  window_tokens: 1000000
+
+# Budget = approved estimate + this percentage.
+overrun_allowance_percent: 25
+
+# Plan-usage guard: park when the 5-hour window is within this reserve, or
+# the 7-day window passes this ceiling.
+usage_reserve:
+  five_hour_reserve_percent: 20
+  seven_day_ceiling_percent: 90
+
+# A usage reading older than this counts as unknown, and unknown stops dispatch.
+stale_usage_minutes: 10
+
+# Failed attempts allowed before a ticket is blocked.
+attempts_per_ticket: 2
+
+# Deferred gates come back for review after this many days.
+deferral_review_days: 30
+
+# Occurrences of a lesson before it is proposed as a guardrail.
+evidence_threshold: 3
+
+# Nudge towards a hands-on ticket after this many runs without one.
+hands_on_nudge_runs: 5
+
+# Named path sets that gates and guardrails can apply to. A ticket belongs to
+# every area its files touch; the strictest setting wins. None by default.
+# Example:
+#   areas:
+#     billing:
+#       paths: [src/billing/, db/migrations/]
+#       gates: [risk]
+areas: {}
+
+# owner/name of the team guardrails repo, or empty for none.
+team_guardrails_repo:
+
+# Multipliers on history-based estimates, keyed by model id; "all" applies to
+# every model without its own key. None by default (1).
+# Example:
+#   estimate_multipliers:
+#     all: 1.1
+#     claude-opus-5-5: 1.3
+estimate_multipliers: {}
+
+# Minimum estimate per ticket, in dollars, keyed by model id; "all" covers a
+# model without its own key. The plan step raises a smaller estimate to its
+# model's minimum before deriving caps (a worker's budget cap is twice the
+# estimate), so a tiny ticket's fixed overhead (skill loading, tdd, a two-axis
+# review) still fits under the cap. Source of the defaults: #54 (a $0.10
+# estimate, a $0.20 cap, about $0.30 real cost on Sonnet, both attempts
+# failed). Sonnet is that $0.30 plus margin, rounded up to $0.50; the others
+# scale by their price ratio to Sonnet (Opus 2x, Fable 4x), and Haiku holds at
+# $0.10 because the overhead is a fixed number of turns, not price-bound. Keep
+# a key per model in references/model-prices.json. The retro's calibration
+# lessons may change these, like the multipliers.
+minimum_estimates:
+  claude-fable-5-2: 2.00
+  claude-opus-5-5: 1.00
+  claude-sonnet-5-5: 0.50
+  claude-haiku-5-5: 0.10
+  all: 0.50
+
+# Whether runs live on an always-on host.
+host_configured: false
+
+# The merge gate on CI (#139). A machine whose merge_gate (host.json in the
+# individual home) resolves to ci runs no suite after a merge: it pushes the
+# merge commit to a throwaway ci/* branch and dispatches this workflow there.
+# workflow is its file name under .github/workflows (project setup records it
+# and refuses one without a workflow_dispatch trigger); none means a CI
+# machine can't merge for this project. With no conclusion after
+# timeout_minutes, the run parks (reason ci) until the Artisan clears it.
+ci_gate:
+  workflow: ci.yml
+  timeout_minutes: 30
