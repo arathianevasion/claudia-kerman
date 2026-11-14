@@ -13,12 +13,10 @@ namespace ClaudiaKerman.Core.Tests.Contracts
     /// </summary>
     public sealed class ContractMarksTests
     {
-        private const string Home = "Kerbin";
-
         [Fact]
         public void AnExplorationContractClaudiaCanPlanGetsTheFlagAndSaysWhatSheWouldFly()
         {
-            var mark = ContractMarks.Of(Fixture("ExplorationContract.json"), Home, false);
+            var mark = ContractMarks.Of(Fixture("ExplorationContract.json"), false);
 
             Assert.True(mark.Plannable);
             Assert.Equal("Claudia can plan this: fly by the Mun, orbit the Mun", mark.Hover);
@@ -27,7 +25,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void AStockTypeClaudiaDoesNotPlanYetGetsTheHollowMarkWithTheKindTablesReason()
         {
-            var mark = ContractMarks.Of(Fixture("PartTest.json"), Home, false);
+            var mark = ContractMarks.Of(Fixture("PartTest.json"), false);
 
             Assert.False(mark.Plannable);
             Assert.Equal("not yet: part tests aren't planned yet", mark.Hover);
@@ -37,7 +35,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void AModAddedContractIsNotYetWhateverItsTypeIsCalled()
         {
-            var mark = ContractMarks.Of(Fixture("ExplorationContract.json"), Home, true);
+            var mark = ContractMarks.Of(Fixture("ExplorationContract.json"), true);
 
             Assert.False(mark.Plannable);
             Assert.Equal(ContractMarks.FromMod, mark.Hover);
@@ -47,7 +45,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void AnExplorationContractWithAMilestoneClaudiaCantPlanYetIsNotYetForThatMilestone()
         {
-            var mark = ContractMarks.Of(Exploration("g", 0, "Mun:ORBIT", "Mun:RENDEZVOUS"), Home, false);
+            var mark = ContractMarks.Of(Exploration("g", 0, "Mun:ORBIT", "Mun:RENDEZVOUS"), false);
 
             Assert.False(mark.Plannable);
             Assert.Equal("not yet: needs a second vessel", mark.Hover);
@@ -56,7 +54,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void AnOptionalMilestoneClaudiaCantPlanIsSkippedAndTheHoverSaysSo()
         {
-            var mark = ContractMarks.Of(Exploration("g", 0, "Minmus:LANDING", "?Minmus:SURFACEEVA"), Home, false);
+            var mark = ContractMarks.Of(Exploration("g", 0, "Minmus:LANDING", "?Minmus:SURFACEEVA"), false);
 
             Assert.True(mark.Plannable);
             Assert.Equal("Claudia can plan this: land on Minmus (optional Requirement skipped: needs an EVA in a Manual stretch, not planned yet)", mark.Hover);
@@ -65,7 +63,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void AContractWhoseOnlyMilestonesAreOptionalOnesClaudiaCantPlanIsNotYet()
         {
-            var mark = ContractMarks.Of(Exploration("g", 0, "?Mun:SPACEWALK"), Home, false);
+            var mark = ContractMarks.Of(Exploration("g", 0, "?Mun:SPACEWALK"), false);
 
             Assert.False(mark.Plannable);
             Assert.Equal("not yet: needs an EVA in a Manual stretch, not planned yet", mark.Hover);
@@ -77,7 +75,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             var contract = Exploration("g", 0, "Mun:FLYBY");
             contract.Requirements[0].State = "Complete";
 
-            var mark = ContractMarks.Of(contract, Home, false);
+            var mark = ContractMarks.Of(contract, false);
 
             Assert.False(mark.Plannable);
             Assert.Equal("not yet: no Requirement is left to fly for", mark.Hover);

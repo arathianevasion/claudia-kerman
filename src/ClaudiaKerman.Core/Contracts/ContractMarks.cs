@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System.Linq;
+using ClaudiaKerman.Core.Missions;
 
 namespace ClaudiaKerman.Core.Contracts
 {
@@ -28,10 +29,10 @@ namespace ClaudiaKerman.Core.Contracts
         public const string NothingLeft = "not yet: no Requirement is left to fly for";
 
         /// <summary>The mark for <paramref name="contract"/>, as the Adapter read it; <paramref name="fromMod"/>: its type isn't the game's own.</summary>
-        public static ContractMark Of(SnapshotContract contract, string home, bool fromMod)
+        public static ContractMark Of(SnapshotContract contract, bool fromMod)
         {
             if (fromMod) return new ContractMark { Hover = FromMod };
-            var read = ContractKinds.Read(contract, home);
+            var read = ContractKinds.Read(contract, CraftCheckFlow.HomeBody);
             var blocking = read.FirstOrDefault(r => !r.Plannable && !r.Requirement.Optional);
             if (blocking != null) return new ContractMark { Hover = blocking.NotYet };
             var plannable = read.Where(r => r.Plannable).Select(r => r.Words).Distinct().ToArray();
