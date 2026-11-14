@@ -46,6 +46,17 @@ namespace ClaudiaKerman.Core.Contracts
         CompletesLater,
         /// <summary>Past the most the search takes.</summary>
         NotSearched,
+        /// <summary>#1036: the player's typed words rule out what it needs; the words win.</summary>
+        CantWithWords,
+    }
+
+    /// <summary>#1036: one leg of the route and who it serves: the player's words, the Contracts, or both when they share it.</summary>
+    public sealed class RouteLeg
+    {
+        /// <summary>The leg in words, "orbit the Mun".</summary>
+        public string Text = "";
+        /// <summary>The Serves tags: <see cref="ContractCheck.WordsTag"/> for the player's typed words, and each Contract's title.</summary>
+        public string[] Serves = new string[0];
     }
 
     /// <summary>A Contract on the card's "Not this flight" list, with its reason.</summary>
@@ -81,6 +92,8 @@ namespace ClaudiaKerman.Core.Contracts
         public string Words = "";
         /// <summary>The Contract Route in words, "orbit the Mun; return to Kerbin": what the Craft Check judges with the player's words.</summary>
         public string RouteWords = "";
+        /// <summary>#1036: the route's legs and what each serves.</summary>
+        public List<RouteLeg> Legs = new List<RouteLeg>();
         /// <summary>The request's Contract Route section (<see cref="ContractCheck.Choose"/>).</summary>
         public string Section = "";
         /// <summary>The card folded to one line.</summary>
@@ -111,6 +124,8 @@ namespace ClaudiaKerman.Core.Contracts
         public const int MostSearched = 10;
         /// <summary>The spare a deadline needs: this fraction of the time to it, and at least a Kerbin day.</summary>
         public const double DeadlineSpareFraction = 0.10;
+        /// <summary>The Serves tag for what the player typed.</summary>
+        public const string WordsTag = "your words";
 
         public string Words = "";
         public bool Remote;
@@ -136,6 +151,8 @@ namespace ClaudiaKerman.Core.Contracts
         public int Searches;
         public List<ContractCheckRow> Fitting = new List<ContractCheckRow>();
         public List<LeftOutContract> NotThisFlight = new List<LeftOutContract>();
+        /// <summary>#1036: the ticked set's route leg by leg, with what each serves.</summary>
+        public List<RouteLeg> Legs = new List<RouteLeg>();
 
         private GameSnapshot _snapshot;
         private ContractRoutes _routes;
@@ -182,10 +199,17 @@ namespace ClaudiaKerman.Core.Contracts
                     NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Kind = LeftOutKind.NotYet, Reason = blocking.NotYet });
                     continue;
                 }
-                var skipped = read.Where(r => !r.Plannable).Select(r => r.NotYet.Substring("not yet: ".Length)).Distinct().ToList();
+                var ruledOut = read.Where(r => r.Plannable).Select(r => new { Read = r, Why = CantWith(r) }).Where(r => r.Why != null).ToList();
+                var must = ruledOut.FirstOrDefault(r => !r.Read.Requirement.Optional);
+                if (must != null)
+                {
+                    NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Kind = LeftOutKind.CantWithWords, Reason = must.Why });
+                    continue;
+                }
+                var skipped = read.Where(r => !r.Plannable).Select(r => r.NotYet.Substring("not yet: ".Length)).Concat(ruledOut.Select(r => r.Why)).Distinct().ToList();
                 _planned.Add(new Planned
                 {
-                    Contract = contract, Title = title, Requirements = read.Where(r => r.Plannable).ToList(),
+                    Contract = contract, Title = title, Requirements = read.Where(r => r.Plannable && ruledOut.All(o => o.Read != r)).ToList(),
                     Note = skipped.Count == 0 ? "" : "optional Requirement skipped: " + string.Join("; ", skipped.ToArray()),
                 });
             }
@@ -195,6 +219,13 @@ namespace ClaudiaKerman.Core.Contracts
                 NotThisFlight.Add(new LeftOutContract { Guid = over.Contract.Guid, Title = over.Title, Kind = LeftOutKind.NotSearched, Reason = "not searched: only the " + MostSearched + " best paid Contracts are searched" });
                 _planned.Remove(over);
             }
+        }
+
+        /// <summary>"can't with your words: ..." when the player's words rule out what the Requirement needs; null when they don't.</summary>
+        private string CantWith(ReadRequirement requirement)
+        {
+            var clause = _routes.Reading.Forbids(requirement.Body, requirement.Reach);
+            return clause == null ? null : "can't with your words: \"" + clause + "\" rules out \"" + requirement.Words + "\"";
         }
 
         private static string Title(SnapshotContract contract, List<ReadRequirement> read)
@@ -219,14 +250,51 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The route the set needs with the player's words: it comes home when Claudia is aboard or a Requirement asks it.</summary>
         private PricedRoute Route(IList<Planned> set)
         {
+            var needs = ContractNeeds(set);
+            var home = set.SelectMany(p => p.Requirements).Any(r => r.Return) || (set.Count > 0 && !Remote);
+            return _routes.Best(needs, home, r => Late(set, r) == null);
+        }
+
+        private static Dictionary<string, ContractReach> ContractNeeds(IEnumerable<Planned> set)
+        {
             var needs = new Dictionary<string, ContractReach>();
             foreach (var requirement in set.SelectMany(p => p.Requirements))
             {
                 ContractReach had;
                 if (!needs.TryGetValue(requirement.Body, out had) || requirement.Reach > had) needs[requirement.Body] = requirement.Reach;
             }
-            var home = set.SelectMany(p => p.Requirements).Any(r => r.Return) || (set.Count > 0 && !Remote);
-            return _routes.Best(needs, home, r => Late(set, r) == null);
+            return needs;
+        }
+
+        /// <summary>
+        /// #1036: the route's legs, each with the Serves tags of whoever needs it. A leg the player's words and a Contract both need is one
+        /// leg, tagged with both (<see cref="WordsTag"/> first); the further reach of the two is the one flown.
+        /// </summary>
+        private List<RouteLeg> LegsOf(IList<Planned> set, PricedRoute route)
+        {
+            var needs = _routes.Needs(ContractNeeds(set));
+            var legs = new List<RouteLeg>();
+            foreach (var body in route.Order)
+            {
+                var serves = new List<string>();
+                if (_routes.Reading.Needs.ContainsKey(body)) serves.Add(WordsTag);
+                serves.AddRange(set.Where(p => p.Requirements.Any(r => !r.Return && r.Body == body)).Select(p => p.Title));
+                legs.Add(new RouteLeg { Text = Step(body, needs[body]), Serves = serves.Distinct().ToArray() });
+            }
+            if (route.HomeUt.HasValue && route.Order.Count > 0)
+            {
+                var serves = new List<string>();
+                if (_routes.WordsReturn) serves.Add(WordsTag);
+                serves.AddRange(set.Where(p => p.Requirements.Any(r => r.Return)).Select(p => p.Title));
+                legs.Add(new RouteLeg { Text = "return to " + _home, Serves = serves.Distinct().ToArray() });
+            }
+            if (legs.Count == 0) legs.Add(new RouteLeg { Text = "reach low " + _home + " orbit", Serves = set.Select(p => p.Title).Distinct().ToArray() });
+            return legs;
+        }
+
+        private static string Step(string body, ContractReach reach)
+        {
+            return (reach == ContractReach.Flyby ? "fly by " : reach == ContractReach.Orbit ? "orbit " : "land on ") + ContractKinds.Named(body);
         }
 
         /// <summary>The first Contract of the set the route finishes too late for its deadline and the spare, with when it finishes; null when none.</summary>
@@ -327,6 +395,7 @@ namespace ClaudiaKerman.Core.Contracts
             var set = _planned.Where(p => _ticked.Contains(p.Contract.Guid)).ToList();
             var route = Route(set);
             RouteDeltaV = route.DeltaV;
+            Legs = LegsOf(set, route);
             Reserve = RouteDeltaV * ReservePercent / 100.0;
             Spare = CraftDeltaV - RouteDeltaV - Reserve;
             var late = Late(set, route);
@@ -479,15 +548,8 @@ namespace ClaudiaKerman.Core.Contracts
                 return choice;
             }
             var route = Route(set);
-            var steps = new List<string>();
-            foreach (var body in route.Order)
-            {
-                var reach = set.SelectMany(p => p.Requirements).Where(r => r.Body == body).Max(r => r.Reach);
-                steps.Add((reach == ContractReach.Flyby ? "fly by " : reach == ContractReach.Orbit ? "orbit " : "land on ") + ContractKinds.Named(body));
-            }
-            if (route.HomeUt.HasValue && route.Order.Count > 0) steps.Add("return to " + _home);
-            if (steps.Count == 0) steps.Add("reach low " + _home + " orbit");
-            choice.RouteWords = string.Join("; ", steps.ToArray());
+            choice.Legs = LegsOf(set, route);
+            choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
             choice.Summary = "Mission Control · Contract check: " + set.Count + " of " + Accepted + " Contracts chosen · route " + Whole(route.DeltaV) + " m/s · "
                 + SpareText(spare) + " · " + string.Join(" · ", set.Select(p => "✓ " + p.Title).ToArray());
@@ -497,6 +559,14 @@ namespace ClaudiaKerman.Core.Contracts
             text.Append("The player chose ").Append(set.Count).Append(" of ").Append(Accepted).Append(" accepted Contracts for this Mission. Route, from where the craft is: ")
                 .Append(choice.RouteWords).Append(". The mod prices it at ").Append(Whole(route.DeltaV)).Append(" m/s on the Delta-v Map, against the craft's ")
                 .Append(Whole(CraftDeltaV)).Append(" m/s with a ").Append(ReservePercent).Append("% reserve.\n");
+            text.Append("The legs and what each serves (your words are the player's typed words; a leg tagged with both serves both, so it is flown once):\n");
+            foreach (var leg in choice.Legs)
+            {
+                text.Append("- ").Append(leg.Text);
+                if (leg.Serves.Length > 0) text.Append(" [serves: ").Append(string.Join("; ", leg.Serves.Select(t => t == WordsTag ? t : MissionPrompts.Quoted(t)).ToArray())).Append(']');
+                text.Append('\n');
+            }
+            text.Append("The Contracts:\n");
             foreach (var planned in set)
             {
                 text.Append("- ").Append(MissionPrompts.Quoted(planned.Title));
