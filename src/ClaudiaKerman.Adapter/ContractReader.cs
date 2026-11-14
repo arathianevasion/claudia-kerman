@@ -37,7 +37,12 @@ namespace ClaudiaKerman.Adapter
                 read.Limit = limit >= NoLimit ? (int?)null : limit;
             }
             foreach (var contract in system.GetCurrentActiveContracts<Contract>())
-                if (contract != null) read.Accepted.Add(ContractOf(contract));
+            {
+                if (contract == null) continue;
+                var one = Of(contract);
+                ReadRewards(one, contract);
+                read.Accepted.Add(one);
+            }
             // #1025: the newest finished ones, GUID and state only (no saved form), so Core tells a completion from a failure.
             var finished = system.ContractsFinished;
             if (finished != null)
@@ -46,7 +51,11 @@ namespace ClaudiaKerman.Adapter
             return read;
         }
 
-        private static SnapshotContract ContractOf(Contract contract)
+        /// <summary>
+        /// One Contract, offered or accepted, as plain data: its kind, state, deadline, saved settings and Requirement tree. The rewards
+        /// are read separately (<see cref="ReadRewards"/>), as they run the game's Strategy query, which Mission Control's mark doesn't need.
+        /// </summary>
+        internal static SnapshotContract Of(Contract contract)
         {
             var saved = new ConfigNode("CONTRACT");
             contract.Save(saved);
@@ -60,7 +69,6 @@ namespace ClaudiaKerman.Adapter
                 DeadlineUt = contract.DateDeadline > 0 ? contract.DateDeadline : (double?)null,
                 Settings = SettingsOf(saved),
             };
-            ReadRewards(read, contract);
             for (var i = 0; i < contract.ParameterCount; i++)
             {
                 var requirement = contract.GetParameter(i);
