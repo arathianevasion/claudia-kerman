@@ -1,0 +1,68 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000008",
+        "kind": "TourismContract",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 27000.0,
+          "science": 0.0,
+          "reputation": 5.0
+        },
+        "settings": {
+          "type": "TourismContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000008",
+          "state": "Active",
+          "prestige": "0"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000008/0",
+            "kind": "KerbalTourParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "KerbalTourParameter",
+              "state": "Incomplete",
+              "kerbalName": "Lodfrid Kerman"
+            },
+            "requirements": [
+              {
+                "key": "0d5e8a10-1037-4a01-9f00-000000000008/0.0",
+                "kind": "KerbalDestinationParameter",
+                "state": "Incomplete",
+                "optional": false,
+                "settings": {
+                  "name": "KerbalDestinationParameter",
+                  "state": "Incomplete",
+                  "targetBody": "1",
+                  "targetType": "Suborbit"
+                }
+              },
+              {
+                "key": "0d5e8a10-1037-4a01-9f00-000000000008/0.1",
+                "kind": "KerbalDestinationParameter",
+                "state": "Incomplete",
+                "optional": false,
+                "settings": {
+                  "name": "KerbalDestinationParameter",
+                  "state": "Incomplete",
+                  "targetBody": "1",
+                  "targetType": "Orbit"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
