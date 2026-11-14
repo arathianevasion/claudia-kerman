@@ -2326,6 +2326,9 @@ namespace ClaudiaKerman.Core.Missions
             {
                 var path = MissionFolder.WriteSnapshot(_saveDirectory, _snapshot);
                 if (_mission != null) Note(LogKind.Notice, "Game Snapshot saved to " + path);
+                var dumps = MissionFolder.WriteContractDumps(_saveDirectory, _snapshot);
+                if (_mission != null && dumps.Count > 0)
+                    Note(LogKind.Notice, "A Game Snapshot for each accepted Contract (" + dumps.Count + ") saved to " + Path.GetDirectoryName(dumps[0]));
             }
             catch (Exception e) when (IsFileError(e))
             {
