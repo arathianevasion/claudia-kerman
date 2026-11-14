@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using ClaudiaKerman.Core.Claude;
 
@@ -133,6 +134,38 @@ namespace ClaudiaKerman.Core.Missions
                 path = Path.Combine(folder, stem + "-" + n.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".json");
             File.WriteAllText(path, snapshot.ToJson(), Utf8);
             return path;
+        }
+
+        /// <summary>
+        /// #1037: one Game Snapshot per accepted Contract, carrying that Contract alone, in the recording form a Core test
+        /// fixture holds, to the save's contracts folder, named by its kind, the start of its GUID and the UT. Returns the paths; none
+        /// with no accepted Contract.
+        /// </summary>
+        public static IList<string> WriteContractSnapshots(string saveDirectory, GameSnapshot snapshot)
+        {
+            var written = new List<string>();
+            if (snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0) return written;
+            var folder = Path.Combine(Root(saveDirectory), "contracts");
+            Directory.CreateDirectory(folder);
+            var ut = ((long)snapshot.Ut).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            foreach (var contract in snapshot.Contracts.Accepted)
+            {
+                var one = snapshot.At(snapshot.Ut);
+                one.Contracts = new Contracts.SnapshotContracts { Limit = snapshot.Contracts.Limit, Active = snapshot.Contracts.Active };
+                one.Contracts.Accepted.Add(contract);
+                var guid = contract.Guid.Length > 8 ? contract.Guid.Substring(0, 8) : contract.Guid;
+                var path = Path.Combine(folder, SafeName(contract.Kind) + "-" + SafeName(guid) + "-ut" + ut + ".json");
+                File.WriteAllText(path, one.ToJson(), Utf8);
+                written.Add(path);
+            }
+            return written;
+        }
+
+        /// <summary>A Contract's kind or GUID as a file name: anything a path can't hold becomes "_".</summary>
+        private static string SafeName(string text)
+        {
+            var bad = Path.GetInvalidFileNameChars();
+            return new string(text.Select(c => Array.IndexOf(bad, c) >= 0 ? '_' : c).ToArray());
         }
     }
 }

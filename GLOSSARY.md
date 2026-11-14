@@ -24,6 +24,18 @@ _Avoid_: trait (alone), class, profession
 The player's plain-language statement of what a mission must achieve, e.g. "Land on the Mun, run 3 experiments, return to Kerbin." It changes only when the player gives Approval to a revised Mission Plan that names a new goal (an Approval Auto Mode gives counts); Claudia cannot change it on her own.
 _Avoid_: objective, prompt, task
 
+**Contract**:
+A career-mode contract from the game that the player has accepted in Mission Control; Claudia reads it but never accepts, declines or cancels one. Career missions may still have a Mission Goal the player types, with or without Contracts.
+_Avoid_: contract (for a Building Block's interface: say interface), offer, job
+
+**Contract Requirement**:
+One condition a Contract sets that must be met for it to complete, e.g. reach an orbit, test a part at a given altitude and speed, or visit a waypoint.
+_Avoid_: contract parameter, objective, criterion
+
+**Contract Route**:
+The mod's ordering of the chosen Contracts' Contract Requirements against the phases of one Mission, from which Claudia writes the Mission Plan.
+_Avoid_: contract plan, itinerary
+
 **Mission Settings**:
 The player's choices for how Claudia meets a Mission Goal (e.g. daylight landing, time versus delta-v, physics warp on Coasts), set when the Mission starts and editable later; changing one makes Claudia revise the Mission Plan.
 _Avoid_: mission parameters, options (which are Building Block settings)
@@ -303,7 +315,7 @@ The player's act, with an optional message about what they did, of giving the cr
 _Avoid_: give back, return control, release
 
 **Manual stretch**:
-A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. EVA science; docking is the `dock` block's), so it has no script. Approving it starts Manual Control; the player's Hand back ends it. Claudia plans one only when the player asked (the Mission Goal's or their typed words, a later "no" cancelling an earlier yes, or they took Manual Control with the button), or it serves EVA science the plan or a Debrief names; the mod refuses any other once with the reason, and a second one stops the Mission with a request to the player, Auto Mode included. A landing's accuracy is never grounds: she flies it as best she can and reports the miss.
+A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. EVA science; docking is the `dock` block's), so it has no script. Approving it starts Manual Control; the player's Hand back ends it. Claudia plans one only when the player asked (the Mission Goal's or their typed words, a later "no" cancelling an earlier yes, or they took Manual Control with the button), or it serves EVA science the plan or a Debrief names, or a Contract Requirement needs hands-on work (EVA, walking or driving) at the leg that serves it; the mod refuses any other once with the reason, and a second one stops the Mission with a request to the player, Auto Mode included. A landing's accuracy is never grounds: she flies it as best she can and reports the miss.
 _Avoid_: manual sequence, manual mode (Manual Control is the state)
 
 **Lost**:
