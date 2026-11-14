@@ -48,6 +48,8 @@ namespace ClaudiaKerman.Core.Contracts
         }
         /// <summary>The chosen Contracts that can't complete any more, or may not, by GUID, with the reason: a revised plan may drop them.</summary>
         private readonly Dictionary<string, string> _droppable = new Dictionary<string, string>();
+        /// <summary>The Requirement that made each droppable Contract so, by GUID: met later, it isn't droppable any more.</summary>
+        private readonly Dictionary<string, string> _droppableBy = new Dictionary<string, string>();
 
         /// <summary>The Contracts a revised plan may leave unserved, with the reason it may.</summary>
         public IDictionary<string, string> Droppable
@@ -105,17 +107,30 @@ namespace ClaudiaKerman.Core.Contracts
             string before;
             _requirementStates.TryGetValue(requirement.Key, out before);
             _requirementStates[requirement.Key] = state;
+            // Met after all (a retry): what made it droppable is over, unless the Contract itself ended.
+            string missedBy;
+            if (state == "Complete" && !_ended.Contains(guid) && _droppableBy.TryGetValue(guid, out missedBy) && missedBy == requirement.Key)
+            {
+                _droppable.Remove(guid);
+                _droppableBy.Remove(guid);
+            }
             if (before == null || before == state) return;
             if (state == "Failed")
             {
                 _news.Add(Quoted(title) + ": \"" + requirement.Words + "\" failed in the game");
-                _droppable[guid] = "\"" + requirement.Words + "\" failed in the game";
+                MakeDroppable(guid, requirement, "\"" + requirement.Words + "\" failed in the game");
             }
             else if (before == "Complete" && state == "Incomplete")
             {
                 _news.Add(Quoted(title) + ": \"" + requirement.Words + "\" fell back to unmet");
-                _droppable[guid] = "\"" + requirement.Words + "\" fell back to unmet";
+                MakeDroppable(guid, requirement, "\"" + requirement.Words + "\" fell back to unmet");
             }
+        }
+
+        private void MakeDroppable(string guid, ChosenRequirement requirement, string why)
+        {
+            _droppable[guid] = why;
+            _droppableBy[guid] = requirement.Key;
         }
 
         private void Ends(string guid, string title, string why)
@@ -129,7 +144,7 @@ namespace ClaudiaKerman.Core.Contracts
         public void Missed(ChosenRequirement requirement, string gap)
         {
             var guid = GuidOf(requirement.Key);
-            if (!_droppable.ContainsKey(guid)) _droppable[guid] = "\"" + requirement.Words + "\" isn't met: " + gap;
+            if (!_droppable.ContainsKey(guid)) MakeDroppable(guid, requirement, "\"" + requirement.Words + "\" isn't met: " + gap);
         }
 
         /// <summary>What changed for the chosen Contracts since the last Debrief, for the next one's data; "" when nothing did. Taking it clears it.</summary>
@@ -176,7 +191,8 @@ namespace ClaudiaKerman.Core.Contracts
                 if (r.Gap.Length > 0) json.Field("gap", r.Gap);
                 json.EndObject();
             }
-            return "Contract Requirements this sequence served (the mod's reading of the game, JSON data): " + json.EndArray() + "\n";
+            return "Contract Requirements this sequence served (the mod's reading of the game, JSON data): " + json.EndArray() + "\n"
+                + (readings.Any(r => r.State == "not met") ? "For a Requirement not met, propose a trim burn or a retry leg (priced at the plan proposal), or dropping its Contract, with the reason.\n" : "");
         }
 
         /// <summary>The craft meets what <paramref name="requirement"/> asks, by the snapshot: the game should mark it met.</summary>

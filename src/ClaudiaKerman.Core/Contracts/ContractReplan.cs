@@ -38,18 +38,21 @@ namespace ClaudiaKerman.Core.Contracts
         {
             var result = new ContractReplan();
             var open = chosen.Where(r => !completed.Contains(ContractWatch.GuidOf(r.Key))).ToList();
+            // A kept one is served by a leg still to fly (a retry or trim): that leg, not the flown one, is its record.
+            var retries = new List<ServedRequirement>();
             foreach (var contract in open.Where(r => droppable.ContainsKey(ContractWatch.GuidOf(r.Key))).GroupBy(r => ContractWatch.GuidOf(r.Key)))
             {
-                var retried = (ended == null || !ended.Contains(contract.Key))
-                    && PlanServes.Check(snapshot, plan, contract.ToList(), words, home, firstUnflown).Record.All(r => r.Leg >= 0);
-                if (!retried) result.Drops[contract.Key] = contract.First().Title + ": " + droppable[contract.Key];
+                var ahead = PlanServes.Check(snapshot, plan, contract.ToList(), words, home, firstUnflown).Record;
+                var stillToFly = (ended == null || !ended.Contains(contract.Key)) && ahead.All(r => r.Leg >= 0);
+                if (stillToFly) retries.AddRange(ahead);
+                else result.Drops[contract.Key] = contract.First().Title + ": " + droppable[contract.Key];
             }
             var kept = open.Where(r => !result.Drops.ContainsKey(ContractWatch.GuidOf(r.Key))).ToList();
             AddAsked(snapshot, plan, chosen, home, asked, result);
             var served = PlanServes.Check(snapshot, plan, kept.Concat(result.Added).ToList(), words, home);
             result.Problems.AddRange(served.Problems);
             result.Legs = served.Legs;
-            result.Record = served.Record;
+            result.Record = served.Record.Select(r => retries.FirstOrDefault(x => x.Key == r.Key) ?? r).ToList();
             return result;
         }
 

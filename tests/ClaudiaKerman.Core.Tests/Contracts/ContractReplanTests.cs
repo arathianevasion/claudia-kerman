@@ -119,5 +119,37 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(new[] { "Explore Minmus" }, serving.Legs[1]);
             Assert.Contains("\"Explore Minmus\" needs \"orbit Minmus\", and no leg of the plan goes there", Assert.Single(notServing.Problems));
         }
+
+        [Fact]
+        public void ARetryLegStillToFlyIsTheOneRecordedAsServingTheRequirement()
+        {
+            var droppable = new Dictionary<string, string> { { "mun", "\"orbit the Mun\" isn't met" } };
+
+            var retry = Check(Plan("Retry.", "Transfer to the Mun and capture into low orbit", "Capture into low Mun orbit again", "Return to Kerbin"), droppable, firstUnflown: 1);
+
+            Assert.Equal(1, Assert.Single(retry.Record).Leg);
+        }
+
+        [Fact]
+        public void AMissedRequirementMetLaterIsNoLongerDroppable()
+        {
+            var chosen = ChosenMun();
+            var watch = new ContractWatch();
+            watch.See(new SnapshotContracts { Accepted = { MunIn("Incomplete") } }, chosen, 0);
+            watch.Missed(chosen[0], "the craft is SUB_ORBITAL at Kerbin");
+            Assert.True(watch.Droppable.ContainsKey(ContractWatch.GuidOf(chosen[0].Key)));
+
+            watch.See(new SnapshotContracts { Accepted = { MunIn("Complete") } }, chosen, 1);
+
+            Assert.Empty(watch.Droppable);
+        }
+
+        private static SnapshotContract MunIn(string state)
+        {
+            var mun = ContractCheckTests.Exploration("mun", 10000, "Mun:ORBIT");
+            mun.State = "Active";
+            mun.Requirements[0].State = state;
+            return mun;
+        }
     }
 }

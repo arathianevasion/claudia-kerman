@@ -92,6 +92,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             var debrief = LastUserText(transport.Requests.Last(IsMission));
             Assert.Contains("\"state\":\"not met\"", debrief);
             Assert.Contains("for 60 s of game time, and the game still hasn't marked it met", debrief);
+            Assert.Contains("For a Requirement not met, propose a trim burn or a retry leg (priced at the plan proposal), or dropping its Contract, with the reason", debrief);
         }
 
         [Fact]
