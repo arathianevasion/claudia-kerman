@@ -191,7 +191,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         /// <summary>A craft that flies either the Mun or Minmus orbit, but not both: the tie-break picks one.</summary>
-        private static GameSnapshot EitherMoon(SnapshotContract mun, SnapshotContract minmus)
+        internal static GameSnapshot EitherMoon(SnapshotContract mun, SnapshotContract minmus)
         {
             var snapshot = With(mun, minmus);
             var munAlone = Check(With(Exploration("m", 0, "Mun:ORBIT"))).RouteDeltaV;
@@ -258,6 +258,90 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
             Assert.False(check.WordsFit);
             Assert.Empty(check.Fitting);
+        }
+        // ---- #1023: ticking, unticking and Swap in re-price the card exactly, with no new search ----
+
+        [Fact]
+        public void UntickingReSurfacesTheRouteExactlyAsThatSetPricedAloneAndSearchesNothing()
+        {
+            var snapshot = With(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("minmus", 20000, "Minmus:ORBIT"));
+            var check = Check(snapshot);
+            Assert.Equal(2, check.Fitting.Count(r => r.Ticked));
+
+            check.Tick("mun", false);
+
+            var minmusAlone = Check(With(Exploration("minmus", 20000, "Minmus:ORBIT")));
+            Assert.False(check.Fitting.Single(r => r.Guid == "mun").Ticked);
+            Assert.Equal(minmusAlone.RouteDeltaV, check.RouteDeltaV, 6);
+            Assert.Equal(minmusAlone.Reserve, check.Reserve, 6);
+            Assert.Equal(minmusAlone.Spare, check.Spare, 6);
+            Assert.Equal(minmusAlone.Fitting.Single().AddedDeltaV, check.Fitting.Single(r => r.Guid == "minmus").AddedDeltaV, 6);
+            Assert.StartsWith("1 of 2 Contracts · route ", check.Headline(1));
+            Assert.True(check.SetFits);
+            Assert.Equal(1, check.Searches);
+        }
+
+        [Fact]
+        public void TickingAnUntickedContractAddsItsDeltaVBack()
+        {
+            var snapshot = With(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("minmus", 20000, "Minmus:ORBIT"));
+            var check = Check(snapshot);
+            var both = check.RouteDeltaV;
+            check.Tick("mun", false);
+            check.Tick("mun", true);
+
+            Assert.Equal(both, check.RouteDeltaV, 6);
+            Assert.Equal(1, check.Searches);
+        }
+
+        [Fact]
+        public void TickingALeftOutContractThatDoesntFitShowsTheShortfall()
+        {
+            var check = Check(EitherMoon(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("minmus", 20000, "Minmus:ORBIT")));
+            Assert.Equal("minmus", Assert.Single(check.Fitting).Guid);
+            Assert.True(check.NotThisFlight.Single().Tickable);
+
+            check.Tick("mun", true);
+
+            Assert.False(check.SetFits);
+            Assert.True(check.Spare < 0);
+            Assert.Matches(@"^[0-9,]+ m/s short", check.Problem);
+            Assert.Contains("m/s short", check.Headline(2));
+            Assert.True(check.NotThisFlight.Single().Ticked);
+            Assert.Equal(1, check.Searches);
+        }
+
+        [Fact]
+        public void SwapInIsOfferedForALeftOutContractThatFitsInPlaceOfOthersAndAppliesInOneClick()
+        {
+            var check = Check(EitherMoon(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("minmus", 20000, "Minmus:ORBIT")));
+
+            var swap = check.NotThisFlight.Single().Swap;
+            Assert.NotNull(swap);
+            Assert.Equal(new[] { "minmus" }, swap.Drop);
+            Assert.Contains("Mun", swap.Label);
+
+            check.SwapIn("mun");
+
+            Assert.True(check.SetFits);
+            Assert.False(check.Fitting.Single().Ticked);
+            Assert.True(check.NotThisFlight.Single().Ticked);
+            Assert.Null(check.NotThisFlight.Single().Swap);
+            Assert.NotNull(check.Fitting.Single().Swap);
+            Assert.Equal(1, check.Searches);
+        }
+
+        [Fact]
+        public void NoSwapInWhereTheContractFitsAsAPlainTickOrNotEvenAlone()
+        {
+            var snapshot = EitherMoon(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("minmus", 20000, "Minmus:ORBIT"));
+            var check = Check(snapshot);
+            check.Tick("minmus", false);
+            // Room again: ticking Mun just fits, so there is nothing to swap.
+            Assert.Null(check.NotThisFlight.Single().Swap);
+
+            var eeloo = Check(With(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("eeloo", 90000, "Eeloo:LANDING")));
+            Assert.Null(eeloo.NotThisFlight.Single().Swap);
         }
     }
 }

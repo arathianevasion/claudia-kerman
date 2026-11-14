@@ -253,5 +253,111 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains(mission.View.CraftCheck.Findings, f => f.Code == "delta_v_short");
             Assert.Equal(MissionStage.None, mission.View.Stage);
         }
+
+        // ---- #1023: ticking, unticking and Swap in on the card ----
+
+        private static GameSnapshot MunAndMinmusTheCraftFliesOneOf()
+        {
+            return ContractCheckTests.EitherMoon(ContractCheckTests.Exploration("mun", 10000, "Mun:ORBIT"), ContractCheckTests.Exploration("minmus", 20000, "Minmus:ORBIT"));
+        }
+
+        [Fact]
+        public void TickingAndUntickingReSurfacesTheCardInPlaceWithNoRequest()
+        {
+            var mission = Control(TwoAtTheMunAndAPartTest());
+            mission.Send(Start(""));
+            var before = mission.View.ContractCheck;
+            var both = before.RouteDeltaV;
+
+            mission.Send(new TickContract("c-land", false));
+
+            var card = mission.View.ContractCheck;
+            Assert.False(card.Rows.Single(r => r.Guid == "c-land").Ticked);
+            Assert.True(card.RouteDeltaV <= both);
+            Assert.StartsWith("1 of 3 Contracts · route ", card.Headline);
+            Assert.Equal("Plan these 1", card.PlanLabel);
+            Assert.True(card.CanPlan);
+
+            mission.Send(new TickContract("c-land", true));
+
+            Assert.Equal(both, mission.View.ContractCheck.RouteDeltaV, 6);
+            Assert.Equal("Plan these 2", mission.View.ContractCheck.PlanLabel);
+            Settle();
+            Assert.Equal(0, Requests);
+        }
+
+        [Fact]
+        public void UntickingEverythingLeavesNothingToPlan()
+        {
+            var mission = Control(TwoAtTheMunAndAPartTest());
+            mission.Send(Start(""));
+            foreach (var row in mission.View.ContractCheck.Rows.ToList()) mission.Send(new TickContract(row.Guid, false));
+
+            Assert.False(mission.View.ContractCheck.CanPlan);
+            Assert.Equal("Pick a Contract", mission.View.ContractCheck.PlanLabel);
+        }
+
+        [Fact]
+        public void PlanTheseIsGreyedWithTheShortfallWhenTheTickedSetDoesntFitAndSendsNothing()
+        {
+            var mission = Control(MunAndMinmusTheCraftFliesOneOf());
+            mission.Send(Start(""));
+            Assert.True(mission.View.ContractCheck.CanPlan);
+
+            mission.Send(new TickContract("mun", true));
+
+            var card = mission.View.ContractCheck;
+            Assert.False(card.CanPlan);
+            Assert.Matches(@"^[0-9,]+ m/s short", card.Shortfall);
+            Assert.StartsWith("Plan these 2", card.PlanLabel);
+            mission.Send(new PlanContracts());
+            Settle();
+            Assert.Equal(0, Requests);
+            Assert.NotNull(mission.View.ContractCheck);
+            Assert.Equal(MissionStage.None, mission.View.Stage);
+        }
+
+        [Fact]
+        public void SwapInTradesOneSetForAnotherInOneClickAndPlanTheseThenPlansIt()
+        {
+            var mission = Control(MunAndMinmusTheCraftFliesOneOf());
+            mission.Send(Start(""));
+            var offer = mission.View.ContractCheck.NotThisFlight.Single().Swap;
+            Assert.NotNull(offer);
+
+            mission.Send(new SwapInContract("mun"));
+
+            var card = mission.View.ContractCheck;
+            Assert.True(card.CanPlan);
+            Assert.Equal("Plan these 1", card.PlanLabel);
+            Assert.True(card.NotThisFlight.Single().Ticked);
+            Assert.False(card.Rows.Single().Ticked);
+            Assert.Equal(0, Requests);
+
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            var text = Text(Assert.Single(_transport.Requests));
+            Assert.Contains("orbit the Mun", text);
+            Assert.DoesNotContain("Minmus", text.Substring(0, text.IndexOf("Not this flight", StringComparison.Ordinal) < 0 ? text.Length : text.IndexOf("Not this flight", StringComparison.Ordinal)));
+        }
+
+        [Fact]
+        public void TheCraftCheckJudgesTheChosenSetNotAFreshSearch()
+        {
+            var mission = Control(TwoAtTheMunAndAPartTest());
+            mission.Send(Start(""));
+            mission.Send(new TickContract("c-land", false));
+            var chosen = mission.View.ContractCheck.Rows.Single(r => r.Ticked);
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            // The Mission's goal is the chosen Contract's own route: the unticked one is not there though it fit.
+            Assert.DoesNotContain("land on the Mun", mission.View.Goal);
+            Assert.Contains("1 of 3 Contracts chosen", mission.View.Log.First(e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check", StringComparison.Ordinal)).Text);
+            var text = Text(Assert.Single(_transport.Requests));
+            Assert.Contains("The player chose 1 of 3", text);
+            Assert.Contains("the player left it out", text);
+            Assert.NotNull(chosen);
+        }
     }
 }

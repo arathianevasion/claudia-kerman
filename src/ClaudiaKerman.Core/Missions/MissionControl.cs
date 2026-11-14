@@ -152,6 +152,8 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is SetAutoMode) AutoModeSet(((SetAutoMode)input).On);
             else if (input is ChangeTarget) TargetChanged(((ChangeTarget)input).Pick);
             else if (input is PlanContracts) ContractsPlanned();
+            else if (input is TickContract) { if (_contractCheck != null) _contractCheck.Tick(((TickContract)input).Guid, ((TickContract)input).Ticked); }
+            else if (input is SwapInContract) { if (_contractCheck != null) _contractCheck.SwapIn(((SwapInContract)input).Guid); }
             else if (input is PlanWithoutContracts) PlannedWithoutContracts();
             CheckDue();
             CheckBlackout();

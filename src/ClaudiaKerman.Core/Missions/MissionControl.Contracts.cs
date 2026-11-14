@@ -66,16 +66,17 @@ namespace ClaudiaKerman.Core.Missions
             return true;
         }
 
-        /// <summary>The suggested set: every Contract that fits is ticked (ticking and unticking are #1023's).</summary>
+        /// <summary>The set the player has ticked: the suggestion until they edit it (#1023).</summary>
         private IList<string> Ticked()
         {
-            return _contractCheck == null ? new List<string>() : _contractCheck.Fitting.Where(r => r.Ticked).Select(r => r.Guid).ToList();
+            return _contractCheck == null ? new List<string>() : _contractCheck.TickedGuids;
         }
 
         private void ContractsPlanned()
         {
             var ticked = Ticked();
-            if (_contractCheck == null || ticked.Count == 0) return;
+            // A set that doesn't fit is never sent: "Plan these" is greyed for it.
+            if (_contractCheck == null || ticked.Count == 0 || !_contractCheck.SetFits) return;
             var choice = _contractCheck.Choose(ticked);
             var start = _contractStart.Answered(choice.Goal, choice);
             _contractCheck = null;
@@ -124,7 +125,8 @@ namespace ClaudiaKerman.Core.Missions
                 NotThisFlight = check.NotThisFlight.ToList(),
                 CraftDeltaV = check.CraftDeltaV, RouteDeltaV = check.RouteDeltaV, ReservePercent = check.ReservePercent, Reserve = check.Reserve, Spare = check.Spare,
                 PlanLabel = ticked.Count > 0 ? "Plan these " + ticked.Count : "Pick a Contract",
-                CanPlan = ticked.Count > 0,
+                CanPlan = ticked.Count > 0 && check.SetFits,
+                Shortfall = check.Problem,
                 CanPlanWithout = check.Words.Length > 0,
             };
         }

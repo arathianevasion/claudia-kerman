@@ -64,6 +64,30 @@ namespace ClaudiaKerman.Core.Missions
     {
     }
 
+    /// <summary>#1023: the player ticked or unticked a Contract on the card; it re-prices in place, with no search and no request.</summary>
+    public sealed class TickContract : MissionInput
+    {
+        public readonly string Guid;
+        public readonly bool Ticked;
+
+        public TickContract(string guid, bool ticked)
+        {
+            Guid = guid;
+            Ticked = ticked;
+        }
+    }
+
+    /// <summary>#1023: "Swap in" on the card: the Contract comes in and the ticked ones its swap names go out.</summary>
+    public sealed class SwapInContract : MissionInput
+    {
+        public readonly string Guid;
+
+        public SwapInContract(string guid)
+        {
+            Guid = guid;
+        }
+    }
+
     /// <summary>#1022: "Plan without Contracts" on the Contract check card: the player's words alone.</summary>
     public sealed class PlanWithoutContracts : MissionInput
     {

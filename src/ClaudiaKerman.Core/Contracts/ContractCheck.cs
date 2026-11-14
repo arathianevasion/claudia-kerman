@@ -24,6 +24,8 @@ namespace ClaudiaKerman.Core.Contracts
         public bool Ticked;
         /// <summary>Its optional Requirements skipped, with why; "" when none.</summary>
         public string Note = "";
+        /// <summary>Unticked and not fitting as a plain tick: the swap that brings it in (#1023); null when none.</summary>
+        public SwapOffer Swap;
 
         /// <summary>The line under its box: "Mun · +1,170 m/s · deadline Y1 D30 (in 12d)", or "no deadline".</summary>
         public string Detail(double now)
@@ -54,6 +56,21 @@ namespace ClaudiaKerman.Core.Contracts
         public LeftOutKind Kind;
         /// <summary>"this craft can't: 410 m/s short", "not yet: …" or "completes later: …".</summary>
         public string Reason = "";
+        /// <summary>The player can tick it: Core plans it (it isn't "not yet" or "not searched"), #1023. Ticked, its reason gives way to its detail for the set.</summary>
+        public bool Tickable;
+        public bool Ticked;
+        /// <summary>Where it fits in place of others, the swap that does it in one click; null when none.</summary>
+        public SwapOffer Swap;
+    }
+
+    /// <summary>#1023: "Swap in X for Y": the ticked Contracts that go out so the one comes in and the set still fits.</summary>
+    public sealed class SwapOffer
+    {
+        /// <summary>The Contract that comes in.</summary>
+        public string Guid = "";
+        /// <summary>The ticked Contracts that go out.</summary>
+        public string[] Drop = new string[0];
+        public string Label = "";
     }
 
     /// <summary>The set the player sent with "Plan these": what the Mission starts from.</summary>
@@ -111,6 +128,12 @@ namespace ClaudiaKerman.Core.Contracts
         public double Reserve;
         /// <summary>What is left over the route and the reserve, m/s; below 0, the shortfall.</summary>
         public double Spare;
+        /// <summary>#1023: the ticked set fits the craft with the reserve and keeps every deadline.</summary>
+        public bool SetFits = true;
+        /// <summary>#1023: why the ticked set doesn't fit, "410 m/s short" or "completes later: …"; "" when it fits.</summary>
+        public string Problem = "";
+        /// <summary>How many times the Contract search has run: once, at <see cref="Work"/>; ticking, unticking and swapping never search (#1023).</summary>
+        public int Searches;
         public List<ContractCheckRow> Fitting = new List<ContractCheckRow>();
         public List<LeftOutContract> NotThisFlight = new List<LeftOutContract>();
 
@@ -118,6 +141,7 @@ namespace ClaudiaKerman.Core.Contracts
         private ContractRoutes _routes;
         private string _home = CraftCheckFlow.HomeBody;
         private readonly List<Planned> _planned = new List<Planned>();
+        private readonly HashSet<string> _ticked = new HashSet<string>();
 
         /// <summary>A plannable Contract and what it needs.</summary>
         private sealed class Planned
@@ -228,6 +252,7 @@ namespace ClaudiaKerman.Core.Contracts
 
         private void Search()
         {
+            Searches++;
             List<Planned> best = new List<Planned>();
             PricedRoute bestRoute = Route(best);
             for (var size = _planned.Count; size > 0; size--)
@@ -249,23 +274,129 @@ namespace ClaudiaKerman.Core.Contracts
                 bestRoute = foundRoute;
                 break;
             }
-            RouteDeltaV = bestRoute.DeltaV;
-            Reserve = RouteDeltaV * ReservePercent / 100.0;
-            Spare = CraftDeltaV - RouteDeltaV - Reserve;
             foreach (var planned in _planned)
             {
                 if (best.Contains(planned))
                 {
-                    var without = Route(best.Where(p => p != planned).ToList());
+                    _ticked.Add(planned.Contract.Guid);
                     Fitting.Add(new ContractCheckRow
                     {
-                        Guid = planned.Contract.Guid, Title = planned.Title, Ticked = true, DeadlineUt = planned.Contract.DeadlineUt, Note = planned.Note,
-                        Phase = string.Join(", ", planned.Requirements.Select(r => r.Phase).Distinct().ToArray()),
-                        AddedDeltaV = Math.Max(0, bestRoute.DeltaV - without.DeltaV),
+                        Guid = planned.Contract.Guid, Title = planned.Title, DeadlineUt = planned.Contract.DeadlineUt, Note = planned.Note, Phase = PhaseOf(planned),
                     });
                 }
                 else NotThisFlight.Add(WhyNot(planned, best));
             }
+            Reprice();
+        }
+
+        private static string PhaseOf(Planned planned)
+        {
+            return string.Join(", ", planned.Requirements.Select(r => r.Phase).Distinct().ToArray());
+        }
+
+        // ---- #1023: the player's edits, priced exactly and never searched ----
+
+        /// <summary>Ticks or unticks a Contract Core plans; the card re-prices in place.</summary>
+        public void Tick(string guid, bool on)
+        {
+            if (_planned.All(p => p.Contract.Guid != guid)) return;
+            if (on) _ticked.Add(guid);
+            else _ticked.Remove(guid);
+            Reprice();
+        }
+
+        /// <summary>Applies the swap offered for <paramref name="guid"/>: the others go out and it comes in. Nothing when none is offered now.</summary>
+        public void SwapIn(string guid)
+        {
+            var offer = Fitting.Where(r => r.Guid == guid).Select(r => r.Swap).Concat(NotThisFlight.Where(l => l.Guid == guid).Select(l => l.Swap)).FirstOrDefault(o => o != null);
+            if (offer == null) return;
+            foreach (var gone in offer.Drop) _ticked.Remove(gone);
+            _ticked.Add(guid);
+            Reprice();
+        }
+
+        /// <summary>The ticked Contracts.</summary>
+        public IList<string> TickedGuids
+        {
+            get { return _planned.Where(p => _ticked.Contains(p.Contract.Guid)).Select(p => p.Contract.Guid).ToList(); }
+        }
+
+        /// <summary>The route, reserve, spare, each Contract's delta-v and every swap, worked out for the ticked set alone.</summary>
+        private void Reprice()
+        {
+            var set = _planned.Where(p => _ticked.Contains(p.Contract.Guid)).ToList();
+            var route = Route(set);
+            RouteDeltaV = route.DeltaV;
+            Reserve = RouteDeltaV * ReservePercent / 100.0;
+            Spare = CraftDeltaV - RouteDeltaV - Reserve;
+            var late = Late(set, route);
+            SetFits = Fits(route.DeltaV) && late == null;
+            Problem = SetFits ? "" : !Fits(route.DeltaV) ? Whole(Short(route.DeltaV)) + " m/s short"
+                : "completes later: " + late.Item1.Title + " done about " + KerbinTime.ShortDate(late.Item2) + ", too near its deadline";
+            foreach (var planned in _planned)
+            {
+                var ticked = _ticked.Contains(planned.Contract.Guid);
+                var other = Route(ticked ? set.Where(p => p != planned).ToList() : set.Concat(new[] { planned }).ToList());
+                var delta = Math.Max(0, ticked ? route.DeltaV - other.DeltaV : other.DeltaV - route.DeltaV);
+                var swap = ticked ? null : SwapFor(planned, set);
+                var row = Fitting.FirstOrDefault(r => r.Guid == planned.Contract.Guid);
+                if (row != null)
+                {
+                    row.Ticked = ticked;
+                    row.AddedDeltaV = delta;
+                    row.Swap = swap;
+                    continue;
+                }
+                var left = NotThisFlight.First(l => l.Guid == planned.Contract.Guid);
+                left.Tickable = true;
+                left.Ticked = ticked;
+                left.Swap = swap;
+                if (ticked) left.Reason = PhaseOf(planned) + " · +" + Whole(delta) + " m/s";
+                else
+                {
+                    var fresh = WhyNot(planned, set);
+                    left.Kind = fresh.Kind;
+                    left.Reason = fresh.Reason;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The swap that brings <paramref name="wanted"/> into <paramref name="set"/> by taking out the fewest ticked Contracts, when it doesn't
+        /// fit as it is and does fit that way; among the fewest, the least reward given up, then the least delta-v. Only the ticked set's
+        /// subsets are tried: the Contract search isn't run again. Null when it fits as a plain tick, or can't fit at all.
+        /// </summary>
+        private SwapOffer SwapFor(Planned wanted, List<Planned> set)
+        {
+            var alone = new List<Planned> { wanted };
+            if (!Works(alone, Route(alone))) return null;
+            var plain = set.Concat(alone).ToList();
+            if (Works(plain, Route(plain))) return null;
+            for (var size = 1; size <= set.Count; size++)
+            {
+                List<Planned> bestGone = null, bestKept = null;
+                PricedRoute bestRoute = null;
+                foreach (var gone in Combinations(set, size))
+                {
+                    var kept = set.Where(p => !gone.Contains(p)).Concat(alone).ToList();
+                    var route = Route(kept);
+                    if (!Works(kept, route)) continue;
+                    // The set that keeps more reward is the better one, so the one that gives up the least.
+                    if (bestGone == null || Better(kept, route, bestKept, bestRoute))
+                    {
+                        bestGone = gone;
+                        bestKept = kept;
+                        bestRoute = route;
+                    }
+                }
+                if (bestGone == null) continue;
+                return new SwapOffer
+                {
+                    Guid = wanted.Contract.Guid, Drop = bestGone.Select(p => p.Contract.Guid).ToArray(),
+                    Label = "Swap in " + wanted.Title + " for " + string.Join(" and ", bestGone.Select(p => p.Title).ToArray()),
+                };
+            }
+            return null;
         }
 
         private static bool Better(IList<Planned> set, PricedRoute route, IList<Planned> than, PricedRoute thanRoute)
@@ -374,7 +505,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (planned.Note.Length > 0) text.Append(" (").Append(planned.Note).Append(")");
                 text.Append('\n');
             }
-            var left = NotThisFlight.Select(l => MissionPrompts.Quoted(l.Title) + ": " + l.Reason)
+            var left = NotThisFlight.Where(l => !chosen.Contains(l.Guid)).Select(l => MissionPrompts.Quoted(l.Title) + ": " + l.Reason)
                 .Concat(_planned.Where(p => !chosen.Contains(p.Contract.Guid) && NotThisFlight.All(l => l.Guid != p.Contract.Guid)).Select(p => MissionPrompts.Quoted(p.Title) + ": the player left it out"))
                 .ToList();
             if (left.Count > 0) text.Append("Not this flight: ").Append(string.Join("; ", left.ToArray())).Append(".\n");
