@@ -581,7 +581,7 @@ namespace ClaudiaKerman.Adapter
 
         private static string ChipText(LeftOutKind kind)
         {
-            return kind == LeftOutKind.NotYet ? "not yet" : kind == LeftOutKind.CompletesLater ? "completes later" : kind == LeftOutKind.NotSearched ? "not searched" : "this craft can't";
+            return kind == LeftOutKind.NotYet ? "not yet" : kind == LeftOutKind.CompletesLater ? "completes later" : kind == LeftOutKind.NotSearched ? "not searched" : kind == LeftOutKind.CantWithWords ? "your words win" : "this craft can't";
         }
 
         // ---- Approval: a typed reply that reads like an approval ends the transcript with a checkbox ----

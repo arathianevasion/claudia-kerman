@@ -44,3 +44,11 @@ Core tests cover the pricing and the inputs (`ContractCheckTests`, `ContractChec
 5. Press "Plan these N" on a set you edited: the folded line and the Craft Check's route name only the ticked Contracts, and the request's Contract Route section lists them (the unticked ones as "the player left it out").
 
 Tell #1045 what you saw, with a screenshot of the card after an untick and after a Swap in.
+
+## Check 6: your words and Contracts together (#1036)
+
+Core tests cover the reading and the pricing (`ContractWordsTests`); these checks need the game.
+
+1. Accept "Explore the Mun" (a landing). Type "Land on the Mun and return to Kerbin" and press Start Mission. The card pre-ticks it with "+0 m/s": your words already fly that leg.
+2. Press "Plan these 1". In the Mission's first request (stream dump, `debug_tools = true`) the Contract Route section lists "land on the Mun [serves: your words; "Explore the Mun"]".
+3. End the Mission. Type "Orbit Minmus and don't land on the Mun" and press Start Mission. "Explore the Mun" is under "Not this flight" with a "your words win" chip and "can't with your words: …". The route still goes to Minmus.

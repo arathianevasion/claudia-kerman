@@ -56,6 +56,8 @@ namespace ClaudiaKerman.Core.Contracts
         private readonly string _home;
         private readonly List<PlannedSequence> _words;
         private readonly bool _wordsReturn;
+        /// <summary>#1036: the player's words as the needs and limits they put on each body.</summary>
+        public readonly WordsReading Reading;
         private readonly Dictionary<string, SnapshotBody> _bodies;
         private readonly Dictionary<string, PricedRoute> _priced = new Dictionary<string, PricedRoute>();
 
@@ -63,7 +65,9 @@ namespace ClaudiaKerman.Core.Contracts
         {
             _snapshot = snapshot;
             _home = home;
-            _words = ChuteGroups.GoalLegs(snapshot, words).Skip(snapshot.IsGrounded ? 1 : 0).ToList();
+            Reading = WordsReading.Read(snapshot, words, home);
+            // The clauses read as needs are flown by the route's own legs, once, not again as the words' legs.
+            _words = ChuteGroups.GoalLegs(snapshot, words).Skip(snapshot.IsGrounded ? 1 : 0).Where(l => !Reading.Consumed.Contains(l.Name)).ToList();
             _wordsReturn = SequenceWords.ReturnHome.IsMatch(words ?? "");
             _bodies = snapshot.Bodies.GroupBy(b => b.Name).ToDictionary(g => g.Key, g => g.First());
         }
@@ -71,18 +75,16 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The typed words alone, as the Craft Check would price them: the launch and their clauses.</summary>
         public double WordsAlone()
         {
-            var legs = new List<PlannedSequence>();
-            if (_snapshot.IsGrounded) legs.Add(Launch());
-            legs.AddRange(_words);
-            return PlanLegs.Need(PlanLegs.Judge(_snapshot, legs, ""));
+            return Best(new Dictionary<string, ContractReach>(), false, r => true).DeltaV;
         }
 
         /// <summary>
         /// The cheapest order of the route serving <paramref name="needs"/> (the furthest each body is reached), coming home when
         /// <paramref name="home"/>; among the orders that keep every deadline in <paramref name="keeps"/> when any does.
         /// </summary>
-        public PricedRoute Best(IDictionary<string, ContractReach> needs, bool home, Func<PricedRoute, bool> keeps)
+        public PricedRoute Best(IDictionary<string, ContractReach> contractNeeds, bool home, Func<PricedRoute, bool> keeps)
         {
+            var needs = Needs(contractNeeds);
             var bodies = needs.Keys.Where(b => b != _home).OrderBy(b => b, StringComparer.Ordinal).ToList();
             var orders = bodies.Count <= MostBodiesToPermute ? Permutations(bodies) : new[] { NearestNext(bodies) };
             PricedRoute best = null, bestKept = null;
@@ -93,6 +95,24 @@ namespace ClaudiaKerman.Core.Contracts
                 if (keeps(route) && (bestKept == null || route.DeltaV < bestKept.DeltaV)) bestKept = route;
             }
             return bestKept ?? best;
+        }
+
+        /// <summary>What the Contracts need with what the words need: where both reach a body, the further reach serves both.</summary>
+        internal Dictionary<string, ContractReach> Needs(IDictionary<string, ContractReach> contractNeeds)
+        {
+            var needs = new Dictionary<string, ContractReach>(contractNeeds);
+            foreach (var word in Reading.Needs)
+            {
+                ContractReach had;
+                if (!needs.TryGetValue(word.Key, out had) || word.Value > had) needs[word.Key] = word.Value;
+            }
+            return needs;
+        }
+
+        /// <summary>Whether the words themselves ask for the trip home.</summary>
+        internal bool WordsReturn
+        {
+            get { return _wordsReturn; }
         }
 
         private PricedRoute Price(IList<string> order, IDictionary<string, ContractReach> needs, bool home)
