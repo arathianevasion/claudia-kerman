@@ -1,0 +1,231 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Andrew Watson
+
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using ClaudiaKerman.Core.Claude;
+using ClaudiaKerman.Core.Missions;
+
+namespace ClaudiaKerman.Core.Contracts
+{
+    /// <summary>One served Contract Requirement as the game has it now, for the Script Result's data.</summary>
+    public sealed class RequirementReading
+    {
+        public string Key = "";
+        /// <summary>The Contract's title, "Explore the Mun".</summary>
+        public string Contract = "";
+        /// <summary>What it asks, "orbit the Mun".</summary>
+        public string Requirement = "";
+        /// <summary>met, not met, failed, or the Contract's own end (completed, failed, deadline passed, no longer accepted).</summary>
+        public string State = "";
+        /// <summary>Why it isn't met, when the mod can say; "" otherwise.</summary>
+        public string Gap = "";
+    }
+
+    /// <summary>
+    /// #1025: the mod watching the chosen Contracts through the flight (ADR 0021: the mod's own logic, with no request). It reads only the
+    /// Game Snapshot's Contracts, never the live game. Between Debriefs it notes what changed for the chosen Contracts: a Contract the game
+    /// completed (with the mod's own chat line), failed, let expire or that left the accepted list, and a Requirement failing or falling back
+    /// to unmet. Each goes into the next Debrief as data; one that can't complete any more may be dropped by the next revised plan. It never
+    /// raises an Alert and is never a Telemetry Check: nothing it sees changes a flight.
+    /// </summary>
+    public sealed class ContractWatch
+    {
+        /// <summary>Game time a hold waits after Core first sees a Requirement's conditions hold, s.</summary>
+        public const double HoldSeconds = 60;
+
+        private readonly Dictionary<string, string> _requirementStates = new Dictionary<string, string>();
+        private readonly Dictionary<string, SnapshotContract> _contracts = new Dictionary<string, SnapshotContract>();
+        private readonly List<string> _news = new List<string>();
+        /// <summary>The chosen Contracts that ended other than completed (failed, expired, cancelled, gone), by GUID.</summary>
+        private readonly HashSet<string> _ended = new HashSet<string>();
+        /// <summary>The chosen Contracts that can't complete any more, or may not, by GUID, with the reason: a revised plan may drop them.</summary>
+        private readonly Dictionary<string, string> _droppable = new Dictionary<string, string>();
+
+        /// <summary>The Contracts a revised plan may leave unserved, with the reason it may.</summary>
+        public IDictionary<string, string> Droppable
+        {
+            get { return _droppable; }
+        }
+
+        /// <summary>The Contracts the game completed since the watch began, by GUID: their Requirements need no leg any more.</summary>
+        public readonly HashSet<string> Completed = new HashSet<string>();
+
+        /// <summary>
+        /// A Game Snapshot's Contracts against the chosen Requirements: notes what changed for the next Debrief, and returns the mod's chat
+        /// line for each Contract the game completed since the last one ("Contract complete: Explore the Mun · +10,000 √").
+        /// </summary>
+        public IList<string> See(SnapshotContracts contracts, IList<ChosenRequirement> chosen, double ut)
+        {
+            var lines = new List<string>();
+            if (contracts == null || chosen.Count == 0) return lines;
+            foreach (var contract in chosen.GroupBy(r => GuidOf(r.Key)))
+            {
+                var guid = contract.Key;
+                var title = contract.First().Title;
+                var now = contracts.Accepted.FirstOrDefault(c => c.Guid == guid);
+                SnapshotContract before;
+                var seen = _contracts.TryGetValue(guid, out before);
+                if (now != null && now.State == "Active")
+                {
+                    _contracts[guid] = now;
+                    if (now.DeadlineUt.HasValue && ut > now.DeadlineUt.Value) Ends(guid, title, "its deadline passed");
+                    foreach (var requirement in contract) Requirement(guid, title, requirement, now);
+                    continue;
+                }
+                if (!seen || Completed.Contains(guid) || _ended.Contains(guid)) continue;
+                var state = now != null ? now.State : StateOf(contracts, guid);
+                if (state == "Completed")
+                {
+                    Completed.Add(guid);
+                    var line = "Contract complete: " + title + " · +" + Whole(before.Funds) + " √";
+                    lines.Add(line);
+                    _news.Add(Quoted(title) + " completed: the game paid +" + Whole(before.Funds) + " funds (the mod posted \"" + line + "\")");
+                    continue;
+                }
+                Ends(guid, title, state == "Failed" ? "the game failed it"
+                    : state == "DeadlineExpired" ? "its deadline passed"
+                    : state == "Cancelled" ? "it was cancelled"
+                    : "it is no longer accepted");
+            }
+            return lines;
+        }
+
+        private void Requirement(string guid, string title, ChosenRequirement requirement, SnapshotContract contract)
+        {
+            var found = Find(contract.Requirements, requirement.Key);
+            var state = found == null ? "" : found.State;
+            string before;
+            _requirementStates.TryGetValue(requirement.Key, out before);
+            _requirementStates[requirement.Key] = state;
+            if (before == null || before == state) return;
+            if (state == "Failed")
+            {
+                _news.Add(Quoted(title) + ": \"" + requirement.Words + "\" failed in the game");
+                _droppable[guid] = "\"" + requirement.Words + "\" failed in the game";
+            }
+            else if (before == "Complete" && state == "Incomplete")
+            {
+                _news.Add(Quoted(title) + ": \"" + requirement.Words + "\" fell back to unmet");
+                _droppable[guid] = "\"" + requirement.Words + "\" fell back to unmet";
+            }
+        }
+
+        private void Ends(string guid, string title, string why)
+        {
+            if (!_ended.Add(guid)) return;
+            _droppable[guid] = why;
+            _news.Add(Quoted(title) + " can't complete: " + why);
+        }
+
+        /// <summary>A hold that timed out, or a Requirement the flown leg left unmet: it may be dropped, or flown again.</summary>
+        public void Missed(ChosenRequirement requirement, string gap)
+        {
+            var guid = GuidOf(requirement.Key);
+            if (!_droppable.ContainsKey(guid)) _droppable[guid] = "\"" + requirement.Words + "\" isn't met: " + gap;
+        }
+
+        /// <summary>What changed for the chosen Contracts since the last Debrief, for the next one's data; "" when nothing did. Taking it clears it.</summary>
+        public string TakeNews()
+        {
+            if (_news.Count == 0) return "";
+            var text = "Contracts since the last Debrief (the mod's reading of the game, data): " + string.Join("; ", _news.ToArray()) + ".\n"
+                + "For a Contract that can't complete, propose dropping it, with the reason, in a revised Mission Plan for the player's Approval. "
+                + "A revised plan only ever drops Contracts: never add one the player didn't ask for.\n";
+            _news.Clear();
+            return text;
+        }
+
+        /// <summary>The state of each Requirement in <paramref name="served"/> as the snapshot has it, with the gaps the mod knows.</summary>
+        public List<RequirementReading> Read(SnapshotContracts contracts, IEnumerable<ChosenRequirement> served, IDictionary<string, string> gaps)
+        {
+            var readings = new List<RequirementReading>();
+            foreach (var requirement in served)
+            {
+                var guid = GuidOf(requirement.Key);
+                var reading = new RequirementReading { Key = requirement.Key, Contract = requirement.Title, Requirement = requirement.Words };
+                var contract = contracts == null ? null : contracts.Accepted.FirstOrDefault(c => c.Guid == guid);
+                if (Completed.Contains(guid)) reading.State = "completed";
+                else if (contract == null || contract.State != "Active") reading.State = _droppable.ContainsKey(guid) ? _droppable[guid] : "no longer accepted";
+                else
+                {
+                    var found = Find(contract.Requirements, requirement.Key);
+                    reading.State = found == null ? "not found" : found.State == "Complete" ? "met" : found.State == "Failed" ? "failed" : "not met";
+                }
+                string gap;
+                if (reading.State == "not met" && gaps != null && gaps.TryGetValue(requirement.Key, out gap)) reading.Gap = gap;
+                readings.Add(reading);
+            }
+            return readings;
+        }
+
+        /// <summary>The readings as one line of JSON data for the Debrief request.</summary>
+        public static string Line(IList<RequirementReading> readings)
+        {
+            var json = new JsonWriter().BeginArray();
+            foreach (var r in readings)
+            {
+                json.BeginObject().Field("contract", r.Contract).Field("requirement", r.Requirement).Field("state", r.State);
+                if (r.Gap.Length > 0) json.Field("gap", r.Gap);
+                json.EndObject();
+            }
+            return "Contract Requirements this sequence served (the mod's reading of the game, JSON data): " + json.EndArray() + "\n";
+        }
+
+        /// <summary>The craft meets what <paramref name="requirement"/> asks, by the snapshot: the game should mark it met.</summary>
+        public static bool ConditionsHold(GameSnapshot snapshot, ChosenRequirement requirement, string home)
+        {
+            if (snapshot == null) return false;
+            var down = snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED";
+            if (requirement.Return) return snapshot.Body == home && down;
+            if (snapshot.Body != requirement.Body) return false;
+            switch (requirement.Reach)
+            {
+                case ContractReach.Land: return down;
+                case ContractReach.Orbit: return snapshot.Situation == "ORBITING";
+                default: return true;
+            }
+        }
+
+        /// <summary>Why the craft doesn't meet <paramref name="requirement"/>: where it is against what is asked.</summary>
+        public static string Gap(GameSnapshot snapshot, ChosenRequirement requirement)
+        {
+            if (snapshot == null) return "the mod has no reading of the craft";
+            return "the craft is " + snapshot.Situation + " at " + ContractKinds.Named(snapshot.Body) + ", and the Requirement asks it to " + requirement.Words;
+        }
+
+        public static string GuidOf(string key)
+        {
+            var slash = (key ?? "").LastIndexOf('/');
+            return slash < 0 ? key ?? "" : key.Substring(0, slash);
+        }
+
+        private static string StateOf(SnapshotContracts contracts, string guid)
+        {
+            var finished = contracts.Finished.FirstOrDefault(f => f.Guid == guid);
+            return finished == null ? "" : finished.State;
+        }
+
+        private static ContractRequirement Find(IEnumerable<ContractRequirement> requirements, string key)
+        {
+            foreach (var requirement in requirements)
+            {
+                if (requirement.Key == key) return requirement;
+                var under = Find(requirement.Requirements, key);
+                if (under != null) return under;
+            }
+            return null;
+        }
+
+        private static string Quoted(string title)
+        {
+            return MissionPrompts.Quoted(title);
+        }
+
+        private static string Whole(double value)
+        {
+            return System.Math.Round(value).ToString("#,0", CultureInfo.InvariantCulture);
+        }
+    }
+}

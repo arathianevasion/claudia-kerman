@@ -649,6 +649,7 @@ namespace ClaudiaKerman.Core.Missions
             LinkSeen(previous, snapshot);
             var mission = _mission;
             if (mission == null) return;
+            WatchContracts(mission, snapshot);
             ContinueRunEnd(mission);
             // A plan restored from a save was never offered against a snapshot: the first one after the load is its baseline.
             if (mission.AwaitingApproval && mission.PlanBaseline == null && !mission.InFlight && _scene == GameScene.Flight) mission.PlanBaseline = snapshot;
