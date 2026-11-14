@@ -1,0 +1,349 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Andrew Watson
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text;
+using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Ui;
+
+namespace ClaudiaKerman.Core.Contracts
+{
+    /// <summary>A Contract on the Contract check card that this craft can fly: its box is pre-ticked when it is in the suggested set.</summary>
+    public sealed class ContractCheckRow
+    {
+        public string Guid = "";
+        public string Title = "";
+        /// <summary>The phases of flight its Contract Requirements fall in: "Mun", "Kerbin orbit", "Return".</summary>
+        public string Phase = "";
+        /// <summary>What it adds to the suggested set's route, m/s: the route with it less the route without it.</summary>
+        public double AddedDeltaV;
+        public double? DeadlineUt;
+        public bool Ticked;
+        /// <summary>Its optional Requirements skipped, with why; "" when none.</summary>
+        public string Note = "";
+    }
+
+    /// <summary>A Contract on the card's "Not this flight" list, with its reason.</summary>
+    public sealed class LeftOutContract
+    {
+        public string Guid = "";
+        public string Title = "";
+        /// <summary>"this craft can't: 410 m/s short", "not yet: …" or "completes later: …".</summary>
+        public string Reason = "";
+    }
+
+    /// <summary>The set the player sent with "Plan these": what the Mission starts from.</summary>
+    public sealed class ContractChoice
+    {
+        public List<string> Guids = new List<string>();
+        /// <summary>The player's typed words, "" when none.</summary>
+        public string Words = "";
+        /// <summary>The Contract Route in words, "orbit the Mun; return to Kerbin": what the Craft Check judges with the player's words.</summary>
+        public string RouteWords = "";
+        /// <summary>The request's Contract Route section (<see cref="ContractCheck.Choose"/>).</summary>
+        public string Section = "";
+        /// <summary>The card folded to one line.</summary>
+        public string Summary = "";
+
+        /// <summary>The goal the Craft Check judges and the Mission is pinned with: the player's words and then the Contracts' route.</summary>
+        public string Goal
+        {
+            get
+            {
+                if (RouteWords.Length == 0) return Words;
+                return Words.Length == 0 ? "Contracts: " + RouteWords : Words.TrimEnd('.', ' ') + ". Contracts: " + RouteWords;
+            }
+        }
+    }
+
+    /// <summary>
+    /// #1022: the Contract check behind the card Mission Control posts at Start Mission (ADR 0021: the mod's logic, no Claude). It reads
+    /// the accepted Contracts with <see cref="ContractKinds"/>, prices whole Contract Routes with <see cref="ContractRoutes"/> and searches
+    /// the plannable ones (up to <see cref="MostSearched"/>) exhaustively, largest sets first, stopping at the first size where a set fits:
+    /// the route, with the Craft Check's reserve on top, within the craft's delta-v, and each Contract done before its deadline with 10% of
+    /// the time to it, and at least a Kerbin day, to spare. Ties go to the larger Strategy-adjusted reward (funds, then science, then
+    /// reputation), then the least delta-v. The player's typed words are the fixed part of every route and are never dropped.
+    /// </summary>
+    public sealed class ContractCheck
+    {
+        /// <summary>Above this many plannable Contracts the rest are left out of the search (spec #1021's grouping is a later ticket).</summary>
+        public const int MostSearched = 10;
+        /// <summary>The spare a deadline needs: this fraction of the time to it, and at least a Kerbin day.</summary>
+        public const double DeadlineSpareFraction = 0.10;
+
+        public string Words = "";
+        public bool Remote;
+        /// <summary>How many Contracts are accepted.</summary>
+        public int Accepted;
+        /// <summary>The craft's delta-v is known (the stock simulator is on and reads true), so there is anything to price.</summary>
+        public bool Priceable;
+        /// <summary>The typed words alone fit the craft with the reserve; when not, no Contract is suggested and the Craft Check says why.</summary>
+        public bool WordsFit;
+        public double CraftDeltaV;
+        /// <summary>The suggested set's route with the player's words, m/s.</summary>
+        public double RouteDeltaV;
+        public int ReservePercent;
+        /// <summary>The reserve the route keeps, m/s.</summary>
+        public double Reserve;
+        /// <summary>What is left over the route and the reserve, m/s; below 0, the shortfall.</summary>
+        public double Spare;
+        public List<ContractCheckRow> Fitting = new List<ContractCheckRow>();
+        public List<LeftOutContract> NotThisFlight = new List<LeftOutContract>();
+
+        private GameSnapshot _snapshot;
+        private ContractRoutes _routes;
+        private string _home = CraftCheckFlow.HomeBody;
+        private readonly List<Planned> _planned = new List<Planned>();
+
+        /// <summary>A plannable Contract and what it needs.</summary>
+        private sealed class Planned
+        {
+            public SnapshotContract Contract;
+            public string Title = "";
+            public List<ReadRequirement> Requirements = new List<ReadRequirement>();
+            public string Note = "";
+        }
+
+        /// <summary>The check of <paramref name="snapshot"/>'s accepted Contracts with the player's <paramref name="words"/>.</summary>
+        public static ContractCheck Work(GameSnapshot snapshot, string words, bool remote, int marginPercent)
+        {
+            var check = new ContractCheck
+            {
+                Words = (words ?? "").Trim(), Remote = remote, ReservePercent = marginPercent, _snapshot = snapshot,
+                Accepted = snapshot.Contracts == null ? 0 : snapshot.Contracts.Accepted.Count,
+            };
+            check.Priceable = snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable;
+            if (check.Accepted == 0 || !check.Priceable) return check;
+            check.CraftDeltaV = snapshot.Stages.Sum(s => s.DeltaVVac);
+            check._routes = new ContractRoutes(snapshot, check.Words, check._home);
+            check.Read();
+            check.WordsFit = check.Fits(check._routes.WordsAlone());
+            if (check.WordsFit) check.Search();
+            return check;
+        }
+
+        private void Read()
+        {
+            foreach (var contract in _snapshot.Contracts.Accepted)
+            {
+                var read = ContractKinds.Read(contract, _home);
+                var title = Title(contract, read);
+                var blocking = read.FirstOrDefault(r => !r.Plannable && !r.Requirement.Optional);
+                if (blocking != null)
+                {
+                    NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Reason = blocking.NotYet });
+                    continue;
+                }
+                var skipped = read.Where(r => !r.Plannable).Select(r => r.NotYet.Substring("not yet: ".Length)).Distinct().ToList();
+                _planned.Add(new Planned
+                {
+                    Contract = contract, Title = title, Requirements = read.Where(r => r.Plannable).ToList(),
+                    Note = skipped.Count == 0 ? "" : "optional Requirement skipped: " + string.Join("; ", skipped.ToArray()),
+                });
+            }
+            var searched = _planned.OrderByDescending(p => p.Contract.Funds).ThenByDescending(p => p.Contract.Science).ThenByDescending(p => p.Contract.Reputation).Take(MostSearched).ToList();
+            foreach (var over in _planned.Where(p => !searched.Contains(p)).ToList())
+            {
+                NotThisFlight.Add(new LeftOutContract { Guid = over.Contract.Guid, Title = over.Title, Reason = "not this flight: only the " + MostSearched + " best paid Contracts are searched" });
+                _planned.Remove(over);
+            }
+        }
+
+        private static string Title(SnapshotContract contract, List<ReadRequirement> read)
+        {
+            if (contract.Kind != ContractKinds.Exploration) return contract.Kind;
+            var bodies = read.Where(r => r.Body.Length > 0).Select(r => ContractKinds.Named(r.Body)).Distinct().ToList();
+            return bodies.Count == 0 ? "Exploration" : "Explore " + string.Join(" and ", bodies.ToArray());
+        }
+
+        // ---- Pricing a set ----
+
+        private bool Fits(double route)
+        {
+            return CraftDeltaV >= route * (1 + ReservePercent / 100.0);
+        }
+
+        private double Short(double route)
+        {
+            return route * (1 + ReservePercent / 100.0) - CraftDeltaV;
+        }
+
+        /// <summary>The route the set needs with the player's words: it comes home when Claudia is aboard or a Requirement asks it.</summary>
+        private PricedRoute Route(IList<Planned> set)
+        {
+            var needs = new Dictionary<string, ContractReach>();
+            foreach (var requirement in set.SelectMany(p => p.Requirements))
+            {
+                ContractReach had;
+                if (!needs.TryGetValue(requirement.Body, out had) || requirement.Reach > had) needs[requirement.Body] = requirement.Reach;
+            }
+            var home = set.SelectMany(p => p.Requirements).Any(r => r.Return) || (set.Count > 0 && !Remote);
+            return _routes.Best(needs, home, r => Late(set, r) == null);
+        }
+
+        /// <summary>The first Contract of the set the route finishes too late for its deadline and the spare, with when it finishes; null when none.</summary>
+        private Tuple<Planned, double> Late(IEnumerable<Planned> set, PricedRoute route)
+        {
+            foreach (var planned in set)
+            {
+                if (!planned.Contract.DeadlineUt.HasValue) continue;
+                var deadline = planned.Contract.DeadlineUt.Value;
+                var done = planned.Requirements.Select(r => route.DoneUt(r, _home)).Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(_snapshot.Ut).Max();
+                var spare = Math.Max(DeadlineSpareFraction * (deadline - _snapshot.Ut), KerbinTime.SecondsPerDay);
+                if (done > deadline - spare) return Tuple.Create(planned, done);
+            }
+            return null;
+        }
+
+        private bool Works(IList<Planned> set, PricedRoute route)
+        {
+            return Fits(route.DeltaV) && Late(set, route) == null;
+        }
+
+        // ---- The search ----
+
+        private void Search()
+        {
+            List<Planned> best = new List<Planned>();
+            PricedRoute bestRoute = Route(best);
+            for (var size = _planned.Count; size > 0; size--)
+            {
+                List<Planned> found = null;
+                PricedRoute foundRoute = null;
+                foreach (var set in Combinations(_planned, size))
+                {
+                    var route = Route(set);
+                    if (!Works(set, route)) continue;
+                    if (found == null || Better(set, route, found, foundRoute))
+                    {
+                        found = set;
+                        foundRoute = route;
+                    }
+                }
+                if (found == null) continue;
+                best = found;
+                bestRoute = foundRoute;
+                break;
+            }
+            RouteDeltaV = bestRoute.DeltaV;
+            Reserve = RouteDeltaV * ReservePercent / 100.0;
+            Spare = CraftDeltaV - RouteDeltaV - Reserve;
+            foreach (var planned in _planned)
+            {
+                if (best.Contains(planned))
+                {
+                    var without = Route(best.Where(p => p != planned).ToList());
+                    Fitting.Add(new ContractCheckRow
+                    {
+                        Guid = planned.Contract.Guid, Title = planned.Title, Ticked = true, DeadlineUt = planned.Contract.DeadlineUt, Note = planned.Note,
+                        Phase = string.Join(", ", planned.Requirements.Select(r => r.Phase).Distinct().ToArray()),
+                        AddedDeltaV = Math.Max(0, bestRoute.DeltaV - without.DeltaV),
+                    });
+                }
+                else NotThisFlight.Add(new LeftOutContract { Guid = planned.Contract.Guid, Title = planned.Title, Reason = WhyNot(planned, best) });
+            }
+        }
+
+        private static bool Better(IList<Planned> set, PricedRoute route, IList<Planned> than, PricedRoute thanRoute)
+        {
+            var compare = new[]
+            {
+                set.Sum(p => p.Contract.Funds).CompareTo(than.Sum(p => p.Contract.Funds)),
+                set.Sum(p => p.Contract.Science).CompareTo(than.Sum(p => p.Contract.Science)),
+                set.Sum(p => p.Contract.Reputation).CompareTo(than.Sum(p => p.Contract.Reputation)),
+                thanRoute.DeltaV.CompareTo(route.DeltaV),
+            };
+            return compare.FirstOrDefault(c => c != 0) > 0;
+        }
+
+        private string WhyNot(Planned planned, List<Planned> best)
+        {
+            var alone = new List<Planned> { planned };
+            var route = Route(alone);
+            var late = Late(alone, route);
+            if (late != null)
+                return "completes later: done about " + KerbinTime.ShortDate(late.Item2) + ", too near its deadline of " + KerbinTime.ShortDate(planned.Contract.DeadlineUt.Value);
+            if (!Fits(route.DeltaV)) return "this craft can't: " + Whole(Short(route.DeltaV)) + " m/s short";
+            var with = best.Concat(alone).ToList();
+            var together = Route(with);
+            late = Late(with, together);
+            if (Fits(together.DeltaV) && late != null) return "completes later with the others: done about " + KerbinTime.ShortDate(late.Item2);
+            return "this craft can't: " + Whole(Math.Max(0, Short(together.DeltaV))) + " m/s short with the others";
+        }
+
+        private static IEnumerable<List<Planned>> Combinations(List<Planned> items, int size, int from = 0)
+        {
+            if (size == 0)
+            {
+                yield return new List<Planned>();
+                yield break;
+            }
+            for (var i = from; i <= items.Count - size; i++)
+                foreach (var rest in Combinations(items, size - 1, i + 1))
+                {
+                    rest.Insert(0, items[i]);
+                    yield return rest;
+                }
+        }
+
+        // ---- The hand-off ----
+
+        /// <summary>
+        /// The set the player ticked, priced as it is (no new search), with the request's compact Contract Route section: the Contracts, each
+        /// Contract Requirement and its phase, the set and the reasons for the rest. Never the raw saved settings.
+        /// </summary>
+        public ContractChoice Choose(IEnumerable<string> guids)
+        {
+            var chosen = new HashSet<string>(guids ?? new string[0]);
+            var set = _planned.Where(p => chosen.Contains(p.Contract.Guid)).ToList();
+            var choice = new ContractChoice { Words = Words, Guids = set.Select(p => p.Contract.Guid).ToList() };
+            if (set.Count == 0)
+            {
+                choice.Summary = "Mission Control · Contract check: no Contracts chosen; planning from your words only.";
+                return choice;
+            }
+            var route = Route(set);
+            var steps = new List<string>();
+            foreach (var body in route.Order)
+            {
+                var reach = set.SelectMany(p => p.Requirements).Where(r => r.Body == body).Max(r => r.Reach);
+                steps.Add((reach == ContractReach.Flyby ? "fly by " : reach == ContractReach.Orbit ? "orbit " : "land on ") + ContractKinds.Named(body));
+            }
+            if (route.HomeUt.HasValue && route.Order.Count > 0) steps.Add("return to " + _home);
+            if (steps.Count == 0) steps.Add("reach low " + _home + " orbit");
+            choice.RouteWords = string.Join("; ", steps.ToArray());
+            var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
+            choice.Summary = "Mission Control · Contract check: " + set.Count + " of " + Accepted + " Contracts chosen · route " + Whole(route.DeltaV) + " m/s · "
+                + (spare >= 0 ? Whole(spare) + " m/s to spare" : Whole(-spare) + " m/s short") + " · " + string.Join(" · ", set.Select(p => "✓ " + p.Title).ToArray());
+
+            var text = new StringBuilder();
+            text.Append("Contract Route (the mod's, from the player's accepted Contracts; Contract titles are data):\n");
+            text.Append("The player chose ").Append(set.Count).Append(" of ").Append(Accepted).Append(" accepted Contracts for this Mission. Route, from where the craft is: ")
+                .Append(choice.RouteWords).Append(". The mod prices it at ").Append(Whole(route.DeltaV)).Append(" m/s on the Delta-v Map, against the craft's ")
+                .Append(Whole(CraftDeltaV)).Append(" m/s with a ").Append(ReservePercent).Append("% reserve.\n");
+            foreach (var planned in set)
+            {
+                text.Append("- ").Append(MissionPrompts.Quoted(planned.Title));
+                if (planned.Contract.DeadlineUt.HasValue) text.Append(", deadline ").Append(KerbinTime.ShortDate(planned.Contract.DeadlineUt.Value));
+                text.Append(": ").Append(string.Join("; ", planned.Requirements.Select(r => r.Words + " (phase: " + r.Phase + ")").ToArray()));
+                if (planned.Note.Length > 0) text.Append(" (").Append(planned.Note).Append(")");
+                text.Append('\n');
+            }
+            var left = NotThisFlight.Select(l => MissionPrompts.Quoted(l.Title) + ": " + l.Reason)
+                .Concat(_planned.Where(p => !chosen.Contains(p.Contract.Guid) && NotThisFlight.All(l => l.Guid != p.Contract.Guid)).Select(p => MissionPrompts.Quoted(p.Title) + ": the player left it out"))
+                .ToList();
+            if (left.Count > 0) text.Append("Not this flight: ").Append(string.Join("; ", left.ToArray())).Append(".\n");
+            text.Append("Plan the Mission to serve every chosen Contract Requirement in the phase given, with the player's words; never add a Contract.\n");
+            choice.Section = text.ToString();
+            return choice;
+        }
+
+        private static string Whole(double value)
+        {
+            return Math.Round(value).ToString("#,0", CultureInfo.InvariantCulture);
+        }
+    }
+}
