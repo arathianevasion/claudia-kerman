@@ -8,7 +8,7 @@
 # LOAD=0 turns the load generator off. The load processes are killed on any exit.
 ROOT=${GATES_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
-K="-p:KOSPluginsDir=$HOME/KSP_spike/GameData/kOS/Plugins"
+K="-p:KOSPluginsDir=${KOS_PLUGINS_DIR:-$HOME/KSP_spike/GameData/kOS/Plugins}"   # KOS_PLUGINS_DIR: where kOS.Safe.dll is (CI: the kOS release)
 RUNS=${RUNS:-20}
 FILTER=${FILTER:-"FullyQualifiedName~ChangeOrbitTests|FullyQualifiedName~DockTests|FullyQualifiedName~RendezvousTests"}
 CORES=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)
