@@ -657,9 +657,8 @@ namespace ClaudiaKerman.Adapter
             GUILayout.BeginHorizontal();
             GUILayout.Space(ClaudiaSkin.Padding);
             // Start Mission runs the Craft Check first; it is closed on a Blocker and until every Warning is acknowledged.
-            // #1022: with accepted Contracts, nothing typed is a start too (the Contracts are the goal); while their card is up it is the way on.
-            var canStart = _setup.SpendingCap > 0 && (_goal.Length > 0 || form.ContractsAccepted > 0) && form.Models.Count > 0 && check.StartAllowed && !form.WindowPickMissing
-                && _view.ContractCheck == null;
+            // #1022: with accepted Contracts, nothing typed is a start too (the Contracts are the goal); pressed again, it posts a new Contract check card.
+            var canStart = _setup.SpendingCap > 0 && (_goal.Length > 0 || form.ContractsAccepted > 0) && form.Models.Count > 0 && check.StartAllowed && !form.WindowPickMissing;
             if (canStart)
             {
                 // The goal stays until the Mission has actually started: the Craft Check may still hold it back.

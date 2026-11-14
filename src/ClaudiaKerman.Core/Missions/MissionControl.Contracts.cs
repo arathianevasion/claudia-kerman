@@ -19,7 +19,6 @@ namespace ClaudiaKerman.Core.Missions
         private ContractCheck _contractCheck;
         /// <summary>The Start Mission the card answers.</summary>
         private StartMission _contractStart;
-        private readonly HashSet<string> _unticked = new HashSet<string>();
         /// <summary>"Plan these" was pressed: the card's one line, shown until the Mission starts; null otherwise.</summary>
         private ContractChoice _folded;
 
@@ -39,41 +38,38 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// The card is posted for this start and it waits for the player's answer: there are accepted Contracts, the craft's delta-v is known
-        /// and the typed words alone fit. A start already answered from the card goes on.
+        /// and the typed words alone fit. A start already answered from the card goes on. Pressed again, Start Mission posts a new card in
+        /// place of the old (new words, a changed craft). Why the start can't go on at all, or "": the craft's delta-v isn't known, so the
+        /// Contracts can't be priced (never dropped silently), or nothing typed and the craft can't reach orbit.
         /// </summary>
-        private bool HeldForContracts(StartMission start)
+        private bool HeldForContracts(StartMission start, out string refusal)
         {
+            refusal = "";
             if (start.ContractsAnswered) return false;
             _folded = null;
             _contractCheck = null;
             var snapshot = _snapshot;
             if (snapshot == null || snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0) return false;
             var check = ContractCheck.Work(snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent);
-            if (!check.Priceable || !check.WordsFit) return false;
+            if (!check.Priceable)
+            {
+                refusal = "The craft's delta-v isn't known (turn on the stock delta-v readout), so your Contracts can't be priced. Turn it on, then start again.";
+                return false;
+            }
+            if (!check.WordsFit)
+            {
+                if (check.Words.Length == 0) refusal = "This craft can't reach orbit with the Craft Check's reserve, so no Contract fits.";
+                return false;
+            }
             _contractCheck = check;
             _contractStart = start;
-            _unticked.Clear();
             return true;
         }
 
-        /// <summary>Why a start with nothing typed can't go on; "" when there are no accepted Contracts (the form needs words then).</summary>
-        private string NoWordsRefusal()
-        {
-            var snapshot = _snapshot;
-            if (snapshot == null || snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0) return "";
-            return "The craft's delta-v isn't known (turn on the stock delta-v readout), so your Contracts can't be priced. Type what this Mission should do, or turn it on and start again.";
-        }
-
+        /// <summary>The suggested set: every Contract that fits is ticked (ticking and unticking are #1023's).</summary>
         private IList<string> Ticked()
         {
-            return _contractCheck == null ? new List<string>() : _contractCheck.Fitting.Where(r => !_unticked.Contains(r.Guid)).Select(r => r.Guid).ToList();
-        }
-
-        private void ContractTicked(TickContract tick)
-        {
-            if (_contractCheck == null || _contractCheck.Fitting.All(r => r.Guid != tick.Guid)) return;
-            if (tick.Ticked) _unticked.Remove(tick.Guid);
-            else _unticked.Add(tick.Guid);
+            return _contractCheck == null ? new List<string>() : _contractCheck.Fitting.Where(r => r.Ticked).Select(r => r.Guid).ToList();
         }
 
         private void ContractsPlanned()
@@ -123,10 +119,8 @@ namespace ClaudiaKerman.Core.Missions
             return new ContractCheckView
             {
                 Accepted = check.Accepted, Words = check.Words,
-                Rows = check.Fitting.Select(r => new ContractCheckRow
-                {
-                    Guid = r.Guid, Title = r.Title, Phase = r.Phase, AddedDeltaV = r.AddedDeltaV, DeadlineUt = r.DeadlineUt, Note = r.Note, Ticked = ticked.Contains(r.Guid),
-                }).ToList(),
+                Rows = check.Fitting.ToList(),
+                Headline = check.Headline(ticked.Count),
                 NotThisFlight = check.NotThisFlight.ToList(),
                 CraftDeltaV = check.CraftDeltaV, RouteDeltaV = check.RouteDeltaV, ReservePercent = check.ReservePercent, Reserve = check.Reserve, Spare = check.Spare,
                 PlanLabel = ticked.Count > 0 ? "Plan these " + ticked.Count : "Pick a Contract",

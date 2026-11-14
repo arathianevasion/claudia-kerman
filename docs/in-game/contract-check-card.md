@@ -22,8 +22,9 @@ With accepted exploration (world-first) Contracts, Start Mission now posts Missi
 ## Check 3: your words, and Plan without Contracts
 
 1. End the Mission. Type "Also run a crew report in Mun orbit." and press Start Mission: the card says "with your words".
-2. Untick one Contract: "Plan these" counts one fewer (its figures re-price in #1023, not here).
-3. Press "Plan without Contracts": the card goes, the Craft Check judges your words alone and Claudia plans them with no Contract Route.
+2. The boxes show the suggested set ticked; ticking and unticking come with #1023.
+3. Change your words and press Start Mission again: a new card replaces the old one, with the new words.
+4. Press "Plan without Contracts": the card goes, the Craft Check judges your words alone and Claudia plans them with no Contract Route.
 
 ## Check 4: no Contracts, no change
 

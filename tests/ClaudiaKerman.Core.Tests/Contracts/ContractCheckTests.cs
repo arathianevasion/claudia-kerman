@@ -144,6 +144,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Empty(check.Fitting);
             Assert.Equal(files.Length, check.NotThisFlight.Count);
             Assert.All(check.NotThisFlight, left => Assert.StartsWith("not yet: ", left.Reason));
+            Assert.All(check.NotThisFlight, left => Assert.Equal(LeftOutKind.NotYet, left.Kind));
         }
 
         [Fact]
@@ -175,6 +176,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("c-easy", Assert.Single(check.Fitting).Guid);
             Assert.Equal(easy.DeadlineUt, check.Fitting[0].DeadlineUt);
             Assert.StartsWith("completes later", check.NotThisFlight.Single(l => l.Guid == "c-tight").Reason);
+            Assert.Equal(LeftOutKind.CompletesLater, check.NotThisFlight.Single(l => l.Guid == "c-tight").Kind);
         }
 
         [Fact]
@@ -185,6 +187,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Empty(check.Fitting);
             var left = Assert.Single(check.NotThisFlight);
             Assert.Matches(@"^this craft can't: [0-9,]+ m/s short$", left.Reason);
+            Assert.Equal(LeftOutKind.CraftCant, left.Kind);
         }
 
         /// <summary>A craft that flies either the Mun or Minmus orbit, but not both: the tie-break picks one.</summary>

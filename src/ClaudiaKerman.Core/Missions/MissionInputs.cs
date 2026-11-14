@@ -69,19 +69,6 @@ namespace ClaudiaKerman.Core.Missions
     {
     }
 
-    /// <summary>#1022: a Contract's box on the Contract check card ticked (true) or unticked.</summary>
-    public sealed class TickContract : MissionInput
-    {
-        public readonly string Guid;
-        public readonly bool Ticked;
-
-        public TickContract(string guid, bool ticked)
-        {
-            Guid = guid ?? "";
-            Ticked = ticked;
-        }
-    }
-
     /// <summary>Check the craft now, in the editor or in Flight, against the Mission Goal as typed so far.</summary>
     public sealed class RunCraftCheck : MissionInput
     {

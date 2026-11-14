@@ -294,10 +294,6 @@ namespace ClaudiaKerman.Core.Missions
     }
 
     /// <summary>
-    /// Everything the adapter's windows draw: the start form, the Capcom strip and the log drawer.
-    /// Rebuilt by <see cref="MissionControl"/> after every input and response; <see cref="Version"/> goes up each time.
-    /// </summary>
-    /// <summary>
     /// #1022: Mission Control's Contract check card (the mod's, no Claude), posted at Start Mission with accepted Contracts: the Contracts
     /// that fit, pre-ticked for the suggested set, the route against the craft and the reserve, and "Not this flight" with each reason.
     /// </summary>
@@ -319,6 +315,8 @@ namespace ClaudiaKerman.Core.Missions
         public double Reserve;
         /// <summary>Left over the route and the reserve, m/s; below 0, the shortfall.</summary>
         public double Spare;
+        /// <summary>The first line: how many Contracts, the route against the craft and the reserve, and the spare or the shortfall.</summary>
+        public string Headline = "";
         /// <summary>"Plan these 2"; "Pick a Contract" when none is ticked.</summary>
         public string PlanLabel = "";
         public bool CanPlan;
@@ -326,6 +324,10 @@ namespace ClaudiaKerman.Core.Missions
         public bool CanPlanWithout;
     }
 
+    /// <summary>
+    /// Everything the adapter's windows draw: the start form, the Capcom strip and the log drawer.
+    /// Rebuilt by <see cref="MissionControl"/> after every input and response; <see cref="Version"/> goes up each time.
+    /// </summary>
     public sealed class MissionView
     {
         public int Version;

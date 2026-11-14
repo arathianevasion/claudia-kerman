@@ -24,6 +24,26 @@ namespace ClaudiaKerman.Core.Contracts
         public bool Ticked;
         /// <summary>Its optional Requirements skipped, with why; "" when none.</summary>
         public string Note = "";
+
+        /// <summary>The line under its box: "Mun · +1,170 m/s · deadline Y1 D30 (in 12d)", or "no deadline".</summary>
+        public string Detail(double now)
+        {
+            return Phase + " · +" + Math.Round(AddedDeltaV).ToString("#,0", CultureInfo.InvariantCulture) + " m/s · "
+                + (DeadlineUt.HasValue ? "deadline " + KerbinTime.ShortDate(DeadlineUt.Value) + " (" + KerbinTime.FromNow(DeadlineUt.Value, now) + ")" : "no deadline");
+        }
+    }
+
+    /// <summary>Why a Contract isn't on this flight, for the card's chip.</summary>
+    public enum LeftOutKind
+    {
+        /// <summary>Core can't plan one of its required Contract Requirements yet.</summary>
+        NotYet,
+        /// <summary>The craft hasn't the delta-v for it, alone or with the others.</summary>
+        CraftCant,
+        /// <summary>The route finishes it too near its deadline.</summary>
+        CompletesLater,
+        /// <summary>Past the most the search takes.</summary>
+        NotSearched,
     }
 
     /// <summary>A Contract on the card's "Not this flight" list, with its reason.</summary>
@@ -31,6 +51,7 @@ namespace ClaudiaKerman.Core.Contracts
     {
         public string Guid = "";
         public string Title = "";
+        public LeftOutKind Kind;
         /// <summary>"this craft can't: 410 m/s short", "not yet: …" or "completes later: …".</summary>
         public string Reason = "";
     }
@@ -134,7 +155,7 @@ namespace ClaudiaKerman.Core.Contracts
                 var blocking = read.FirstOrDefault(r => !r.Plannable && !r.Requirement.Optional);
                 if (blocking != null)
                 {
-                    NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Reason = blocking.NotYet });
+                    NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Kind = LeftOutKind.NotYet, Reason = blocking.NotYet });
                     continue;
                 }
                 var skipped = read.Where(r => !r.Plannable).Select(r => r.NotYet.Substring("not yet: ".Length)).Distinct().ToList();
@@ -147,7 +168,7 @@ namespace ClaudiaKerman.Core.Contracts
             var searched = _planned.OrderByDescending(p => p.Contract.Funds).ThenByDescending(p => p.Contract.Science).ThenByDescending(p => p.Contract.Reputation).Take(MostSearched).ToList();
             foreach (var over in _planned.Where(p => !searched.Contains(p)).ToList())
             {
-                NotThisFlight.Add(new LeftOutContract { Guid = over.Contract.Guid, Title = over.Title, Reason = "not this flight: only the " + MostSearched + " best paid Contracts are searched" });
+                NotThisFlight.Add(new LeftOutContract { Guid = over.Contract.Guid, Title = over.Title, Kind = LeftOutKind.NotSearched, Reason = "not searched: only the " + MostSearched + " best paid Contracts are searched" });
                 _planned.Remove(over);
             }
         }
@@ -243,7 +264,7 @@ namespace ClaudiaKerman.Core.Contracts
                         AddedDeltaV = Math.Max(0, bestRoute.DeltaV - without.DeltaV),
                     });
                 }
-                else NotThisFlight.Add(new LeftOutContract { Guid = planned.Contract.Guid, Title = planned.Title, Reason = WhyNot(planned, best) });
+                else NotThisFlight.Add(WhyNot(planned, best));
             }
         }
 
@@ -259,19 +280,40 @@ namespace ClaudiaKerman.Core.Contracts
             return compare.FirstOrDefault(c => c != 0) > 0;
         }
 
-        private string WhyNot(Planned planned, List<Planned> best)
+        private LeftOutContract WhyNot(Planned planned, List<Planned> best)
         {
+            var left = new LeftOutContract { Guid = planned.Contract.Guid, Title = planned.Title, Kind = LeftOutKind.CraftCant };
             var alone = new List<Planned> { planned };
             var route = Route(alone);
             var late = Late(alone, route);
-            if (late != null)
-                return "completes later: done about " + KerbinTime.ShortDate(late.Item2) + ", too near its deadline of " + KerbinTime.ShortDate(planned.Contract.DeadlineUt.Value);
-            if (!Fits(route.DeltaV)) return "this craft can't: " + Whole(Short(route.DeltaV)) + " m/s short";
             var with = best.Concat(alone).ToList();
             var together = Route(with);
-            late = Late(with, together);
-            if (Fits(together.DeltaV) && late != null) return "completes later with the others: done about " + KerbinTime.ShortDate(late.Item2);
-            return "this craft can't: " + Whole(Math.Max(0, Short(together.DeltaV))) + " m/s short with the others";
+            var lateTogether = Late(with, together);
+            if (late != null)
+            {
+                left.Kind = LeftOutKind.CompletesLater;
+                left.Reason = "completes later: done about " + KerbinTime.ShortDate(late.Item2) + ", too near its deadline of " + KerbinTime.ShortDate(planned.Contract.DeadlineUt.Value);
+            }
+            else if (!Fits(route.DeltaV)) left.Reason = "this craft can't: " + Whole(Short(route.DeltaV)) + " m/s short";
+            else if (Fits(together.DeltaV) && lateTogether != null)
+            {
+                left.Kind = LeftOutKind.CompletesLater;
+                left.Reason = "completes later with the others: done about " + KerbinTime.ShortDate(lateTogether.Item2);
+            }
+            else left.Reason = "this craft can't: " + Whole(Math.Max(0, Short(together.DeltaV))) + " m/s short with the others";
+            return left;
+        }
+
+        /// <summary>The card's first line: "2 of 3 Contracts · route 4,912 m/s of 8,036 · reserve 737 (15%) · 2,387 m/s to spare".</summary>
+        public string Headline(int chosen)
+        {
+            return chosen + " of " + Accepted + " Contracts" + (Words.Length > 0 ? " with your words" : "") + " · route " + Whole(RouteDeltaV) + " m/s of "
+                + Whole(CraftDeltaV) + " · reserve " + Whole(Reserve) + " (" + ReservePercent + "%) · " + SpareText(Spare);
+        }
+
+        private static string SpareText(double spare)
+        {
+            return spare >= 0 ? Whole(spare) + " m/s to spare" : Whole(-spare) + " m/s short";
         }
 
         private static IEnumerable<List<Planned>> Combinations(List<Planned> items, int size, int from = 0)
@@ -317,7 +359,7 @@ namespace ClaudiaKerman.Core.Contracts
             choice.RouteWords = string.Join("; ", steps.ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
             choice.Summary = "Mission Control · Contract check: " + set.Count + " of " + Accepted + " Contracts chosen · route " + Whole(route.DeltaV) + " m/s · "
-                + (spare >= 0 ? Whole(spare) + " m/s to spare" : Whole(-spare) + " m/s short") + " · " + string.Join(" · ", set.Select(p => "✓ " + p.Title).ToArray());
+                + SpareText(spare) + " · " + string.Join(" · ", set.Select(p => "✓ " + p.Title).ToArray());
 
             var text = new StringBuilder();
             text.Append("Contract Route (the mod's, from the player's accepted Contracts; Contract titles are data):\n");

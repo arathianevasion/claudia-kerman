@@ -151,7 +151,6 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is CraftLinkSeen) CraftLinkReported((CraftLinkSeen)input);
             else if (input is SetAutoMode) AutoModeSet(((SetAutoMode)input).On);
             else if (input is ChangeTarget) TargetChanged(((ChangeTarget)input).Pick);
-            else if (input is TickContract) ContractTicked((TickContract)input);
             else if (input is PlanContracts) ContractsPlanned();
             else if (input is PlanWithoutContracts) PlannedWithoutContracts();
             CheckDue();
@@ -415,14 +414,12 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             // #1022: with accepted Contracts, Mission Control's card comes first, before any request (MissionControl.Contracts.cs).
-            if (HeldForContracts(start))
+            string contractsRefusal;
+            var held = HeldForContracts(start, out contractsRefusal);
+            if (held || contractsRefusal.Length > 0 || goal.Length == 0)
             {
                 _pendingStart = null;
-                return;
-            }
-            if (goal.Length == 0)
-            {
-                _startRefusal = NoWordsRefusal();
+                _startRefusal = contractsRefusal;
                 if (_startRefusal.Length > 0) NeedsPlayer(_startRefusal);
                 return;
             }

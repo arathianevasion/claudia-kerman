@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using ClaudiaKerman.Core.Contracts;
 using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Missions;
 using ClaudiaKerman.Core.Ui;
@@ -516,18 +517,13 @@ namespace ClaudiaKerman.Adapter
                 ClaudiaSkin.EndCard();
                 return;
             }
-            var ticked = 0;
-            foreach (var row in card.Rows) if (row.Ticked) ticked++;
-            GUILayout.Label(ticked + " of " + card.Accepted + " Contracts" + (card.Words.Length > 0 ? " with your words" : "") + " · route " + Whole(card.RouteDeltaV)
-                + " m/s of " + Whole(card.CraftDeltaV) + " · reserve " + Whole(card.Reserve) + " (" + card.ReservePercent + "%) · "
-                + (card.Spare >= 0 ? Whole(card.Spare) + " m/s to spare" : Whole(-card.Spare) + " m/s short"), _bold);
+            GUILayout.Label(card.Headline, _bold);
             DrawRouteBar(card);
             foreach (var row in card.Rows)
             {
-                var on = ClaudiaSkin.Checkbox(row.Ticked, row.Title);
-                if (on != row.Ticked) _send(new TickContract(row.Guid, on));
-                GUILayout.Label(row.Phase + " · +" + Whole(row.AddedDeltaV) + " m/s · " + (row.DeadlineUt.HasValue ? "deadline " + KerbinTime.ShortDate(row.DeadlineUt.Value)
-                    + " (" + KerbinTime.FromNow(row.DeadlineUt.Value, now) + ")" : "no deadline"), ClaudiaSkin.Secondary);
+                // The suggested set, ticked; ticking and unticking come with re-pricing (#1023).
+                ClaudiaSkin.Checkbox(row.Ticked, row.Title, false);
+                GUILayout.Label(row.Detail(now), ClaudiaSkin.Secondary);
                 if (row.Note.Length > 0) GUILayout.Label(row.Note, ClaudiaSkin.Secondary);
             }
             if (card.NotThisFlight.Count > 0)
@@ -536,8 +532,7 @@ namespace ClaudiaKerman.Adapter
                 foreach (var left in card.NotThisFlight)
                 {
                     GUILayout.BeginHorizontal();
-                    ClaudiaSkin.Chip(left.Reason.StartsWith("not yet", StringComparison.Ordinal) ? "not yet" : left.Reason.StartsWith("completes later", StringComparison.Ordinal) ? "completes later" : "this craft can't",
-                        left.Reason.StartsWith("not yet", StringComparison.Ordinal) ? ClaudiaSkin.ChipKind.Danger : ClaudiaSkin.ChipKind.Attention);
+                    ClaudiaSkin.Chip(ChipText(left.Kind), left.Kind == LeftOutKind.NotYet ? ClaudiaSkin.ChipKind.Danger : ClaudiaSkin.ChipKind.Attention);
                     GUILayout.Label(left.Title + " — " + left.Reason, ClaudiaSkin.Secondary);
                     GUILayout.EndHorizontal();
                 }
@@ -572,9 +567,9 @@ namespace ClaudiaKerman.Adapter
             GUI.DrawTexture(new Rect(rect.x + rect.width * route, rect.y, rect.width * reserve, rect.height), ClaudiaSkin.Solid(ClaudiaSkin.Attention));
         }
 
-        private static string Whole(double value)
+        private static string ChipText(LeftOutKind kind)
         {
-            return Math.Round(value).ToString("#,0", System.Globalization.CultureInfo.InvariantCulture);
+            return kind == LeftOutKind.NotYet ? "not yet" : kind == LeftOutKind.CompletesLater ? "completes later" : kind == LeftOutKind.NotSearched ? "not searched" : "this craft can't";
         }
 
         // ---- Approval: a typed reply that reads like an approval ends the transcript with a checkbox ----

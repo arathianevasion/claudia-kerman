@@ -115,10 +115,14 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(2, card.Rows.Count);
             Assert.All(card.Rows, r => Assert.True(r.Ticked));
             Assert.All(card.Rows, r => Assert.Equal("Mun", r.Phase));
+            Assert.All(card.Rows, r => Assert.Matches(@"^Mun · \+[0-9,]+ m/s · no deadline$", r.Detail(mission.View.Ut)));
             Assert.True(card.RouteDeltaV > 0);
             Assert.True(card.CraftDeltaV > card.RouteDeltaV + card.Reserve);
             Assert.Equal(15, card.ReservePercent);
-            Assert.StartsWith("not yet: ", Assert.Single(card.NotThisFlight).Reason);
+            var left = Assert.Single(card.NotThisFlight);
+            Assert.StartsWith("not yet: ", left.Reason);
+            Assert.Equal(LeftOutKind.NotYet, left.Kind);
+            Assert.StartsWith("2 of 3 Contracts · route ", card.Headline);
             Assert.Equal("Plan these 2", card.PlanLabel);
             Assert.True(card.CanPlan);
             Assert.Equal(0, Requests);
@@ -163,18 +167,32 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
-        public void AnUntickedContractIsLeftOutOfTheRequest()
+        public void StartMissionAgainReplacesTheCardWithTheNewWords()
         {
             var mission = Control(TwoAtTheMunAndAPartTest());
             mission.Send(Start(""));
-            mission.Send(new TickContract("c-land", false));
-            Assert.Equal("Plan these 1", mission.View.ContractCheck.PlanLabel);
-            mission.Send(new PlanContracts());
-            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.False(mission.View.ContractCheck.CanPlanWithout);
 
-            var text = Text(Assert.Single(_transport.Requests));
-            Assert.DoesNotContain("land on the Mun", text);
-            Assert.Contains("the player left it out", text);
+            mission.Send(Start("Fly to Minmus and capture into orbit."));
+
+            Assert.Equal("Fly to Minmus and capture into orbit.", mission.View.ContractCheck.Words);
+            Assert.True(mission.View.ContractCheck.CanPlanWithout);
+            Assert.Equal(0, Requests);
+        }
+
+        [Fact]
+        public void WithTheCraftsDeltaVUnknownTheContractsArentDroppedSilently()
+        {
+            var snapshot = TwoAtTheMunAndAPartTest();
+            snapshot.DeltaVSimulator = false;
+            var mission = Control(snapshot);
+
+            mission.Send(Start("Fly to Minmus and capture into orbit."));
+            Settle();
+
+            Assert.Null(mission.View.ContractCheck);
+            Assert.Contains("can't be priced", mission.View.StartForm.Refusal);
+            Assert.Equal(0, Requests);
         }
 
         [Fact]
