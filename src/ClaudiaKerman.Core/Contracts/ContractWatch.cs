@@ -140,6 +140,28 @@ namespace ClaudiaKerman.Core.Contracts
             _news.Add(Quoted(title) + " can't complete: " + why);
         }
 
+        /// <summary>The chosen Contracts the deadline recheck found too late, by GUID: dropped from the list again when a later recheck finds them on time.</summary>
+        private readonly HashSet<string> _late = new HashSet<string>();
+
+        /// <summary>
+        /// #1026: the deadline recheck's reading. A Contract it finds too late may be dropped by the next revised plan (kept only while a leg
+        /// still to fly serves it); one it found late before and finds on time now is no longer droppable for that.
+        /// </summary>
+        public void Rechecked(IList<LateContract> late, IEnumerable<string> checkedGuids)
+        {
+            foreach (var guid in checkedGuids.Where(g => _late.Contains(g) && late.All(l => l.Guid != g)).ToList())
+            {
+                _late.Remove(guid);
+                if (!_ended.Contains(guid)) _droppable.Remove(guid);
+            }
+            foreach (var one in late)
+            {
+                if (_droppable.ContainsKey(one.Guid) && !_late.Contains(one.Guid)) continue;
+                _late.Add(one.Guid);
+                _droppable[one.Guid] = one.Reason;
+            }
+        }
+
         /// <summary>A hold that timed out, or a Requirement the flown leg left unmet: it may be dropped, or flown again.</summary>
         public void Missed(ChosenRequirement requirement, string gap)
         {
@@ -229,7 +251,7 @@ namespace ClaudiaKerman.Core.Contracts
             return finished == null ? "" : finished.State;
         }
 
-        private static ContractRequirement Find(IEnumerable<ContractRequirement> requirements, string key)
+        internal static ContractRequirement Find(IEnumerable<ContractRequirement> requirements, string key)
         {
             foreach (var requirement in requirements)
             {

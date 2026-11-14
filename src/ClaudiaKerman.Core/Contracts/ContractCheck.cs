@@ -313,10 +313,16 @@ namespace ClaudiaKerman.Core.Contracts
                 if (!planned.Contract.DeadlineUt.HasValue) continue;
                 var deadline = planned.Contract.DeadlineUt.Value;
                 var done = planned.Requirements.Select(r => route.DoneUt(r, _home)).Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(_snapshot.Ut).Max();
-                var spare = Math.Max(DeadlineSpareFraction * (deadline - _snapshot.Ut), KerbinTime.SecondsPerDay);
-                if (done > deadline - spare) return Tuple.Create(planned, done);
+                if (BreaksSpare(done, deadline, _snapshot.Ut)) return Tuple.Create(planned, done);
             }
             return null;
+        }
+
+        /// <summary>The spare rule: finishing at <paramref name="done"/> leaves under 10% of the time from <paramref name="now"/> to <paramref name="deadline"/>, or under a Kerbin day.</summary>
+        internal static bool BreaksSpare(double done, double deadline, double now)
+        {
+            var spare = Math.Max(DeadlineSpareFraction * (deadline - now), KerbinTime.SecondsPerDay);
+            return done > deadline - spare;
         }
 
         private bool Works(IList<Planned> set, PricedRoute route)
