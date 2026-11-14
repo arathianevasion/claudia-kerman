@@ -4,6 +4,14 @@
 # CI has no KSP: kOS.Safe comes from the public kOS release, and GATES_NO_KSP=1 skips building the
 # adapter and kOS addon, which need a local KSP install (see README, Building). The Kerboscript tests
 # run as one test process per core, as they do locally.
+#
+# The gate runs as three parallel jobs (#1049), because every step at once on one 4-vCPU runner took 10-14 min. Each job
+# builds, then runs its share through GATES_ONLY (tools/gates/gates.sh prints SKIP for the rest), so every gate line comes
+# from exactly one job:
+#   core:         Core tests
+#   kerboscript:  Kerboscript tests, library line limit
+#   scriptcheck:  Script Check tests, tests/blocks and tests/tools through KsCompile, undefined calls, fixtures
+# fail-fast is off so one failing job doesn't hide the others' results; any failing job fails the run.
 name: CI
 
 on:
@@ -30,8 +38,19 @@ env:
   KOS_RELEASE_TAG: 1.6.0.1
 
 jobs:
-  core:
+  gate:
+    name: gate (${{ matrix.name }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: core
+            only: core
+          - name: kerboscript
+            only: kerboscript,kerboscript-loc
+          - name: scriptcheck
+            only: scriptcheck,blocks,tools,undefined-calls,fixtures
     steps:
       - uses: actions/checkout@v4
 
@@ -52,15 +71,16 @@ jobs:
           if [ -z "$safe" ]; then echo "kOS.Safe.dll not found in the $KOS_RELEASE_TAG release"; exit 1; fi
           echo "KOS_PLUGINS_DIR=$(dirname "$safe")" >> "$GITHUB_ENV"
 
-      # The build, Core, Kerboscript (one process per core) and Script Check tests, KsCompile over the shipped
-      # kerboscript, tests/blocks and tests/tools, the undefined-call check and every fixture, and the library line limit.
-      - name: Merge gate (tools/gates/gates.sh)
+      # The build, then this job's steps only (see the header). A GATES_ONLY run never writes the pass record.
+      - name: Merge gate (tools/gates/gates.sh, ${{ matrix.name }})
         env:
           GATES_NO_KSP: 1
+          GATES_ONLY: ${{ matrix.only }}
         run: bash tools/gates/gates.sh
 
-      # The wall-clock tests (#623) fail on slow runners; run them for the record, on main only, without failing the job.
+      # The wall-clock tests (#623) fail on slow runners; run them for the record, on main only, in the core job, without
+      # failing it.
       - name: Core timing tests (informational)
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && matrix.name == 'core'
         continue-on-error: true
         run: dotnet test tests/ClaudiaKerman.Core.Tests --no-build --filter "Category=Timing"
