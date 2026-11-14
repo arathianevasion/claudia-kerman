@@ -10,7 +10,7 @@
 # from exactly one job:
 #   core:         Core tests
 #   kerboscript:  Kerboscript tests, library line limit
-#   scriptcheck:  Script Check tests, tests/blocks and tests/tools through KsCompile, undefined calls, fixtures
+#   scriptcheck:  Script Check tests, Quarantine tests and their tracking-issue check (#1067), tests/blocks and tests/tools through KsCompile, undefined calls, fixtures
 # fail-fast is off so one failing job doesn't hide the others' results; any failing job fails the run.
 name: CI
 
@@ -50,7 +50,7 @@ jobs:
           - name: kerboscript
             only: kerboscript,kerboscript-loc
           - name: scriptcheck
-            only: scriptcheck,blocks,tools,undefined-calls,fixtures
+            only: scriptcheck,quarantine,blocks,tools,undefined-calls,fixtures
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +74,7 @@ jobs:
       # The build, then this job's steps only (see the header). A GATES_ONLY run never writes the pass record.
       - name: Merge gate (tools/gates/gates.sh, ${{ matrix.name }})
         env:
+          GH_TOKEN: ${{ github.token }}   # the Quarantine step reads each tracking issue's state
           GATES_NO_KSP: 1
           GATES_ONLY: ${{ matrix.only }}
         run: bash tools/gates/gates.sh
