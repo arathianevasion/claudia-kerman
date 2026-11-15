@@ -269,7 +269,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>
         /// #1029: a part test or haul against this craft: the part must be aboard ("this craft can't: …"); a band some flight of the craft
         /// passes (a hop straight up, the launch to orbit, the way down) is planned, a chute's only by ADR 0019's group and timing; a band in
-        /// the air none passes needs an aircraft ("not yet"), and any other is "this craft can't: …".
+        /// the air none passes is "this craft can't: no flight passes <band>" (#1162), and any other is "this craft can't: …".
         /// </summary>
         private void JudgeTest(ReadRequirement read)
         {
@@ -290,7 +290,7 @@ namespace ClaudiaKerman.Core.Contracts
             var body = SequenceWords.Body(_snapshot, _home);
             var hopAp = body == null ? (double?)null : test.Band.TargetAp(body);
             if (_judge.Window(test, hopAp, true, _judge.DownKg(CraftDeltaV), out why) != TestWindow.None) return;
-            if (test.Situation == "FLYING" && !test.Chute) read.NotYet = ContractKinds.AircraftNotYet;
+            if (test.Situation == "FLYING" && !test.Chute) read.CraftCant = "this craft can't: no flight passes " + test.Band.Card();
             else read.CraftCant = "this craft can't: " + why;
         }
 
