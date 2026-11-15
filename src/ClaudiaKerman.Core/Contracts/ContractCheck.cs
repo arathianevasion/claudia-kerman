@@ -135,7 +135,10 @@ namespace ClaudiaKerman.Core.Contracts
         public int Accepted;
         /// <summary>The craft's delta-v is known (the stock simulator is on and reads true), so there is anything to price.</summary>
         public bool Priceable;
-        /// <summary>The typed words alone fit the craft with the reserve; when not, no Contract is suggested and the Craft Check says why.</summary>
+        /// <summary>
+        /// The typed words alone fit the craft with the reserve; when not, no Contract is suggested and the Craft Check says why. With no
+        /// typed words, also true when a Contract is met on a hop alone (#1048), so a craft that can't reach orbit is still searched.
+        /// </summary>
         public bool WordsFit;
         public double CraftDeltaV;
         /// <summary>The suggested set's route with the player's words, m/s.</summary>
@@ -184,7 +187,8 @@ namespace ClaudiaKerman.Core.Contracts
             check.CraftDeltaV = snapshot.Stages.Sum(s => s.DeltaVVac);
             check._routes = new ContractRoutes(snapshot, check.Words, check._home);
             check.Read();
-            check.WordsFit = check.Fits(check._routes.WordsAlone());
+            // #1048: with no typed words, a Contract met on a hop below orbit may fit a craft that can't reach orbit.
+            check.WordsFit = check.Fits(check._routes.WordsAlone()) || (check.Words.Length == 0 && check._planned.Any(p => p.Requirements.All(r => r.Band != null)));
             if (check.WordsFit) check.Search();
             return check;
         }
@@ -260,7 +264,7 @@ namespace ClaudiaKerman.Core.Contracts
         {
             var needs = ContractNeeds(set);
             var home = set.SelectMany(p => p.Requirements).Any(r => r.Return) || (set.Count > 0 && !Remote);
-            return _routes.Best(needs, home, r => Late(set, r) == null);
+            return _routes.Best(needs, home, r => Late(set, r) == null, set.SelectMany(p => p.Requirements).Where(r => r.Band != null).Select(r => r.Band));
         }
 
         private static Dictionary<string, ContractReach> ContractNeeds(IEnumerable<Planned> set)
@@ -296,7 +300,7 @@ namespace ClaudiaKerman.Core.Contracts
                 serves.AddRange(set.Where(p => p.Requirements.Any(r => r.Return)).Select(p => p.Title));
                 legs.Add(new RouteLeg { Text = "return to " + _home, Serves = serves.Distinct().ToArray() });
             }
-            if (legs.Count == 0) legs.Add(new RouteLeg { Text = "reach low " + _home + " orbit", Serves = set.Select(p => p.Title).Distinct().ToArray() });
+            if (legs.Count == 0) legs.Add(new RouteLeg { Text = route.Hop.Length > 0 ? route.Hop : "reach low " + _home + " orbit", Serves = set.Select(p => p.Title).Distinct().ToArray() });
             return legs;
         }
 

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
 
 namespace ClaudiaKerman.Core.Contracts
 {
@@ -21,8 +22,10 @@ namespace ClaudiaKerman.Core.Contracts
         public readonly Dictionary<string, double> LandUt = new Dictionary<string, double>();
         /// <summary>When the craft is home again; null when the route doesn't come home.</summary>
         public double? HomeUt;
-        /// <summary>When the launch is done (in orbit round home); null when the route has none.</summary>
+        /// <summary>When the launch is done (in orbit round home, or at a hop's apoapsis); null when the route has none.</summary>
         public double? LaunchUt;
+        /// <summary>#1048: the route is a hop below orbit, in words ("reach space over Kerbin"); "" when it isn't.</summary>
+        public string Hop = "";
 
         /// <summary>When the leg serving <paramref name="requirement"/> finishes; null when the route doesn't serve it.</summary>
         public double? DoneUt(ReadRequirement requirement, string home)
@@ -40,6 +43,11 @@ namespace ClaudiaKerman.Core.Contracts
     /// written as the Maneuver Sequences it needs and judged by <see cref="PlanLegs"/>, so shared legs count once. The player's typed
     /// words are the fixed part of every route: their clauses fly after the Contracts' visits and before the trip home. Each leg carries
     /// a game-time estimate (<see cref="Estimate"/>). The search prices on the Map's figures (no planner search, spec #1021 decision 5).
+    /// <para>
+    /// #1048: from the pad at home, a route whose only need is a hop below orbit over home (<see cref="ContractReach.Hop"/>), with no
+    /// words to fly, is that hop, priced by <see cref="SuborbitalHop"/> to the highest apoapsis its bands ask; any other route launches
+    /// to orbit as before, and its hops are met on the way up and add nothing. A hop the sim can't price is priced as the launch to orbit.
+    /// </para>
     /// </summary>
     internal sealed class ContractRoutes
     {
@@ -82,9 +90,11 @@ namespace ClaudiaKerman.Core.Contracts
         /// The cheapest order of the route serving <paramref name="needs"/> (the furthest each body is reached), coming home when
         /// <paramref name="home"/>; among the orders that keep every deadline in <paramref name="keeps"/> when any does.
         /// </summary>
-        public PricedRoute Best(IDictionary<string, ContractReach> contractNeeds, bool home, Func<PricedRoute, bool> keeps)
+        public PricedRoute Best(IDictionary<string, ContractReach> contractNeeds, bool home, Func<PricedRoute, bool> keeps, IEnumerable<HopBand> hops = null)
         {
             var needs = Needs(contractNeeds);
+            var hop = Hop(needs, hops);
+            if (hop != null) return hop;
             var bodies = needs.Keys.Where(b => b != _home).OrderBy(b => b, StringComparer.Ordinal).ToList();
             var orders = bodies.Count <= MostBodiesToPermute ? Permutations(bodies) : new[] { NearestNext(bodies) };
             PricedRoute best = null, bestKept = null;
@@ -113,6 +123,26 @@ namespace ClaudiaKerman.Core.Contracts
         internal bool WordsReturn
         {
             get { return _wordsReturn; }
+        }
+
+        /// <summary>The hop that serves <paramref name="needs"/> on its own; null when they need more than a hop, or the hop can't be priced.</summary>
+        private PricedRoute Hop(IDictionary<string, ContractReach> needs, IEnumerable<HopBand> hops)
+        {
+            var bands = (hops ?? new HopBand[0]).ToList();
+            ContractReach reach;
+            SnapshotBody body;
+            if (bands.Count == 0 || needs.Count != 1 || !needs.TryGetValue(_home, out reach) || reach != ContractReach.Hop || _words.Count > 0
+                || !_snapshot.IsGrounded || Start() != _home || !_bodies.TryGetValue(_home, out body)) return null;
+            var highest = bands.OrderByDescending(b => b.TargetAp(body)).First();
+            var targetAp = highest.TargetAp(body);
+            var key = "hop|" + Math.Round(targetAp);
+            PricedRoute cached;
+            if (_priced.TryGetValue(key, out cached)) return cached;
+            string why;
+            var deltaV = SuborbitalHop.DeltaV(_snapshot, targetAp, out why);
+            var route = deltaV.HasValue ? new PricedRoute { DeltaV = deltaV.Value, Hop = highest.Words(_home), LaunchUt = _snapshot.Ut + LaunchSeconds, HomeUt = _snapshot.Ut + LaunchSeconds } : null;
+            _priced[key] = route;
+            return route;
         }
 
         private PricedRoute Price(IList<string> order, IDictionary<string, ContractReach> needs, bool home)
