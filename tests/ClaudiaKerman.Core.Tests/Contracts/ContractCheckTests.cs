@@ -136,7 +136,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void EveryContractTypeNotPlannedYetIsNotYetWithItsReason()
         {
-            var files = new[] { "PartTest-haul.json", "SurveyContract.json", "SatelliteContract.json", "PlantFlag.json", "RecoverAsset.json" };
+            var files = new[] { "SurveyContract.json", "SatelliteContract.json", "PlantFlag.json", "RecoverAsset.json" };
             var snapshot = With(files.Select(Fixture).ToArray());
 
             var check = Check(snapshot);
@@ -163,13 +163,16 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("reach space over Kerbin", Assert.Single(check.Legs).Text);
         }
 
-        /// <summary>The player's PartTest of 2026-11-14 (#1048): solidBooster.v2 on Kerbin, FLYING, 51,000–56,000 m at 100–260 m/s.</summary>
-        private static SnapshotContract BoosterTest(string id)
+        /// <summary>
+        /// The player's PartTest of 2026-11-14 (#1048): FLYING over Kerbin, 51,000–56,000 m at 100–260 m/s; the part is the pad craft's
+        /// own Terrier (liquidEngine.v2) for #1029, as the part to test must be aboard.
+        /// </summary>
+        internal static SnapshotContract BoosterTest(string id)
         {
             var contract = Fixture("PartTest.json");
             contract.Guid = id;
             var test = contract.Requirements[0];
-            test.Settings = test.Settings.Select(s => s.Name == "part" ? new ContractSetting("part", "solidBooster.v2") : s).ToList();
+            test.Settings = test.Settings.Select(s => s.Name == "part" ? new ContractSetting("part", "liquidEngine.v2") : s).ToList();
             var values = new Dictionary<string, string> { { "minAlt", "51000" }, { "maxAlt", "56000" }, { "minSpd", "100" }, { "maxSpd", "260" } };
             foreach (var condition in test.Requirements)
                 condition.Settings = condition.Settings.Select(s => values.ContainsKey(s.Name) ? new ContractSetting(s.Name, values[s.Name]) : s).ToList();
@@ -199,7 +202,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.True(check.RouteDeltaV > 1000, "a hop to 51 km is not free: " + check.RouteDeltaV);
             Assert.True(check.RouteDeltaV < Map(snapshot).Leg("launch:Kerbin").DeltaV - 500, "priced " + check.RouteDeltaV + " against the launch to orbit");
             Assert.Equal("hop through 51,000–56,000 m at 100–260 m/s over Kerbin", Assert.Single(check.Legs).Text);
-            Assert.Contains("test solidBooster.v2 through 51,000–56,000 m at 100–260 m/s over Kerbin", check.Choose(new[] { "c-test" }).Section);
+            Assert.Contains("test liquidEngine.v2 through 51,000–56,000 m at 100–260 m/s over Kerbin", check.Choose(new[] { "c-test" }).Section);
         }
 
         [Fact]
@@ -216,16 +219,21 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(LeftOutKind.CraftCant, orbit.Kind);
         }
 
+        /// <summary>
+        /// #1029 (triage of #1048): the launch to orbit passes 51–56 km far faster than 260 m/s, so the orbit Contract's route doesn't meet
+        /// the test: the two don't fly together, and the one left out says how the ascent misses the band.
+        /// </summary>
         [Fact]
-        public void ASetWithTheSuborbitalPartTestAndAnOrbitContractIsPricedToOrbitAsTheOrbitContractAlone()
+        public void AnAscentToOrbitTooFastThroughTheBandDoesNotMeetThePartTestAndSaysWhy()
         {
-            var alone = Check(With(Exploration("c-orbit", 9000, "Kerbin:ORBIT")));
-            var both = Check(With(BoosterTest("c-test"), Exploration("c-orbit", 9000, "Kerbin:ORBIT")));
+            var check = Check(With(BoosterTest("c-test"), Exploration("c-orbit", 9000, "Kerbin:ORBIT")));
 
-            Assert.Equal(2, both.Fitting.Count);
-            Assert.Equal(alone.RouteDeltaV, both.RouteDeltaV, 3);
-            Assert.Equal(0, both.Fitting.Single(r => r.Guid == "c-test").AddedDeltaV, 3);
-            Assert.Equal("reach low Kerbin orbit", Assert.Single(both.Legs).Text);
+            Assert.Single(check.Fitting);
+            check.Tick("c-test", true);
+            check.Tick("c-orbit", true);
+
+            Assert.False(check.SetFits);
+            Assert.Matches(@"^this craft can't: on the ascent: speed [\d,]+ m/s, above the band, through 51–56 km", check.Problem);
         }
 
         [Fact]

@@ -176,6 +176,8 @@ namespace ClaudiaKerman.Core.Contracts
 
         private GameSnapshot _snapshot;
         private ContractRoutes _routes;
+        /// <summary>#1029: where each part test's band is met, on this craft's own flights.</summary>
+        private PartTestJudge _judge;
         private string _home = CraftCheckFlow.HomeBody;
         private readonly List<Planned> _planned = new List<Planned>();
         private readonly HashSet<string> _ticked = new HashSet<string>();
@@ -203,6 +205,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (check.Accepted == 0 || !check.Priceable) return check;
             check.CraftDeltaV = snapshot.Stages.Sum(s => s.DeltaVVac);
             check._routes = new ContractRoutes(snapshot, check.Words, check._home);
+            check._judge = new PartTestJudge(snapshot, check._home);
             check.Read();
             // #1048: with no typed words, a Contract met on a hop below orbit may fit a craft that can't reach orbit.
             check.WordsFit = check.Fits(check._routes.WordsAlone()) || (check.Words.Length == 0 && check._planned.Any(p => p.Requirements.All(r => r.Band != null)));
@@ -216,13 +219,20 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 var read = ContractKinds.Read(contract, _home);
                 var title = Title(contract, read);
+                foreach (var test in read.Where(r => r.Plannable && r.Test != null)) JudgeTest(test);
+                var cant = read.FirstOrDefault(r => r.Plannable && r.Test != null && r.CraftCant.Length > 0 && !r.Requirement.Optional);
+                if (cant != null && read.All(r => r.Plannable || r.Requirement.Optional))
+                {
+                    NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Kind = LeftOutKind.CraftCant, Reason = cant.CraftCant });
+                    continue;
+                }
                 var blocking = read.FirstOrDefault(r => !r.Plannable && !r.Requirement.Optional);
                 if (blocking != null)
                 {
                     NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Kind = LeftOutKind.NotYet, Reason = blocking.NotYet });
                     continue;
                 }
-                var ruledOut = read.Where(r => r.Plannable).Select(r => new { Read = r, Why = CantWith(r) }).Where(r => r.Why != null).ToList();
+                var ruledOut = read.Where(r => r.Plannable).Select(r => new { Read = r, Why = r.CraftCant.Length > 0 ? r.CraftCant : CantWith(r) }).Where(r => r.Why != null).ToList();
                 var must = ruledOut.FirstOrDefault(r => !r.Read.Requirement.Optional);
                 if (must != null)
                 {
@@ -236,6 +246,52 @@ namespace ClaudiaKerman.Core.Contracts
                     Note = skipped.Count == 0 ? "" : "optional Requirement skipped: " + string.Join("; ", skipped.ToArray()),
                 });
             }
+        }
+
+        /// <summary>
+        /// #1029: a part test or haul against this craft: the part must be aboard ("this craft can't: …"); a band some flight of the craft
+        /// passes (a hop straight up, the launch to orbit, the way down) is planned, a chute's only by ADR 0019's group and timing; a band in
+        /// the air none passes needs an aircraft ("not yet"), and any other is "this craft can't: …".
+        /// </summary>
+        private void JudgeTest(ReadRequirement read)
+        {
+            var test = read.Test;
+            test.Chute = _judge.IsChute(test);
+            var missing = _judge.Missing(test);
+            if (missing != null)
+            {
+                read.CraftCant = missing;
+                return;
+            }
+            if (test.Band == null)
+            {
+                test.Window = !test.Haul && read.Return ? TestWindow.Descent : TestWindow.None;
+                return;
+            }
+            string why;
+            var body = SequenceWords.Body(_snapshot, _home);
+            var hopAp = body == null ? (double?)null : test.Band.TargetAp(body);
+            if (_judge.Window(test, hopAp, true, ChuteGroups.MassAfter(_snapshot, CraftDeltaV), out why) != TestWindow.None) return;
+            if (test.Situation == "FLYING" && !test.Chute) read.NotYet = ContractKinds.AircraftNotYet;
+            else read.CraftCant = "this craft can't: " + why;
+        }
+
+        /// <summary>
+        /// #1029: why <paramref name="route"/> doesn't meet a part test of <paramref name="set"/> ("this craft can't: on the ascent: speed
+        /// 1,450 m/s, above the band, through 51–56 km"), with each test's window; null when it meets them all.
+        /// </summary>
+        private string TestProblem(IEnumerable<Planned> set, PricedRoute route, Dictionary<string, TestWindow> windows = null)
+        {
+            foreach (var read in set.SelectMany(p => p.Requirements).Where(r => r.Test != null && r.Test.Band != null))
+            {
+                string why;
+                var orbit = route.HopAp == null && route.LaunchUt.HasValue && _snapshot.IsGrounded;
+                double? down = route.HomeUt.HasValue ? ChuteGroups.MassAfter(_snapshot, route.DeltaV) : (double?)null;
+                var window = _judge.Window(read.Test, route.HopAp, orbit, down, out why);
+                if (window == TestWindow.None) return "this craft can't: " + why;
+                if (windows != null) windows[read.Requirement.Key] = window;
+            }
+            return null;
         }
 
         /// <summary>"can't with your words: ..." when the player's words rule out what the Requirement needs; null when they don't.</summary>
@@ -342,7 +398,7 @@ namespace ClaudiaKerman.Core.Contracts
 
         private bool Works(IList<Planned> set, PricedRoute route)
         {
-            return Fits(route.DeltaV) && Late(set, route) == null;
+            return Fits(route.DeltaV) && Late(set, route) == null && TestProblem(set, route) == null;
         }
 
         // ---- The search ----
@@ -518,9 +574,11 @@ namespace ClaudiaKerman.Core.Contracts
             Reserve = RouteDeltaV * ReservePercent / 100.0;
             Spare = CraftDeltaV - RouteDeltaV - Reserve;
             var late = Late(set, route);
-            SetFits = Fits(route.DeltaV) && late == null;
+            var testProblem = TestProblem(set, route);
+            SetFits = Fits(route.DeltaV) && late == null && testProblem == null;
             Problem = SetFits ? "" : !Fits(route.DeltaV) ? Whole(Short(route.DeltaV)) + " m/s short"
-                : "completes later: " + late.Item1.Title + " done about " + KerbinTime.ShortDate(late.Item2) + ", too near its deadline";
+                : late != null ? "completes later: " + late.Item1.Title + " done about " + KerbinTime.ShortDate(late.Item2) + ", too near its deadline"
+                : testProblem;
             foreach (var planned in _planned)
             {
                 var ticked = _ticked.Contains(planned.Contract.Guid);
@@ -608,7 +666,9 @@ namespace ClaudiaKerman.Core.Contracts
             var with = best.Concat(alone).ToList();
             var together = Route(with);
             var lateTogether = Late(with, together);
-            if (late != null)
+            var testAlone = TestProblem(alone, route);
+            if (testAlone != null) left.Reason = testAlone;
+            else if (late != null)
             {
                 left.Kind = LeftOutKind.CompletesLater;
                 left.Reason = "completes later: done about " + KerbinTime.ShortDate(late.Item2) + ", too near its deadline of " + KerbinTime.ShortDate(planned.Contract.DeadlineUt.Value);
@@ -620,6 +680,7 @@ namespace ClaudiaKerman.Core.Contracts
                 left.Kind = LeftOutKind.CompletesLater;
                 left.Reason = "completes later with the others: done about " + KerbinTime.ShortDate(lateTogether.Item2);
             }
+            else if (Fits(together.DeltaV) && TestProblem(with, together) != null) left.Reason = TestProblem(with, together) + " with the others";
             else left.Reason = "this craft can't: " + Whole(Math.Max(0, Short(together.DeltaV))) + " m/s short with the others";
             return left;
         }
@@ -668,8 +729,10 @@ namespace ClaudiaKerman.Core.Contracts
                 return choice;
             }
             var route = Route(set);
+            var windows = new Dictionary<string, TestWindow>();
+            TestProblem(set, route, windows);
             choice.Requirements = set.SelectMany(p => p.Requirements.Select(r => new ChosenRequirement
-                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return })).ToList();
+                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows) })).ToList();
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
@@ -701,9 +764,26 @@ namespace ClaudiaKerman.Core.Contracts
                 .Concat(_planned.Where(p => !chosen.Contains(p.Contract.Guid) && NotThisFlight.All(l => l.Guid != p.Contract.Guid)).Select(p => MissionPrompts.Quoted(p.Title) + ": the player left it out"))
                 .ToList();
             if (left.Count > 0) text.Append("Not this flight: ").Append(string.Join("; ", left.ToArray())).Append(".\n");
+            if (route.HopAp.HasValue)
+                text.Append("Fly the hop straight up, as it is priced: launch with target_ap ").Append(Math.Round(route.HopAp.Value).ToString(CultureInfo.InvariantCulture))
+                    .Append(" and turn_start_speed 100000.\n");
+            var tests = choice.Requirements.Where(r => r.Test != null && !r.Test.Haul && r.Test.Window != TestWindow.None).ToList();
+            if (tests.Count > 0)
+                text.Append("Part tests: the mod runs each in its block at the moment its conditions hold (")
+                    .Append(string.Join("; ", tests.Select(r => r.Words + " in " + (r.Test.Window == TestWindow.Ascent ? "launch" : "reentry")).ToArray()))
+                    .Append("); never stage for a test.\n");
             text.Append("Plan the Mission to serve every chosen Contract Requirement in the phase given, with the player's words; never add a Contract the player didn't ask for (one they ask for later is added by naming its title in a revised plan's why).\n");
             choice.Section = text.ToString();
             return choice;
+        }
+
+        private static PartTestSpec TestOf(ReadRequirement read, Dictionary<string, TestWindow> windows)
+        {
+            if (read.Test == null) return null;
+            var test = read.Test.Copy();
+            TestWindow window;
+            if (windows.TryGetValue(read.Requirement.Key, out window)) test.Window = window;
+            return test;
         }
 
         private static string Whole(double value)

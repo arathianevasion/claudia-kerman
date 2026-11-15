@@ -20,6 +20,8 @@ namespace ClaudiaKerman.Core.Contracts
         public ContractReach Reach;
         /// <summary>Met only once the craft is home again.</summary>
         public bool Return;
+        /// <summary>#1029: the part test or haul, with the window its test is run in; null for every other kind.</summary>
+        public PartTestSpec Test;
     }
 
     /// <summary>The Contract Route's record of one chosen Requirement: the leg of the Mission Plan that serves it, -1 when none does.</summary>
