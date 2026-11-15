@@ -48,15 +48,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (unmet.Count > 0) open.Add(new KeyValuePair<SnapshotContract, List<ChosenRequirement>>(contract, unmet));
             }
             if (open.Count == 0) return late;
-            var needs = new Dictionary<string, ContractReach>();
-            foreach (var requirement in open.SelectMany(o => o.Value))
-            {
-                ContractReach had;
-                if (!needs.TryGetValue(requirement.Body, out had) || requirement.Reach > had) needs[requirement.Body] = requirement.Reach;
-            }
-            // Like the Contract check, the order that keeps every deadline is preferred over the cheapest one.
-            var route = new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return),
-                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)));
+            var route = RouteOf(snapshot, open, words, home);
             foreach (var one in open)
             {
                 var done = DoneOf(route, one.Value, snapshot, home);
@@ -70,6 +62,31 @@ namespace ClaudiaKerman.Core.Contracts
                 });
             }
             return late;
+        }
+
+        /// <summary>
+        /// #1092: the route the recheck times: the Contract check's own (<see cref="ContractRoutes.Best"/> with the hop bands of the unmet
+        /// Requirements, read from the snapshot's Contracts as the check reads them), so a hop is timed as a hop. A hop the sim can't price
+        /// falls back to the launch to orbit, as in the Contract check.
+        /// </summary>
+        internal static PricedRoute RouteOf(GameSnapshot snapshot, IList<KeyValuePair<SnapshotContract, List<ChosenRequirement>>> open, string words, string home)
+        {
+            var needs = new Dictionary<string, ContractReach>();
+            foreach (var requirement in open.SelectMany(o => o.Value))
+            {
+                ContractReach had;
+                if (!needs.TryGetValue(requirement.Body, out had) || requirement.Reach > had) needs[requirement.Body] = requirement.Reach;
+            }
+            var bands = new List<HopBand>();
+            foreach (var one in open)
+            {
+                var keys = new HashSet<string>(one.Value.Where(r => r.Reach == ContractReach.Hop).Select(r => r.Key));
+                if (keys.Count == 0) continue;
+                bands.AddRange(ContractKinds.Read(one.Key, home).Where(r => r.Band != null && keys.Contains(r.Requirement.Key)).Select(r => r.Band));
+            }
+            // Like the Contract check, the order that keeps every deadline is preferred over the cheapest one.
+            return new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return),
+                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands);
         }
 
         private static double DoneOf(PricedRoute route, IEnumerable<ChosenRequirement> requirements, GameSnapshot snapshot, string home)
