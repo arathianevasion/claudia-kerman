@@ -129,6 +129,21 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(MissionStage.None, mission.View.Stage);
         }
 
+        /// <summary>#1028: the card says when the planners' re-pricing moved the suggestion off the Delta-v Map's best set.</summary>
+        [Fact]
+        public void TheCardCarriesThePlannersRepricingNote()
+        {
+            var mission = Control(ContractSearchTests.DunaOnTheEdge(10283, ContractCheckTests.Exploration("duna", 30000, "Duna:FLYBY"), ContractCheckTests.Exploration("mun", 5000, "Mun:FLYBY")));
+
+            mission.Send(Start(""));
+            Settle();
+
+            var card = mission.View.ContractCheck;
+            Assert.Equal("mun", card.Rows.Single(r => r.Ticked).Guid);
+            Assert.StartsWith("Priced with the planners, the best set by the Delta-v Map came out ", card.SearchNote);
+            Assert.Equal(0, Requests);
+        }
+
         [Fact]
         public void PlanTheseSendsOneStartMissionRequestWithTheContractRouteAndThePlayersWords()
         {

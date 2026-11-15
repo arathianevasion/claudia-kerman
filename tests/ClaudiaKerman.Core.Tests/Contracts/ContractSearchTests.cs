@@ -55,7 +55,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         /// Delta-v Map's (probed 2026-11-14: 5,279 against 5,120 m/s for a Duna flyby and home). The craft is set to fit the flyby on the
         /// Map's figures, with the reserve and 40 m/s over, so the planners' figures leave it short.
         /// </summary>
-        private static GameSnapshot DunaOnTheEdge(uint craftId, params SnapshotContract[] contracts)
+        internal static GameSnapshot DunaOnTheEdge(uint craftId, params SnapshotContract[] contracts)
         {
             var snapshot = With(contracts);
             // Its own craft, so no other test's kept planner answer prices its search (RoutePlanners keeps them by craft).
