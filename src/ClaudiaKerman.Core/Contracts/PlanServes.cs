@@ -23,6 +23,8 @@ namespace ClaudiaKerman.Core.Contracts
         public bool Return;
         /// <summary>#1029: the part test or haul, with the window its test is run in; null for every other kind.</summary>
         public PartTestSpec Test;
+        /// <summary>#1030: the experiment the science block runs for it, "" for any; null when it isn't collect science or a survey.</summary>
+        public string Experiment;
     }
 
     /// <summary>The Contract Route's record of one chosen Requirement: the leg of the Mission Plan that serves it, -1 when none does.</summary>
@@ -46,6 +48,8 @@ namespace ClaudiaKerman.Core.Contracts
     internal sealed class PlanServes
     {
         private static readonly Regex Orbit = new Regex(@"\borbit(?:s|ing|ed)?\b", RegexOptions.IgnoreCase);
+        /// <summary>#1030: a leg that runs the science block.</summary>
+        private static readonly Regex ScienceWords = new Regex(@"\bscience\b|\bexperiments?\b", RegexOptions.IgnoreCase);
         /// <summary>#1029: a leg that hops below orbit over home, as a Contract Route's hop is flown.</summary>
         private static readonly Regex HopWords = new Regex(@"\bhop(?:s|ping)?\b|\bsuborbital\b", RegexOptions.IgnoreCase);
 
@@ -96,12 +100,31 @@ namespace ClaudiaKerman.Core.Contracts
                     ? TestTouch(snapshot, touches, requirement, result.Problems, plan, judge, home)
                     : ServingTouch(touches, requirement, result.Problems, plan);
                 if (by == null) continue;
+                if (requirement.Experiment != null && !RunsScience(touches, by, plan, requirement.Experiment))
+                    result.Problems.Add("\"" + requirement.Title + "\" needs \"" + requirement.Words + "\", but no leg runs the science block there: add a science step to leg "
+                        + (by.Leg + 1) + " \"" + plan.Sequences[by.Leg].Name + "\", or a leg after it before the craft leaves");
                 served.Leg = by.Leg;
                 served.LegName = plan.Sequences[by.Leg].Name;
                 Tag(tags[by.Leg], requirement.Title);
             }
             result.Legs.AddRange(tags.Select(t => t.ToArray()));
             return result;
+        }
+
+        /// <summary>
+        /// #1030: a leg from the one serving it until the craft goes elsewhere says it runs the science block (its words name science, an
+        /// experiment, or the experiment itself), so collect science or a survey waypoint is taken where it is met.
+        /// </summary>
+        private static bool RunsScience(IList<Touch> touches, Touch by, MissionPlan plan, string experiment)
+        {
+            var next = touches.FirstOrDefault(t => t.Order > by.Order && t.Leg > by.Leg && (t.Body != by.Body || t.Home != by.Home));
+            var end = next == null ? plan.Sequences.Count : next.Leg;
+            for (var leg = by.Leg; leg < end; leg++)
+            {
+                var words = plan.Sequences[leg].Name + " " + plan.Sequences[leg].Intent;
+                if (ScienceWords.IsMatch(words) || (experiment.Length > 0 && words.IndexOf(experiment, StringComparison.OrdinalIgnoreCase) >= 0)) return true;
+            }
+            return false;
         }
 
         private static void Tag(List<string> tags, string tag)

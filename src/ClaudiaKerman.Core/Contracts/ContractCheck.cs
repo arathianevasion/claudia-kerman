@@ -243,7 +243,8 @@ namespace ClaudiaKerman.Core.Contracts
                 var read = ContractKinds.Read(contract, _home);
                 var title = Title(contract, read);
                 foreach (var test in read.Where(r => r.Plannable && r.Test != null)) JudgeTest(test);
-                var cant = read.FirstOrDefault(r => r.Plannable && r.Test != null && r.CraftCant.Length > 0 && !r.Requirement.Optional);
+                foreach (var science in read.Where(r => r.Plannable && r.Experiment != null)) JudgeScience(science);
+                var cant = read.FirstOrDefault(r => r.Plannable && r.CraftCant.Length > 0 && !r.Requirement.Optional);
                 if (cant != null && read.All(r => r.Plannable || r.Requirement.Optional))
                 {
                     NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Kind = LeftOutKind.CraftCant, Reason = cant.CraftCant });
@@ -297,6 +298,29 @@ namespace ClaudiaKerman.Core.Contracts
             if (_judge.Window(test, hopAp, true, _judge.DownKg(CraftDeltaV), out why) != TestWindow.None) return;
             if (test.Situation == "FLYING" && !test.Chute) read.CraftCant = "this craft can't: no flight passes " + test.Band.Card();
             else read.CraftCant = "this craft can't: " + why;
+        }
+
+        /// <summary>
+        /// #1030: collect science or a survey against this craft: the science block runs the experiment, so it must be aboard ("this craft
+        /// can't: …"): a crew report needs a kerbal aboard, any experiment (collect science) an experiment part or a kerbal. A space band whose
+        /// ceiling is under the lowest orbit priced round the body is "not yet".
+        /// </summary>
+        private void JudgeScience(ReadRequirement read)
+        {
+            var crewed = _snapshot.Crew.Count > 0;
+            if (read.Experiment.Length == 0)
+            {
+                if (!crewed && _snapshot.Experiments.Count == 0) read.CraftCant = "this craft can't: no science experiment aboard";
+            }
+            else if (read.Experiment == "crewReport")
+            {
+                if (!crewed) read.CraftCant = "this craft can't: a crew report needs a kerbal aboard";
+            }
+            else if (_snapshot.Experiments.All(e => e.ExperimentId != read.Experiment)) read.CraftCant = "this craft can't: no " + read.Experiment + " experiment aboard";
+            var waypoint = read.Waypoint;
+            var body = waypoint == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == waypoint.Body);
+            if (body != null && waypoint.MaxAltitude.HasValue && waypoint.MaxAltitude.Value < DeltaVMap.LowOrbit(body) - body.Radius)
+                read.NotYet = "not yet: the survey's band, below " + Whole(waypoint.MaxAltitude.Value / 1000) + " km, is under the lowest orbit priced round " + ContractKinds.Named(body.Name);
         }
 
         /// <summary>
@@ -354,7 +378,8 @@ namespace ClaudiaKerman.Core.Contracts
         {
             var needs = ContractNeeds(set);
             var home = set.SelectMany(p => p.Requirements).Any(r => r.Return) || (set.Count > 0 && !Remote);
-            return _routes.Best(needs, home, r => Late(set, r) == null, set.SelectMany(p => p.Requirements).Where(r => r.Band != null).Select(r => r.Band));
+            var requirements = set.SelectMany(p => p.Requirements).ToList();
+            return _routes.Best(needs, home, r => Late(set, r) == null, requirements.Where(r => r.Band != null).Select(r => r.Band), requirements.Where(r => r.Waypoint != null).Select(r => r.Waypoint));
         }
 
         private static Dictionary<string, ContractReach> ContractNeeds(IEnumerable<Planned> set)
@@ -751,7 +776,7 @@ namespace ClaudiaKerman.Core.Contracts
             var windows = new Dictionary<string, TestWindow>();
             TestProblem(set, route, windows);
             choice.Requirements = set.SelectMany(p => p.Requirements.Select(r => new ChosenRequirement
-                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows) })).ToList();
+                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment })).ToList();
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
@@ -783,6 +808,12 @@ namespace ClaudiaKerman.Core.Contracts
                 .Concat(_planned.Where(p => !chosen.Contains(p.Contract.Guid) && NotThisFlight.All(l => l.Guid != p.Contract.Guid)).Select(p => MissionPrompts.Quoted(p.Title) + ": the player left it out"))
                 .ToList();
             if (left.Count > 0) text.Append("Not this flight: ").Append(string.Join("; ", left.ToArray())).Append(".\n");
+            if (route.Waypoints.Count > 0)
+                text.Append("Survey waypoints, in the order to take them (by their passes from orbit, by least travel between landing sites): ")
+                    .Append(string.Join("; ", route.Waypoints.Select((w, i) => (i + 1) + ". " + w.Where() + " on " + ContractKinds.Named(w.Body) + (w.Ground ? ", landed" : ", from orbit")).ToArray()))
+                    .Append(". Run the science block with the survey's experiment at each: as the ground track passes over it, or landed at it.\n");
+            if (choice.Requirements.Any(r => r.Experiment == ""))
+                text.Append("Collect science: run the science block in the phase given.\n");
             if (route.HopAp.HasValue)
                 text.Append("Fly the hop straight up, as it is priced: launch with target_ap ").Append(Math.Round(route.HopAp.Value).ToString(CultureInfo.InvariantCulture))
                     .Append(" and turn_start_speed 100000.\n");
