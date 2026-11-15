@@ -98,7 +98,10 @@ namespace ClaudiaKerman.Core.Contracts
             var hop = Hop(needs, hops);
             if (hop != null) return hop;
             var bodies = needs.Keys.Where(b => b != _home).OrderBy(b => b, StringComparer.Ordinal).ToList();
-            var orders = bodies.Count <= MostBodiesToPermute ? Permutations(bodies) : new[] { NearestNext(bodies) };
+            // #1060: bodies the words put in an order keep it; the rest go where they are cheapest. Words that contradict themselves keep no order.
+            var rules = Reading.Precedes.Where(p => bodies.Contains(p.Key) && bodies.Contains(p.Value)).ToList();
+            if (!Orderable(bodies, rules)) rules.Clear();
+            var orders = bodies.Count <= MostBodiesToPermute ? Permutations(bodies).Where(o => Keeps(o, rules)) : new[] { NearestNext(bodies, rules) };
             PricedRoute best = null, bestKept = null;
             foreach (var order in orders)
             {
@@ -278,14 +281,32 @@ namespace ClaudiaKerman.Core.Contracts
             return chain;
         }
 
-        private List<string> NearestNext(List<string> bodies)
+        private static bool Keeps(IList<string> order, IEnumerable<KeyValuePair<string, string>> rules)
+        {
+            return rules.All(r => order.IndexOf(r.Key) < order.IndexOf(r.Value));
+        }
+
+        /// <summary>Whether some order keeps every rule: the rules hold no loop.</summary>
+        private static bool Orderable(List<string> bodies, List<KeyValuePair<string, string>> rules)
+        {
+            var left = bodies.ToList();
+            while (left.Count > 0)
+            {
+                var free = left.FirstOrDefault(b => !rules.Any(r => r.Value == b && left.Contains(r.Key)));
+                if (free == null) return false;
+                left.Remove(free);
+            }
+            return true;
+        }
+
+        private List<string> NearestNext(List<string> bodies, List<KeyValuePair<string, string>> rules)
         {
             var order = new List<string>();
             var left = bodies.ToList();
             var at = Start();
             while (left.Count > 0)
             {
-                var next = left.OrderBy(b => Transfer(at, b)).First();
+                var next = left.Where(b => !rules.Any(r => r.Value == b && left.Contains(r.Key))).OrderBy(b => Transfer(at, b)).First();
                 order.Add(next);
                 left.Remove(next);
                 at = next;

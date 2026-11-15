@@ -21,7 +21,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The limit that holds at every body.</summary>
         public const string Anywhere = "*";
 
-        private static readonly Regex Clause = new Regex(@"[.;:,!?]|\b(?:and|then)\b", RegexOptions.IgnoreCase);
+        private static readonly Regex Clause = new Regex(@"([.;:,!?]|\b(?:and|then|after|before)\b)", RegexOptions.IgnoreCase);
         private static readonly Regex Negated = new Regex(@"\b(?:don['’]?t|do\s+not|never|no|not|without|avoid(?:ing)?|skip(?:ping)?)\b", RegexOptions.IgnoreCase);
         private static readonly Regex Only = new Regex(@"\b(?:only|just|merely)\b", RegexOptions.IgnoreCase);
         private static readonly Regex Orbit = new Regex(@"\borbit(?:s|ing|ed)?\b", RegexOptions.IgnoreCase);
@@ -37,14 +37,39 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The clauses read here, trimmed: the Craft Check's legs for them are priced as needs instead.</summary>
         public readonly HashSet<string> Consumed = new HashSet<string>();
 
+        /// <summary>#1060: the bodies the words put in an order, as (earlier, later) pairs: "then", "before" and "after" order what they join.</summary>
+        public readonly List<KeyValuePair<string, string>> Precedes = new List<KeyValuePair<string, string>>();
+
         public static WordsReading Read(GameSnapshot snapshot, string words, string home)
         {
             var read = new WordsReading();
             var bodies = snapshot.Bodies.Select(b => b.Name).Where(n => n.Length > 0 && n != home).Distinct().ToList();
             string lastBody = null;
-            foreach (var raw in Clause.Split(words ?? ""))
+            List<string> before = new List<string>();
+            var join = 0; // +1 the next clause is after the last one ("then", "before"), -1 it is before it ("after")
+            var pieces = Clause.Split(words ?? "");
+            // The Craft Check's own clauses split at "then" and "and" but not "after" and "before": a clause read in parts is consumed whole.
+            var whole = new System.Text.StringBuilder();
+            var consumedBefore = 0;
+            for (var p = 0; p < pieces.Length; p++)
             {
-                var clause = raw.Trim();
+                var clause = pieces[p].Trim();
+                if (p % 2 == 1)
+                {
+                    var word = clause.ToLowerInvariant();
+                    if (word == "after" || word == "before") whole.Append(pieces[p]);
+                    else
+                    {
+                        if (read.Consumed.Count > consumedBefore) read.Consumed.Add(whole.ToString().Trim());
+                        whole.Clear();
+                        consumedBefore = read.Consumed.Count;
+                    }
+                    if (word == "then" || word == "before") join = 1;
+                    else if (word == "after") join = -1;
+                    else if (word != "and") join = 0;
+                    continue;
+                }
+                whole.Append(pieces[p]);
                 if (clause.Length == 0) continue;
                 var named = bodies.Where(b => Names(clause, b)).ToList();
                 var namesHome = Names(clause, home);
@@ -73,8 +98,12 @@ namespace ClaudiaKerman.Core.Contracts
                 if (named.Count == 0 && !namesHome && lastBody != null && reach != ContractReach.Flyby) named = new List<string> { lastBody };
                 if (named.Count == 0) continue;
                 read.Need(named, reach.Value, clause);
+                if (join != 0) read.Order(before, named, join > 0);
+                join = 0;
+                before = named;
                 lastBody = named[named.Count - 1];
             }
+            if (read.Consumed.Count > consumedBefore) read.Consumed.Add(whole.ToString().Trim());
             return read;
         }
 
@@ -93,6 +122,13 @@ namespace ClaudiaKerman.Core.Contracts
                 Needs[body] = reach;
                 NeedWords[body] = clause;
             }
+        }
+
+        private void Order(IEnumerable<string> last, IEnumerable<string> next, bool nextIsLater)
+        {
+            foreach (var a in last)
+                foreach (var b in next)
+                    if (a != b) Precedes.Add(nextIsLater ? new KeyValuePair<string, string>(a, b) : new KeyValuePair<string, string>(b, a));
         }
 
         private void Limit(IList<string> bodies, ContractReach most, string clause)
