@@ -42,6 +42,10 @@ namespace ClaudiaKerman.Core.Contracts
         public PartTestSpec Test;
         /// <summary>#1029: "this craft can't: …" when the craft can't meet it (the part isn't aboard, the band isn't passed); "" otherwise.</summary>
         public string CraftCant = "";
+        /// <summary>#1030: the experiment the science block runs to meet it, "" for any; null when it isn't collect science or a survey.</summary>
+        public string Experiment;
+        /// <summary>#1030: the survey waypoint it is met at; null for every other kind.</summary>
+        public SurveyWaypoint Waypoint;
 
         public bool Plannable
         {
@@ -54,7 +58,7 @@ namespace ClaudiaKerman.Core.Contracts
     /// exploration (world-first) ones: a ProgressTrackingParameter of an ExplorationContract, by its <c>targetType</c> and
     /// <c>targetBody</c>; and (#1048) the Requirements met on a hop below orbit over the launch body: reaching space, and a part test
     /// FLYING or SUB_ORBITAL in an altitude band, read whole from its PartTest node's conditions. Every other Contract type is "not
-    /// yet" as a whole, and so are depth records (#1091). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
+    /// yet" as a whole, and so are depth records (#1091); collect science and surveys are read by <see cref="ScienceKinds"/> (#1030). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
     /// meets on the way up; a distance record rides the launch to orbit (#1091).
     /// </summary>
     public static class ContractKinds
@@ -150,6 +154,7 @@ namespace ClaudiaKerman.Core.Contracts
         private static ReadRequirement ReadOne(SnapshotContract contract, ContractRequirement requirement, string home)
         {
             var one = new ReadRequirement { Requirement = requirement };
+            if (contract.Kind == ScienceKinds.CollectScience || contract.Kind == ScienceKinds.Survey) return ScienceKinds.Read(one, contract, requirement, home);
             if (contract.Kind != Exploration || requirement.Kind != "ProgressTrackingParameter")
             {
                 one.NotYet = contract.Kind != Exploration ? TypeNotYet(contract.Kind) : "not yet: " + requirement.Kind + " isn't a Contract Requirement Claudia can plan yet";
@@ -284,7 +289,7 @@ namespace ClaudiaKerman.Core.Contracts
             return NotYet(one, situation == "ORBITING" ? TestAwayNotYet : TypeNotYet(PartTest));
         }
 
-        private static ReadRequirement Visit(ReadRequirement one, string body, ContractReach reach, string words, string home)
+        internal static ReadRequirement Visit(ReadRequirement one, string body, ContractReach reach, string words, string home)
         {
             one.Body = body;
             one.Reach = reach;
@@ -294,7 +299,7 @@ namespace ClaudiaKerman.Core.Contracts
         }
 
         /// <summary>The body a part test's <c>body</c> index names in the stock system; null when unknown.</summary>
-        private static string BodyAt(string index)
+        internal static string BodyAt(string index)
         {
             int at;
             return int.TryParse(index, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out at) && at >= 0 && at < StockBodies.Length ? StockBodies[at] : null;
@@ -310,13 +315,13 @@ namespace ClaudiaKerman.Core.Contracts
             return one;
         }
 
-        private static ReadRequirement NotYet(ReadRequirement one, string why)
+        internal static ReadRequirement NotYet(ReadRequirement one, string why)
         {
             one.NotYet = why;
             return one;
         }
 
-        private static double? Number(ContractRequirement requirement, string name)
+        internal static double? Number(ContractRequirement requirement, string name)
         {
             double value;
             return double.TryParse(Setting(requirement, name), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value) ? value : (double?)null;
@@ -333,7 +338,7 @@ namespace ClaudiaKerman.Core.Contracts
             return body == "Mun" ? "the Mun" : body;
         }
 
-        private static string Setting(ContractRequirement requirement, string name)
+        internal static string Setting(ContractRequirement requirement, string name)
         {
             var setting = requirement.Settings.FirstOrDefault(s => s.Name == name);
             return setting == null ? "" : setting.Value.Trim();
