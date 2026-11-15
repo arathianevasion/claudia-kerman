@@ -414,7 +414,7 @@ namespace ClaudiaKerman.KOS
             return answer as Lexicon ?? none;
         }
 
-        /// <summary>The craft for the part test watch: where it is, how fast, and each part a planned test names (the first of each name).</summary>
+        /// <summary>The craft for the part test watch: where it is, how fast, and each part a planned test names (of those sharing a name, one that can run its test now).</summary>
         private static Core.Contracts.TestCraft ReadTestCraft(Vessel vessel)
         {
             var craft = new Core.Contracts.TestCraft
@@ -424,16 +424,20 @@ namespace ClaudiaKerman.KOS
             foreach (var part in vessel.parts)
             {
                 var name = part.partInfo == null ? "" : part.partInfo.name;
-                if (name.Length == 0 || craft.Parts.ContainsKey(name)) continue;
+                if (name.Length == 0) continue;
+                // Of parts sharing a name, the first that can run its test now: another may be spent or still stowed.
+                Core.Contracts.TestPart had;
+                if (craft.Parts.TryGetValue(name, out had) && had.CanRun) continue;
                 var test = part.Modules.GetModule<ModuleTestSubject>();
                 var chute = part.Modules.GetModule<ModuleParachute>();
-                craft.Parts[name] = new Core.Contracts.TestPart
+                var read = new Core.Contracts.TestPart
                 {
                     Uid = part.flightID.ToString(CultureInfo.InvariantCulture),
                     CanRun = test != null && test.Events.Any(e => e.active && e.guiActive && (e.guiName ?? "").IndexOf("Run Test", StringComparison.OrdinalIgnoreCase) >= 0),
                     CanStage = part.inverseStage == vessel.currentStage - 1,
                     ChuteOpen = chute != null && chute.deploymentState != ModuleParachute.deploymentStates.STOWED,
                 };
+                if (had == null || read.CanRun) craft.Parts[name] = read;
             }
             return craft;
         }

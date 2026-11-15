@@ -104,8 +104,7 @@ namespace ClaudiaKerman.Core.Contracts
             double[] armed;
             if (!fall.Item1.Armed.TryGetValue(chute, out armed)) return "the test chute doesn't open on the way down";
             if (test.Band.HoldsAltitude(armed[0]) && test.Band.HoldsSpeed(armed[1])) return null;
-            return "reentry opens the test chute at " + Whole(armed[0]) + " m and " + Whole(armed[1]) + " m/s, outside " + test.Band.Through()
-                + (test.Band.MinSpeed.HasValue || test.Band.MaxSpeed.HasValue ? " at " + test.Band.Words("").Split(new[] { " at " }, StringSplitOptions.None).Last().Replace(" over ", "") : "");
+            return "reentry opens the test chute at " + Whole(armed[0]) + " m and " + Whole(armed[1]) + " m/s, outside " + test.Band.Through() + test.Band.AtSpeed();
         }
 
         private static string Prefix(string prefix, string miss)

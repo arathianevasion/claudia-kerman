@@ -89,6 +89,17 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AnOpenChuteOfferingNoRunTestIsTheGapNotAShutChute()
+        {
+            var watch = new PartTestWatch(new[] { Booster(TestWindow.Descent, true) }, "Kerbin");
+
+            watch.Tick("reentry", At(10000, 240, false, false, true, "FLYING", "parachuteSingle"));
+            watch.Tick("reentry", At(7000, 200, false, false, true, "FLYING", "parachuteSingle"));
+
+            Assert.Equal("the part had no Run Test and wasn't the next stage through 8–12 km", watch.Gap("c-test/0"));
+        }
+
+        [Fact]
         public void ATestHomeAfterSplashdownRunsOnceTheCraftIsSplashed()
         {
             var splash = Booster(TestWindow.Descent);

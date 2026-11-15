@@ -887,6 +887,13 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.Contains(_check.Check(block).Forbidden, f => f.EndsWith(":ORBITBURN (call block-internal calculations)"));
         }
 
+        /// <summary>#1029: PARTTEST is the Core Library's (launch and reentry, from claudia_tick): a Mission Script can't time a part test itself.</summary>
+        [Fact]
+        public void AMissionScriptCannotAskForAPartTest()
+        {
+            Assert.Contains(_check.Check("local pt is addons:claudia:parttest(\"launch\").\nprint pt.\n").Forbidden, f => f.EndsWith(":PARTTEST (call block-internal calculations)"));
+        }
+
         [Fact]
         public void DockFileAlonePassesOnlyAsCoreLibrary()
         {

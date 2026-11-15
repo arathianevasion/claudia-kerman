@@ -30,7 +30,7 @@ namespace ClaudiaKerman.Core.Contracts
         public double Speed;
         /// <summary>The game's situation: FLYING, SUB_ORBITAL, LANDED, SPLASHED, ...</summary>
         public string Situation = "";
-        /// <summary>The parts tested that are aboard, by part name (the first of each name).</summary>
+        /// <summary>The parts tested that are aboard, by part name (of those sharing a name, one that can run its test now).</summary>
         public Dictionary<string, TestPart> Parts = new Dictionary<string, TestPart>();
     }
 
@@ -132,7 +132,7 @@ namespace ClaudiaKerman.Core.Contracts
                 {
                     pass.Lowest = Math.Min(pass.Lowest, craft.Speed);
                     pass.Highest = Math.Max(pass.Highest, craft.Speed);
-                    if (holds && test.Chute) pass.ChuteShut = true;
+                    if (holds && test.Chute && !part.ChuteOpen) pass.ChuteShut = true;
                     else if (holds) pass.CantAct = true;
                 }
             }
