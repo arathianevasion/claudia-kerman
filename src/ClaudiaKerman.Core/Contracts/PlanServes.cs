@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -45,6 +46,8 @@ namespace ClaudiaKerman.Core.Contracts
     internal sealed class PlanServes
     {
         private static readonly Regex Orbit = new Regex(@"\borbit(?:s|ing|ed)?\b", RegexOptions.IgnoreCase);
+        /// <summary>#1029: a leg that hops below orbit over home, as a Contract Route's hop is flown.</summary>
+        private static readonly Regex HopWords = new Regex(@"\bhop(?:s|ping)?\b|\bsuborbital\b", RegexOptions.IgnoreCase);
 
         /// <summary>What Claudia must fix, one finding per Requirement left unserved or unmeetable; empty when the plan covers them all.</summary>
         public readonly List<string> Problems = new List<string>();
@@ -61,6 +64,8 @@ namespace ClaudiaKerman.Core.Contracts
             public ContractReach Reach;
             /// <summary>The craft comes home at this touch (Body is home).</summary>
             public bool Home;
+            /// <summary>#1029: a hop below orbit over home: up through the air and back down.</summary>
+            public bool Hop;
         }
 
         /// <param name="from">#1025: the first leg that may serve a Requirement; the legs before it are walked only for where the craft is.</param>
@@ -70,6 +75,7 @@ namespace ClaudiaKerman.Core.Contracts
             var touches = Read(snapshot, plan, home).Where(t => t.Leg >= from).ToList();
             var tags = plan.Sequences.Select(_ => new List<string>()).ToList();
             var reading = WordsReading.Read(snapshot, words, home);
+            var judge = new PartTestJudge(snapshot, home);
             foreach (var need in reading.Needs)
             {
                 var leg = touches.FirstOrDefault(t => !t.Home && t.Body == need.Key && t.Reach >= need.Value);
@@ -84,7 +90,9 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 var served = new ServedRequirement { Key = requirement.Key, Title = requirement.Title, Words = requirement.Words };
                 result.Record.Add(served);
-                var by = ServingTouch(touches, requirement, result.Problems, plan);
+                var by = requirement.Test != null && requirement.Test.Band != null && requirement.Test.Window != TestWindow.None
+                    ? TestTouch(snapshot, touches, requirement, result.Problems, plan, judge, home)
+                    : ServingTouch(touches, requirement, result.Problems, plan);
                 if (by == null) continue;
                 served.Leg = by.Leg;
                 served.LegName = plan.Sequences[by.Leg].Name;
@@ -119,6 +127,34 @@ namespace ClaudiaKerman.Core.Contracts
             return back;
         }
 
+        /// <summary>
+        /// #1029: the leg whose flight runs a part test, its band judged there as pricing judges it (<see cref="PartTestJudge"/>): the launch
+        /// (a hop's straight up, any other's to orbit) for one on the ascent; the way down home (the return, or a hop's fall) for one on the
+        /// descent. A leg that misses the band is a finding with the figures; the leg is still the one that serves it.
+        /// </summary>
+        private static Touch TestTouch(GameSnapshot snapshot, IList<Touch> touches, ChosenRequirement requirement, List<string> problems, MissionPlan plan, PartTestJudge judge, string home)
+        {
+            var test = requirement.Test;
+            var what = "\"" + requirement.Title + "\" needs \"" + requirement.Words + "\"";
+            var ascent = test.Window == TestWindow.Ascent;
+            var by = ascent ? touches.FirstOrDefault(t => !t.Home && t.Body == home) : touches.FirstOrDefault(t => t.Home) ?? touches.FirstOrDefault(t => t.Hop);
+            if (by == null)
+            {
+                problems.Add(what + (ascent ? ", and no leg of the plan launches through it: add the launch" : ", and no leg brings the craft down home through it: add the return to " + home));
+                return null;
+            }
+            string why;
+            var body = SequenceWords.Body(snapshot, home);
+            var window = ascent
+                ? judge.Window(test, by.Hop && body != null ? test.Band.TargetAp(body) : (double?)null, !by.Hop, null, out why)
+                : judge.Window(test, null, false, judge.DownKg(0), out why);
+            if (window == TestWindow.None)
+                problems.Add(what + ", but leg " + (by.Leg + 1) + " \"" + plan.Sequences[by.Leg].Name + "\" misses it: " + why
+                    + (ascent && body != null ? ": fly it as a hop straight up to the band (launch with target_ap " + Math.Round(test.Band.TargetAp(body)).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + " and turn_start_speed 100000), or drop the Contract" : ""));
+            return by;
+        }
+
         private static string Does(ContractReach reach)
         {
             return reach == ContractReach.Flyby ? "flies by" : reach == ContractReach.Orbit ? "orbits" : "lands on";
@@ -148,6 +184,12 @@ namespace ClaudiaKerman.Core.Contracts
                 var goesHome = trips && target != null && target.Name == home && at != null && at.Name != home;
                 var add = new System.Action<string, ContractReach, bool>((body, reach, back) =>
                     touches.Add(new Touch { Leg = i, Order = touches.Count, Body = body, Reach = reach, Home = back }));
+                if (HopWords.IsMatch(sequence.Name + " " + words) && !captures && at != null && at.Name == home)
+                {
+                    // #1029: up through the air over home and back down; it goes nowhere else.
+                    touches.Add(new Touch { Leg = i, Order = touches.Count, Body = home, Reach = ContractReach.Hop, Hop = true });
+                    continue;
+                }
                 if (goesHome && landing && SequenceWords.Landing.Match(words).Index < SequenceWords.Trip.Match(words).Index)
                 {
                     // "Land on the Mun and return to Kerbin": down there first, then home.
