@@ -48,6 +48,55 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains(check.NotThisFlight, l => l.Guid == "eeloo-land" && l.Kind == LeftOutKind.CraftCant);
         }
 
+        /// <summary>Twelve groups, each a different set of bodies and reaches, all in Kerbin's system; every one fits alone.</summary>
+        private static SnapshotContract[] TwelveGroups(double munLandFunds, double minmusLandFunds)
+        {
+            return new[]
+            {
+                Exploration("mun-land", munLandFunds, "Mun:LANDING"), Exploration("min-land", minmusLandFunds, "Minmus:LANDING"),
+                Exploration("mun-fly", 1, "Mun:FLYBY"), Exploration("mun-orbit", 1, "Mun:ORBIT"), Exploration("min-fly", 1, "Minmus:FLYBY"),
+                Exploration("min-orbit", 1, "Minmus:ORBIT"), Exploration("kerbin", 1, "Kerbin:ORBIT"), Exploration("both-fly", 1, "Mun:FLYBY", "Minmus:FLYBY"),
+                Exploration("both-orbit", 1, "Mun:ORBIT", "Minmus:ORBIT"), Exploration("mun-o-min-f", 1, "Mun:ORBIT", "Minmus:FLYBY"),
+                Exploration("mun-f-min-o", 1, "Mun:FLYBY", "Minmus:ORBIT"), Exploration("kerbin-mun", 1, "Kerbin:ORBIT", "Mun:FLYBY"),
+            };
+        }
+
+        [Fact]
+        public void AboveTenGroupsTheGroupWithTheMostRewardPerExtraMetrePerSecondGoesInFirst()
+        {
+            // What each landing adds to the launch alone, on the Map.
+            var launch = Check(Exploration("k", 1, "Kerbin:ORBIT")).RouteDeltaV;
+            var mun = Check(Exploration("m", 1, "Mun:LANDING")).RouteDeltaV - launch;
+            var minmus = Check(Exploration("n", 1, "Minmus:LANDING")).RouteDeltaV - launch;
+            Assert.True(mun > minmus * 1.1, "the Mun landing adds " + mun + " m/s, Minmus's " + minmus);
+            // The Mun landing pays more, the Minmus landing more per m/s; a craft with room for one landing only.
+            var munFunds = 30000.0;
+            var minmusFunds = munFunds * minmus / mun * 1.05;
+            var snapshot = With(TwelveGroups(munFunds, minmusFunds));
+            var both = Check(Exploration("m", 1, "Mun:LANDING"), Exploration("n", 1, "Minmus:LANDING")).RouteDeltaV;
+            var scale = both * (1 + Margin / 100.0) * 0.97 / snapshot.Stages.Sum(s => s.DeltaVVac);
+            foreach (var stage in snapshot.Stages) stage.DeltaVVac *= scale;
+
+            var clock = Stopwatch.StartNew();
+            var check = ContractCheck.Work(snapshot, "", false, Margin);
+            clock.Stop();
+
+            Assert.True(clock.Elapsed < ContractCheck.SearchBudget, "took " + clock.Elapsed);
+            Assert.True(check.SetFits);
+            Assert.Contains(check.Fitting, r => r.Guid == "min-land" && r.Ticked);
+            Assert.DoesNotContain(check.Fitting, r => r.Guid == "mun-land" && r.Ticked);
+            Assert.Equal(12, check.Fitting.Count + check.NotThisFlight.Count);
+        }
+
+        [Fact]
+        public void AboveTenGroupsWithRoomForAllEveryGroupIsSuggested()
+        {
+            var check = Check(TwelveGroups(30000, 20000));
+
+            Assert.Equal(12, check.Fitting.Count(r => r.Ticked));
+            Assert.True(check.SetFits);
+        }
+
         // ---- The winning set re-priced with the planners ----
 
         /// <summary>
