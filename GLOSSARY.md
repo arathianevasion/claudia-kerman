@@ -36,6 +36,18 @@ _Avoid_: contract parameter, objective, criterion
 The mod's ordering of the chosen Contracts' Contract Requirements against the phases of one Mission, from which Claudia writes the Mission Plan.
 _Avoid_: contract plan, itinerary
 
+**Band**:
+The altitude range, and speed range where the Contract gives one, within which a Contract Requirement is met, e.g. a part test at 51–56 km and 100–260 m/s.
+_Avoid_: envelope, window (a Transfer Window is a time)
+
+**Hop**:
+A suborbital flight from the launch body up to a Band and back down, without reaching orbit. A Contract Requirement met on a Hop is priced as one; on a Mission that also goes to orbit, it is met on the way up.
+_Avoid_: suborbital flight, sounding flight
+
+**Haul**:
+A part-test Contract Requirement that asks for the part to be carried to a place or situation, not run there.
+_Avoid_: transport test, delivery
+
 **Mission Settings**:
 The player's choices for how Claudia meets a Mission Goal (e.g. daylight landing, time versus delta-v, physics warp on Coasts), set when the Mission starts and editable later; changing one makes Claudia revise the Mission Plan.
 _Avoid_: mission parameters, options (which are Building Block settings)
