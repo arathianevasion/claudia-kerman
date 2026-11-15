@@ -91,7 +91,13 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Timing.Within(50, () => { check.Tick("mun", false); check.Tick("mun", true); }, 7);
             Timing.Within(50, () => check.Tick("duna", false), 7);
             Timing.Within(50, () => check.Tick("duna", true), 7);
-            Assert.Equal(1, check.Searches);
+            // Back to the suggested set: the Contracts left out are offered a swap, and applying one re-prices just as fast.
+            var fresh = ContractCheck.Work(snapshot, "", false, Margin);
+            var offered = fresh.NotThisFlight.Where(l => l.Swap != null).ToList();
+            Assert.NotEmpty(offered);
+            var swap = offered[0].Swap;
+            Timing.Within(50, () => { fresh.SwapIn(swap.Guid); Assert.Contains(fresh.TickedGuids, g => g == swap.Guid); fresh.SwapIn(swap.Drop[0]); }, 7);
+            Assert.Equal(1, fresh.Searches);
         }
 
         /// <summary>Twelve groups, each a different set of bodies and reaches, all in Kerbin's system; every one fits alone.</summary>
