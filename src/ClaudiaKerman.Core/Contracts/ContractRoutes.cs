@@ -140,7 +140,8 @@ namespace ClaudiaKerman.Core.Contracts
         {
             get
             {
-                var rules = Reading.Precedes.ToList();
+                // As Best reads them: a rule naming the home body orders no leg of the route.
+                var rules = Reading.Precedes.Where(p => p.Key != _home && p.Value != _home).ToList();
                 return rules.Count > 0 && !Orderable(rules.SelectMany(r => new[] { r.Key, r.Value }).Distinct().ToList(), rules);
             }
         }
