@@ -604,7 +604,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// One line of figures for the per-turn text of a Mission Plan request: "launch:Kerbin 3,418; transfer:Mun 1,170 (capture 310); ...".
         /// "" when the goal names no body, so other Missions' requests are unchanged. Polar legs and home's landing are left out, and a
-        /// capture stands alone only where no transfer in the line holds it.
+        /// capture stands alone only where no transfer in the line holds it. With the craft's <paramref name="snapshot"/> away from home (#1002), the line
+        /// starts where it is, at the figures <see cref="ToText(IList{SnapshotBody}, GameSnapshot, WindowRow)"/> gives the Craft Check; at home it is as before.
         /// </summary>
         public string CompactLine(IList<SnapshotBody> named, GameSnapshot snapshot = null)
         {
