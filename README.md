@@ -86,7 +86,7 @@ While Claudia's programs run, runtime gates block the most harmful calls. Your o
 - Your own **Anthropic API key**.
 - The stock delta-v calculations turned on. The Craft Check stops and asks if they are off.
 
-Sandbox, Science and Career all work.
+Sandbox, Science and Career all work. In Career, Claudia reads your accepted Contracts and suggests the ones your craft can complete on the Mission.
 
 ## API key and cost
 
