@@ -45,8 +45,11 @@ namespace ClaudiaKerman.Core.Contracts
             var read = new WordsReading();
             var bodies = snapshot.Bodies.Select(b => b.Name).Where(n => n.Length > 0 && n != home).Distinct().ToList();
             string lastBody = null;
-            List<string> before = new List<string>();
-            var join = 0; // +1 the next clause is after the last one ("then", "before"), -1 it is before it ("after")
+            // #1060: the bodies of the clauses joined so far ("orbit the Mun and orbit Minmus"), and of the group before it.
+            var group = new List<string>();
+            var previous = new List<string>();
+            var join = 0; // +1 the next clause is after the group before it ("then", "before"), -1 it is before it ("after")
+            var leading = 0; // "After orbiting Minmus, land on the Mun": the first group is before (+1) or after (-1) the next
             var pieces = Clause.Split(words ?? "");
             // The Craft Check's own clauses split at "then" and "and" but not "after" and "before": a clause read in parts is consumed whole.
             var whole = new System.Text.StringBuilder();
@@ -64,9 +67,22 @@ namespace ClaudiaKerman.Core.Contracts
                         whole.Clear();
                         consumedBefore = read.Consumed.Count;
                     }
-                    if (word == "then" || word == "before") join = 1;
-                    else if (word == "after") join = -1;
-                    else if (word != "and") join = 0;
+                    var connective = word == "then" || word == "before" || word == "after";
+                    if ((connective || word.Length == 1 && ".;!?".Contains(word)) || leading != 0)
+                    {
+                        // A group ends at a connective, at the end of a sentence, and after a leading "after"/"before" clause.
+                        if (group.Count > 0)
+                        {
+                            previous = group;
+                            group = new List<string>();
+                            if (leading != 0) { if (!connective) join = leading; leading = 0; }
+                        }
+                    }
+                    if (connective)
+                    {
+                        if (previous.Count == 0 && group.Count == 0) leading = word == "after" ? 1 : word == "before" ? -1 : 0;
+                        else join = word == "after" ? -1 : 1;
+                    }
                     continue;
                 }
                 whole.Append(pieces[p]);
@@ -98,9 +114,9 @@ namespace ClaudiaKerman.Core.Contracts
                 if (named.Count == 0 && !namesHome && lastBody != null && reach != ContractReach.Flyby) named = new List<string> { lastBody };
                 if (named.Count == 0) continue;
                 read.Need(named, reach.Value, clause);
-                if (join != 0) read.Order(before, named, join > 0);
+                if (join != 0) read.Order(previous, named, join > 0);
                 join = 0;
-                before = named;
+                group.AddRange(named);
                 lastBody = named[named.Count - 1];
             }
             if (read.Consumed.Count > consumedBefore) read.Consumed.Add(whole.ToString().Trim());

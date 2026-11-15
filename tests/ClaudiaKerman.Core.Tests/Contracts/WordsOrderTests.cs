@@ -45,6 +45,23 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void ALeadingConnectiveOrdersTheClausesAfterIt()
+        {
+            Assert.Equal(new[] { "Minmus", "Mun" }, Route("After orbiting Minmus, land on the Mun").Order);
+            Assert.Equal(new[] { "Minmus", "Mun" }, Route("Before landing on the Mun, orbit Minmus").Order);
+            Assert.Equal(new[] { "Minmus", "Mun" }, Route("orbit Minmus then, land on the Mun").Order);
+        }
+
+        [Fact]
+        public void ABodyJoinedWithAndIsOrderedWithItsGroup()
+        {
+            var contract = new Dictionary<string, ContractReach> { { "Duna", ContractReach.Flyby } };
+            var order = new ContractRoutes(Pad(), "orbit the Mun and orbit Minmus then fly by Duna", "Kerbin").Best(contract, true, r => true).Order;
+
+            Assert.Equal("Duna", order[2]);
+        }
+
+        [Fact]
         public void BeforeKeepsTheOrder()
         {
             Assert.Equal(new[] { "Minmus", "Mun" }, Route("orbit Minmus before landing on the Mun").Order);
