@@ -411,6 +411,23 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public string ToText(IList<SnapshotBody> named, GameSnapshot snapshot = null, WindowRow window = null)
         {
+            var text = new StringBuilder();
+            foreach (var row in Priced(named, snapshot, window)) text.Append(row.Text);
+            return text.ToString();
+        }
+
+        /// <summary>One priced line of <see cref="ToText(IList{SnapshotBody}, GameSnapshot, WindowRow)"/>: its leg, figure, the capture in it and its text.</summary>
+        private sealed class PricedLeg
+        {
+            public DeltaVLeg Leg;
+            public double Figure;
+            public double Arrival;
+            public string Text;
+        }
+
+        /// <summary>The lines of <see cref="ToText(IList{SnapshotBody}, GameSnapshot, WindowRow)"/> with the figures they were priced at.</summary>
+        private List<PricedLeg> Priced(IList<SnapshotBody> named, GameSnapshot snapshot, WindowRow window)
+        {
             var start = RoutePlanners.Start(snapshot);
             // Round the star (between planets) or escaping, the trips are priced as before.
             var away = RoutePlanners.Away(snapshot, Home) != null;
@@ -431,7 +448,7 @@ namespace ClaudiaKerman.Core.Missions
                 if (row != null && legs.Any(l => row.Budgets(l.Id))) window = row;
             }
             var windowLeg = window == null || away ? null : legs.FirstOrDefault(l => window.Budgets(l.Id));
-            var text = new StringBuilder();
+            var rows = new List<PricedLeg>();
             // Spent before the first landing: the launch (or the start's rows) and the trips in, the last hop to a named body included.
             var goal = new HashSet<string>(named.Select(b => b.Name));
             double used = planned.Keys.Sum(l => l.DeltaV) + legs.Where(l => !planned.ContainsKey(l) && (l.Id == "launch:" + Home || (l.Id.StartsWith("transfer:", StringComparison.Ordinal)
@@ -459,6 +476,7 @@ namespace ClaudiaKerman.Core.Missions
                     figure = window.TotalDv - leg.HighSaving;
                     note = " (plan_transfer, " + window.Kind + " pick)";
                 }
+                var text = new StringBuilder();
                 text.Append("- ").Append(leg.Id).Append(": ").Append(leg.Description).Append(": ").Append(Whole(figure)).Append(" m/s").Append(note);
                 if (leg.PlaneChange > 0 && leg != windowLeg)
                     text.Append(" (carries a plane change of ").Append(Whole(leg.PlaneChange)).Append(" m/s)");
@@ -466,12 +484,13 @@ namespace ClaudiaKerman.Core.Missions
                 if (leg.Id.StartsWith("transfer:", StringComparison.Ordinal) && arrival > 0)
                     text.Append(" (includes the capture, ").Append(Whole(arrival)).Append(" m/s)");
                 text.Append('\n');
+                rows.Add(new PricedLeg { Leg = leg, Figure = figure, Arrival = arrival, Text = text.ToString() });
                 if (IsSurface(leg) && leg.Bodies[0] != Home && !fixedRow) used += figure;
             }
             // A trip the Map has no leg for (between two bodies it doesn't start from): the window's own line.
             if (window != null && windowLeg == null && !windowUsed)
-                text.Append("- transfer:").Append(window.From).Append('>').Append(window.Body).Append(": the player's ").Append(window.Kind.ToString()).Append(" window: ").Append(Whole(window.TotalDv)).Append(" m/s\n");
-            return text.ToString();
+                rows.Add(new PricedLeg { Text = "- transfer:" + window.From + ">" + window.Body + ": the player's " + window.Kind + " window: " + Whole(window.TotalDv) + " m/s\n" });
+            return rows;
         }
 
         /// <summary>
@@ -587,11 +606,25 @@ namespace ClaudiaKerman.Core.Missions
         /// "" when the goal names no body, so other Missions' requests are unchanged. Polar legs and home's landing are left out, and a
         /// capture stands alone only where no transfer in the line holds it.
         /// </summary>
-        public string CompactLine(IList<SnapshotBody> named)
+        public string CompactLine(IList<SnapshotBody> named, GameSnapshot snapshot = null)
         {
             if (named.Count == 0) return "";
-            var legs = LegsFor(named).Where(l => !IsPolar(l) && l.Id != "land:" + Home).ToList();
             var parts = new List<string>();
+            // #1002: a craft away from home starts where it is, at the figures the Craft Check priced (#998).
+            if (snapshot != null && RoutePlanners.Away(snapshot, Home) != null)
+            {
+                var priced = Priced(named, snapshot, null).Where(r => r.Leg != null && !IsPolar(r.Leg) && r.Leg.Id != "land:" + Home).ToList();
+                var all = priced.Select(r => r.Leg).ToList();
+                foreach (var row in priced)
+                {
+                    if (HeldByTrip(all, row.Leg)) continue;
+                    var text = row.Leg.Id + " " + Whole(row.Figure);
+                    if (row.Leg.Id.StartsWith("transfer:", StringComparison.Ordinal) && row.Arrival > 0) text += " (capture " + Whole(row.Arrival) + ")";
+                    parts.Add(text);
+                }
+                return string.Join("; ", parts.ToArray());
+            }
+            var legs = LegsFor(named).Where(l => !IsPolar(l) && l.Id != "land:" + Home).ToList();
             foreach (var leg in legs)
             {
                 if (HeldByTrip(legs, leg)) continue;
