@@ -176,6 +176,8 @@ namespace ClaudiaKerman.Core.Contracts
         private string _home = CraftCheckFlow.HomeBody;
         private readonly List<Planned> _planned = new List<Planned>();
         private readonly HashSet<string> _ticked = new HashSet<string>();
+        /// <summary>#1028: the Contracts of a set the planners priced short, with the shortfall, m/s: the first such set each was in.</summary>
+        private readonly Dictionary<Planned, double> _plannersShort = new Dictionary<Planned, double>();
 
         /// <summary>A plannable Contract and what it needs.</summary>
         private sealed class Planned
@@ -361,6 +363,7 @@ namespace ClaudiaKerman.Core.Contracts
                     break;
                 }
                 shorts.Add(Short(planned));
+                foreach (var one in set.Where(p => !_plannersShort.ContainsKey(p))) _plannersShort[one] = Short(planned);
             }
             if (shorts.Count > 0)
                 SearchNote = best.Count > 0
@@ -608,6 +611,7 @@ namespace ClaudiaKerman.Core.Contracts
                 left.Reason = "completes later: done about " + KerbinTime.ShortDate(late.Item2) + ", too near its deadline of " + KerbinTime.ShortDate(planned.Contract.DeadlineUt.Value);
             }
             else if (!Fits(route.DeltaV)) left.Reason = "this craft can't: " + Whole(Short(route.DeltaV)) + " m/s short";
+            else if (_plannersShort.ContainsKey(planned)) left.Reason = "this craft can't: " + Whole(_plannersShort[planned]) + " m/s short priced with the planners";
             else if (Fits(together.DeltaV) && lateTogether != null)
             {
                 left.Kind = LeftOutKind.CompletesLater;
