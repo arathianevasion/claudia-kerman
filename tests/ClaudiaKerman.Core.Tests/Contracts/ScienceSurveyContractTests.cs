@@ -316,5 +316,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("c-s", Assert.Single(late).Guid);
             Assert.True(Assert.Single(late).DoneUt > snapshot.Ut + 29000 + 69000, "done " + (Assert.Single(late).DoneUt - snapshot.Ut));
         }
+    
+
+        [Fact]
+        public void ARaiseToAHighBandServesALowBandWhoseCeilingIsAboveIt()
+        {
+            // Low Mun orbit is 14 km up. Above 20 km is a raise to 22 km (two burns, 214 to 222 km from the centre: 10.0 m/s); below
+            // 30 km is met there too, so no way back down. The 3 degree turn is 28.9 m/s, as before.
+            var snapshot = ContractCheckTests.With(Survey("c-high", "2", "HIGH", "crewReport", 20000, "3,10"), Survey("c-low", "2", "LOW", "crewReport", 30000, "3,20"));
+
+            var check = Check(snapshot);
+
+            Assert.Equal(2, check.Fitting.Count);
+            Assert.InRange(check.RouteDeltaV - OrbitOfTheMun(), 28.9 + 10.0 - 0.5, 28.9 + 10.0 + 0.5);
+        }
     }
 }

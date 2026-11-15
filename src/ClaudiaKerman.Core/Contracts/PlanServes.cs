@@ -48,9 +48,9 @@ namespace ClaudiaKerman.Core.Contracts
     internal sealed class PlanServes
     {
         private static readonly Regex Orbit = new Regex(@"\borbit(?:s|ing|ed)?\b", RegexOptions.IgnoreCase);
-        /// <summary>#1029: a leg that hops below orbit over home, as a Contract Route's hop is flown.</summary>
         /// <summary>#1030: a leg that runs the science block.</summary>
         private static readonly Regex ScienceWords = new Regex(@"\bscience\b|\bexperiments?\b", RegexOptions.IgnoreCase);
+        /// <summary>#1029: a leg that hops below orbit over home, as a Contract Route's hop is flown.</summary>
         private static readonly Regex HopWords = new Regex(@"\bhop(?:s|ping)?\b|\bsuborbital\b", RegexOptions.IgnoreCase);
 
         /// <summary>What Claudia must fix, one finding per Requirement left unserved or unmeetable; empty when the plan covers them all.</summary>

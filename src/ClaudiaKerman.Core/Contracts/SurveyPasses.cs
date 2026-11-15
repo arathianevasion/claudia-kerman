@@ -57,9 +57,10 @@ namespace ClaudiaKerman.Core.Contracts
             var floor = waypoints.Where(w => w.MinAltitude.HasValue).Select(w => w.MinAltitude.Value).DefaultIfEmpty(0).Max();
             if (body.Radius + floor >= low)
             {
-                var raise = Hohmann(body.Gm, low, body.Radius + floor * AboveFloor);
-                // A low band as well: down again for it.
-                leg.DeltaV += waypoints.Any(w => w.MaxAltitude.HasValue) ? 2 * raise : raise;
+                var raised = floor * AboveFloor;
+                var raise = Hohmann(body.Gm, low, body.Radius + raised);
+                // A low band whose ceiling is under the raised orbit as well: down again for it.
+                leg.DeltaV += waypoints.Any(w => w.MaxAltitude.HasValue && w.MaxAltitude.Value < raised) ? 2 * raise : raise;
             }
             var turnSeconds = body.RotationPeriod > 0 ? body.RotationPeriod : 0;
             var east = waypoints.OrderByDescending(w => East(w.Longitude)).ThenBy(w => w.Key, StringComparer.Ordinal).ToList();
