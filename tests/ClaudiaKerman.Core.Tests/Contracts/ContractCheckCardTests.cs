@@ -335,6 +335,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Send(new TickContract("c-land", false));
 
             var card = mission.View.ContractCheck;
+            Assert.True(card.RouteIsEstimate);
+            Assert.Contains("(estimate)", card.Headline);
             Assert.False(card.Rows.Single(r => r.Guid == "c-land").Ticked);
             Assert.True(card.RouteDeltaV <= both);
             Assert.StartsWith("1 of 3 Contracts · route ", card.Headline);

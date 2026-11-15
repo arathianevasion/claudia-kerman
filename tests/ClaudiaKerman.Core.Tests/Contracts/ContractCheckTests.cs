@@ -447,6 +447,23 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void TheSuggestedSetCarriesNoEstimateMarkAndAnyEditMarksTheRouteTotalAnEstimate()
+        {
+            var check = Check(With(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("minmus", 20000, "Minmus:ORBIT")));
+            Assert.False(check.RouteIsEstimate);
+            Assert.DoesNotContain("estimate", check.Headline(2));
+
+            check.Tick("mun", false);
+            Assert.True(check.RouteIsEstimate);
+            Assert.Contains("route ≈ ", check.Headline(1));
+            Assert.Contains(" m/s (estimate) of ", check.Headline(1));
+
+            check.Tick("mun", true);
+            Assert.True(check.RouteIsEstimate);
+            Assert.Equal(1, check.Searches);
+        }
+
+        [Fact]
         public void TickingAnUntickedContractAddsItsDeltaVBack()
         {
             var snapshot = With(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("minmus", 20000, "Minmus:ORBIT"));
@@ -486,8 +503,10 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(new[] { "minmus" }, swap.Drop);
             Assert.Contains("Mun", swap.Label);
 
+            Assert.False(check.RouteIsEstimate);
             check.SwapIn("mun");
 
+            Assert.True(check.RouteIsEstimate);
             Assert.True(check.SetFits);
             Assert.False(check.Fitting.Single().Ticked);
             Assert.True(check.NotThisFlight.Single().Ticked);
