@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System.Linq;
 using ClaudiaKerman.Core.Contracts;
 using Xunit;
 using static ClaudiaKerman.Core.Tests.Contracts.ContractCheckTests;
