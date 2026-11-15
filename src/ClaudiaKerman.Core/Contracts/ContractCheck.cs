@@ -271,7 +271,7 @@ namespace ClaudiaKerman.Core.Contracts
             string why;
             var body = SequenceWords.Body(_snapshot, _home);
             var hopAp = body == null ? (double?)null : test.Band.TargetAp(body);
-            if (_judge.Window(test, hopAp, true, ChuteGroups.MassAfter(_snapshot, CraftDeltaV), out why) != TestWindow.None) return;
+            if (_judge.Window(test, hopAp, true, _judge.DownKg(CraftDeltaV), out why) != TestWindow.None) return;
             if (test.Situation == "FLYING" && !test.Chute) read.NotYet = ContractKinds.AircraftNotYet;
             else read.CraftCant = "this craft can't: " + why;
         }
@@ -286,7 +286,7 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 string why;
                 var orbit = route.HopAp == null && route.LaunchUt.HasValue && _snapshot.IsGrounded;
-                double? down = route.HomeUt.HasValue ? ChuteGroups.MassAfter(_snapshot, route.DeltaV) : (double?)null;
+                double? down = route.HomeUt.HasValue ? _judge.DownKg(route.DeltaV) : (double?)null;
                 var window = _judge.Window(read.Test, route.HopAp, orbit, down, out why);
                 if (window == TestWindow.None) return "this craft can't: " + why;
                 if (windows != null) windows[read.Requirement.Key] = window;

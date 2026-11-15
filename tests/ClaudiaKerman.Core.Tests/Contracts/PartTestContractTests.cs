@@ -124,13 +124,13 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         /// <summary>
-        /// ADR 0019: the pod's Mk16 is in the Kerbin return's group (the Last Entry opens every chute aboard); this heavy craft is still over
-        /// 250 m/s at 1,500 m, where reentry's height rule opens it, so a band round that opening plans the test for reentry.
+        /// ADR 0019: the pod's Mk16 is in the Kerbin return's group (the Last Entry opens every chute aboard), and the pod the Entry keeps
+        /// slows under 250 m/s, where reentry's rule opens it; a band round that opening plans the test for reentry.
         /// </summary>
         [Fact]
         public void AChuteTestIsPlannedForReentryWhenItsGroupOpensItInTheBand()
         {
-            var check = Check(WithMk16(ContractCheckTests.With(Test("c-chute", "parachuteSingle", "FLYING", Band(0, 20000, 0, 400)))));
+            var check = Check(WithMk16(ContractCheckTests.With(Test("c-chute", "parachuteSingle", "FLYING", Band(0, 20000, 100, 260)))));
 
             var row = Assert.Single(check.Fitting);
             var chosen = Assert.Single(check.Choose(new[] { row.Guid }).Requirements);

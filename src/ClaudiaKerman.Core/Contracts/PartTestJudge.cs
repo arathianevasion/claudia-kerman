@@ -34,6 +34,22 @@ namespace ClaudiaKerman.Core.Contracts
             _home = SequenceWords.Body(snapshot, home);
         }
 
+        /// <summary>
+        /// The craft that comes down home once a flight has spent <paramref name="deltaV"/> m/s, kg: its stages spent, and no more than the
+        /// Entry keeps (ADR 0018: the shield's Entry drops the stack under it).
+        /// </summary>
+        public double DownKg(double deltaV)
+        {
+            if (!_keptKg.HasValue)
+            {
+                var kept = EntryCraft.Of(_snapshot, null, null, 1, true, true).KeptT;
+                _keptKg = kept > 0 ? kept * 1000 : double.PositiveInfinity;
+            }
+            return Math.Min(ChuteGroups.MassAfter(_snapshot, deltaV), _keptKg.Value);
+        }
+
+        private double? _keptKg;
+
         /// <summary>"this craft can't: the part X isn't on the craft" when it isn't; null when it is.</summary>
         public string Missing(PartTestSpec test)
         {
