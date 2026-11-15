@@ -66,7 +66,7 @@ namespace ClaudiaKerman.Core.Contracts
         public LeftOutKind Kind;
         /// <summary>"this craft can't: 410 m/s short", "not yet: …" or "completes later: …".</summary>
         public string Reason = "";
-        /// <summary>The player can tick it: Core plans it (it isn't "not yet" or "not searched"), #1023. Ticked, its reason gives way to its detail for the set.</summary>
+        /// <summary>The player can tick it: Core plans it (it isn't "not yet"), #1023. Ticked, its reason gives way to its detail for the set.</summary>
         public bool Tickable;
         public bool Ticked;
         /// <summary>Where it fits in place of others, the swap that does it in one click; null when none.</summary>
@@ -129,6 +129,11 @@ namespace ClaudiaKerman.Core.Contracts
         public const int MostFallbacks = 3;
         /// <summary>#1028: the time the search may take before a suggestion is on the card.</summary>
         public static readonly TimeSpan SearchBudget = TimeSpan.FromSeconds(2);
+        /// <summary>
+        /// #1028: the exhaustive search's share of <see cref="SearchBudget"/>; the rest is for the greedy search should it run out with
+        /// nothing, and for the planners' re-pricing.
+        /// </summary>
+        internal static readonly TimeSpan ExhaustiveBudget = TimeSpan.FromTicks(SearchBudget.Ticks / 2);
         /// <summary>The spare a deadline needs: this fraction of the time to it, and at least a Kerbin day.</summary>
         public const double DeadlineSpareFraction = 0.10;
         /// <summary>The Serves tag for what the player typed.</summary>
@@ -386,7 +391,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>
         /// The sets that work on the Map's figures, best first, as many as the planners may try. The units searched are the Contracts that
         /// work alone, one by one up to <see cref="MostOneByOne"/>, else grouped by the bodies they need; up to <see cref="MostGroups"/> units
-        /// are searched exhaustively within <see cref="SearchBudget"/>, more are added greedily (<see cref="Greedy"/>).
+        /// are searched exhaustively within <see cref="ExhaustiveBudget"/>, more (or when that runs out with nothing) are added greedily (<see cref="Greedy"/>).
         /// </summary>
         private List<List<Planned>> Ranked()
         {
@@ -395,7 +400,7 @@ namespace ClaudiaKerman.Core.Contracts
             var units = able.Count <= MostOneByOne ? able.Select(p => new List<Planned> { p }).ToList() : able.GroupBy(NeedsKey).Select(g => g.ToList()).ToList();
             if (units.Count > MostGroups) return Greedy(units);
             var ranked = Exhaustive(units, clock);
-            return ranked.Count == 0 && clock.Elapsed > SearchBudget ? Greedy(units) : ranked;
+            return ranked.Count == 0 && clock.Elapsed > ExhaustiveBudget ? Greedy(units) : ranked;
         }
 
         /// <summary>The bodies a Contract needs, how far, and whether it comes home: the Contracts in one group fly the same route.</summary>
@@ -407,7 +412,7 @@ namespace ClaudiaKerman.Core.Contracts
 
         /// <summary>
         /// Every union of <paramref name="units"/>, the most units first, ranked by how many Contracts, then <see cref="Better"/>; it stops
-        /// once no smaller union can hold as many Contracts as the last kept, or at <see cref="SearchBudget"/> with what it has.
+        /// once no smaller union can hold as many Contracts as the last kept, or at <see cref="ExhaustiveBudget"/> with what it has.
         /// </summary>
         private List<List<Planned>> Exhaustive(List<List<Planned>> units, Stopwatch clock)
         {
@@ -418,7 +423,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (kept.Count > MostFallbacks && largest.Take(size).Sum() < kept[MostFallbacks].Item1.Count) break;
                 foreach (var pick in Combinations(units, size))
                 {
-                    if (clock.Elapsed > SearchBudget) return kept.Select(k => k.Item1).ToList();
+                    if (clock.Elapsed > ExhaustiveBudget) return kept.Select(k => k.Item1).ToList();
                     var set = pick.SelectMany(u => u).ToList();
                     var route = Route(set);
                     if (!Works(set, route)) continue;

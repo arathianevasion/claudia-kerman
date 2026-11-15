@@ -24,13 +24,21 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
-        public void TwoMoonsAreVisitedInTheLeastDeltaVOrderAndTheReturnHomeComesLast()
+        public void ALaunchPhaseRequirementIsDoneFirstAndTheReturnHomeComesLast()
         {
-            var free = ContractCheck.Work(With(Exploration("mun", 9000, "Mun:ORBIT"), Exploration("minmus", 9000, "Minmus:ORBIT")), "", false, Margin);
+            // Kerbin orbit is done at the launch: a deadline a Kerbin day and a little after it holds only if it comes before the moons.
+            var snapshot = Pad();
+            var orbit = Exploration("kerbin", 1000, "Kerbin:ORBIT");
+            orbit.DeadlineUt = snapshot.Ut + ContractRoutes.LaunchSeconds + KerbinTime.SecondsPerDay + 600;
+            snapshot.Contracts.Accepted.AddRange(new[] { orbit, Exploration("mun", 9000, "Mun:ORBIT"), Exploration("minmus", 9000, "Minmus:ORBIT") });
 
-            var legs = Legs(free);
+            var check = ContractCheck.Work(snapshot, "", false, Margin);
+
+            Assert.Equal(3, check.Fitting.Count(r => r.Ticked));
+            var legs = Legs(check);
             Assert.Equal(3, legs.Length);
-            Assert.Equal(new[] { "orbit Minmus", "orbit the Mun" }.OrderBy(l => l), legs.Take(2).OrderBy(l => l));
+            Assert.Contains("orbit the Mun", legs.Take(2));
+            Assert.Contains("orbit Minmus", legs.Take(2));
             Assert.Equal("return to Kerbin", legs[2]);
         }
 
