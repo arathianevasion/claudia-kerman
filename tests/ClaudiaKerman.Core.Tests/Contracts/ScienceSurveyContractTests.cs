@@ -299,5 +299,22 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("crewReport", Assert.Single(replan.Added).Experiment);
             Assert.Contains("no leg runs the science block", Assert.Single(replan.Problems));
         }
+    
+
+        [Fact]
+        public void TheDeadlineRecheckCountsTheWaitForThePass()
+        {
+            // As at the Contract check: about 29,000 s to low Mun orbit, then up to half a turn of the Mun (69,492 s) for the pass.
+            var survey = Survey("c-s", "2", "LOW", "crewReport", 30000, "3,10");
+            var snapshot = ContractCheckTests.With(survey);
+            var chosen = Check(snapshot).Choose(new[] { "c-s" }).Requirements;
+            survey.DeadlineUt = snapshot.Ut + 60000;
+
+            List<string> rechecked;
+            var late = ContractRecheck.Check(snapshot, chosen, "", "Kerbin", new HashSet<string>(), out rechecked);
+
+            Assert.Equal("c-s", Assert.Single(late).Guid);
+            Assert.True(Assert.Single(late).DoneUt > snapshot.Ut + 29000 + 69000, "done " + (Assert.Single(late).DoneUt - snapshot.Ut));
+        }
     }
 }

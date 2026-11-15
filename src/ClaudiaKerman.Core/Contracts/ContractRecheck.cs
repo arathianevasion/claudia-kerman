@@ -67,7 +67,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>
         /// #1092: the route the recheck times: the Contract check's own (<see cref="ContractRoutes.Best"/> with the hop bands of the unmet
         /// Requirements, read from the snapshot's Contracts as the check reads them), so a hop is timed as a hop. A hop the sim can't price
-        /// falls back to the launch to orbit, as in the Contract check.
+        /// falls back to the launch to orbit, as in the Contract check. #1030: survey waypoints are timed with their wait for the pass.
         /// </summary>
         internal static PricedRoute RouteOf(GameSnapshot snapshot, IList<KeyValuePair<SnapshotContract, List<ChosenRequirement>>> open, string words, string home)
         {
@@ -78,20 +78,23 @@ namespace ClaudiaKerman.Core.Contracts
                 if (!needs.TryGetValue(requirement.Body, out had) || requirement.Reach > had) needs[requirement.Body] = requirement.Reach;
             }
             var bands = new List<HopBand>();
+            var waypoints = new List<SurveyWaypoint>();
             foreach (var one in open)
             {
-                var keys = new HashSet<string>(one.Value.Where(r => r.Reach == ContractReach.Hop).Select(r => r.Key));
-                if (keys.Count == 0) continue;
-                bands.AddRange(ContractKinds.Read(one.Key, home).Where(r => r.Band != null && keys.Contains(r.Requirement.Key)).Select(r => r.Band));
+                var keys = new HashSet<string>(one.Value.Select(r => r.Key));
+                var read = ContractKinds.Read(one.Key, home).Where(r => r.Plannable && keys.Contains(r.Requirement.Key)).ToList();
+                bands.AddRange(read.Where(r => r.Band != null && r.Reach == ContractReach.Hop).Select(r => r.Band));
+                // #1030: a survey waypoint is timed with its wait for the pass, as at the Contract check.
+                waypoints.AddRange(read.Where(r => r.Waypoint != null).Select(r => r.Waypoint));
             }
             // Like the Contract check, the order that keeps every deadline is preferred over the cheapest one.
             return new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return),
-                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands);
+                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands, waypoints);
         }
 
         private static double DoneOf(PricedRoute route, IEnumerable<ChosenRequirement> requirements, GameSnapshot snapshot, string home)
         {
-            return requirements.Select(r => route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return }, home))
+            return requirements.Select(r => route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return, Waypoint = route.WaypointUt.ContainsKey(r.Key) ? new SurveyWaypoint { Key = r.Key } : null }, home))
                 .Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(snapshot.Ut).Max();
         }
     }
