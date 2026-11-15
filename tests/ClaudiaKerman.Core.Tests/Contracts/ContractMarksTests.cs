@@ -44,6 +44,20 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("Claudia can plan this: carry batteryBank into orbit round the Mun", haul.Hover);
         }
 
+        /// <summary>#1162: a ground test at speed reads "not yet: aircraft or rover" on the mark, as in the Contract check.</summary>
+        [Fact]
+        public void AGroundTestAtSpeedIsNotYetAircraftOrRover()
+        {
+            var contract = Fixture("PartTest.json");
+            contract.Requirements[0].Settings = contract.Requirements[0].Settings
+                .Select(x => x.Name == "situation" ? new ContractSetting("situation", "LANDED") : x).ToList();
+
+            var mark = ContractMarks.Of(contract, false);
+
+            Assert.False(mark.Plannable);
+            Assert.Equal("not yet: aircraft or rover", mark.Hover);
+        }
+
         /// <summary>A mod's Contract is "not yet" even when its type shares a stock name: its Requirements may mean something else.</summary>
         [Fact]
         public void AModAddedContractIsNotYetWhateverItsTypeIsCalled()
