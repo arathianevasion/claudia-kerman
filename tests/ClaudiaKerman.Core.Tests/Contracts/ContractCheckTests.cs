@@ -180,7 +180,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         /// <summary>The pad craft with its three upper stages emptied: about 3,300 m/s, short of the launch to orbit with the reserve.</summary>
-        private static void BoosterOnly(GameSnapshot snapshot)
+        internal static void BoosterOnly(GameSnapshot snapshot)
         {
             foreach (var stage in snapshot.Stages.Where(s => s.Number >= 2 && s.Number <= 4))
             {
