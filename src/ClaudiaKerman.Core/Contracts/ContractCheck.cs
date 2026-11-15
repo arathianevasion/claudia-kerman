@@ -3,11 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Ui;
 
 namespace ClaudiaKerman.Core.Contracts
@@ -395,12 +395,12 @@ namespace ClaudiaKerman.Core.Contracts
         /// </summary>
         private List<List<Planned>> Ranked()
         {
-            var clock = Stopwatch.StartNew();
+            var deadline = SearchDeadline.After(ExhaustiveBudget.TotalMilliseconds, null);
             var able = _planned.Where(p => Works(new[] { p }, Route(new[] { p }))).ToList();
             var units = able.Count <= MostOneByOne ? able.Select(p => new List<Planned> { p }).ToList() : able.GroupBy(NeedsKey).Select(g => g.ToList()).ToList();
             if (units.Count > MostGroups) return Greedy(units);
-            var ranked = Exhaustive(units, clock);
-            return ranked.Count == 0 && clock.Elapsed > ExhaustiveBudget ? Greedy(units) : ranked;
+            var ranked = Exhaustive(units, deadline);
+            return ranked.Count == 0 && deadline.Passed ? Greedy(units) : ranked;
         }
 
         /// <summary>The bodies a Contract needs, how far, and whether it comes home: the Contracts in one group fly the same route.</summary>
@@ -414,7 +414,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// Every union of <paramref name="units"/>, the most units first, ranked by how many Contracts, then <see cref="Better"/>; it stops
         /// once no smaller union can hold as many Contracts as the last kept, or at <see cref="ExhaustiveBudget"/> with what it has.
         /// </summary>
-        private List<List<Planned>> Exhaustive(List<List<Planned>> units, Stopwatch clock)
+        private List<List<Planned>> Exhaustive(List<List<Planned>> units, SearchDeadline deadline)
         {
             var kept = new List<Tuple<List<Planned>, PricedRoute>>();
             var largest = units.Select(u => u.Count).OrderByDescending(c => c).ToList();
@@ -423,7 +423,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (kept.Count > MostFallbacks && largest.Take(size).Sum() < kept[MostFallbacks].Item1.Count) break;
                 foreach (var pick in Combinations(units, size))
                 {
-                    if (clock.Elapsed > ExhaustiveBudget) return kept.Select(k => k.Item1).ToList();
+                    if (deadline.Passed) return kept.Select(k => k.Item1).ToList();
                     var set = pick.SelectMany(u => u).ToList();
                     var route = Route(set);
                     if (!Works(set, route)) continue;

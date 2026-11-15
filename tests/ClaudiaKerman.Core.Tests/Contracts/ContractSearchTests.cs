@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
-using System.Diagnostics;
 using System.Linq;
 using ClaudiaKerman.Core.Contracts;
 using ClaudiaKerman.Core.Missions;
@@ -23,22 +22,12 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
-        public void FourteenPlannableContractsInFewerThanTenGroupsAreAllSearchedWithinTheBudget()
+        public void FourteenPlannableContractsInFewerThanTenGroupsAreAllSearched()
         {
-            var contracts = new[]
-            {
-                Exploration("mun-fly", 4000, "Mun:FLYBY"), Exploration("mun-orbit", 9000, "Mun:ORBIT"), Exploration("mun-orbit-2", 8000, "Mun:ORBIT"),
-                Exploration("mun-land", 20000, "Mun:LANDING"), Exploration("mun-land-2", 15000, "Mun:LANDING"),
-                Exploration("min-fly", 3000, "Minmus:FLYBY"), Exploration("min-orbit", 7000, "Minmus:ORBIT"), Exploration("min-orbit-2", 6000, "Minmus:ORBIT"),
-                Exploration("min-land", 12000, "Minmus:LANDING"), Exploration("kerbin-orbit", 2000, "Kerbin:ORBIT"), Exploration("kerbin-orbit-2", 2500, "Kerbin:ORBIT"),
-                Exploration("duna-fly", 30000, "Duna:FLYBY"), Exploration("eeloo-land", 90000, "Eeloo:LANDING"), Exploration("mun-min", 18000, "Mun:ORBIT", "Minmus:ORBIT"),
-            };
+            var contracts = Fourteen();
 
-            var clock = Stopwatch.StartNew();
             var check = Check(contracts);
-            clock.Stop();
 
-            Assert.True(clock.Elapsed < ContractCheck.SearchBudget, "took " + clock.Elapsed);
             // Every Contract was searched: the ones left out are left out for the craft, none for the search.
             Assert.All(check.NotThisFlight, l => Assert.Equal(LeftOutKind.CraftCant, l.Kind));
             Assert.Equal(contracts.Length, check.Fitting.Count + check.NotThisFlight.Count);
@@ -47,6 +36,32 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains(check.Fitting, r => r.Guid == "mun-land" && r.Ticked);
             Assert.Contains(check.Fitting, r => r.Guid == "min-land" && r.Ticked);
             Assert.Contains(check.NotThisFlight, l => l.Guid == "eeloo-land" && l.Kind == LeftOutKind.CraftCant);
+        }
+
+        private static SnapshotContract[] Fourteen()
+        {
+            return new[]
+            {
+                Exploration("mun-fly", 4000, "Mun:FLYBY"), Exploration("mun-orbit", 9000, "Mun:ORBIT"), Exploration("mun-orbit-2", 8000, "Mun:ORBIT"),
+                Exploration("mun-land", 20000, "Mun:LANDING"), Exploration("mun-land-2", 15000, "Mun:LANDING"),
+                Exploration("min-fly", 3000, "Minmus:FLYBY"), Exploration("min-orbit", 7000, "Minmus:ORBIT"), Exploration("min-orbit-2", 6000, "Minmus:ORBIT"),
+                Exploration("min-land", 12000, "Minmus:LANDING"), Exploration("kerbin-orbit", 2000, "Kerbin:ORBIT"), Exploration("kerbin-orbit-2", 2500, "Kerbin:ORBIT"),
+                Exploration("duna-fly", 30000, "Duna:FLYBY"), Exploration("eeloo-land", 90000, "Eeloo:LANDING"), Exploration("mun-min", 18000, "Mun:ORBIT", "Minmus:ORBIT"),
+            };
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void FourteenPlannableContractsGetASuggestionWithinTheSearchBudget()
+        {
+            Timing.Within(ContractCheck.SearchBudget.TotalMilliseconds, () => Assert.NotEmpty(Check(Fourteen()).Fitting));
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void TwelveGroupsGetASuggestionWithinTheSearchBudget()
+        {
+            Timing.Within(ContractCheck.SearchBudget.TotalMilliseconds, () => Assert.NotEmpty(Check(TwelveGroups(30000, 20000)).Fitting));
         }
 
         /// <summary>Twelve groups, each a different set of bodies and reaches, all in Kerbin's system; every one fits alone.</summary>
@@ -78,11 +93,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             var scale = both * (1 + Margin / 100.0) * 0.97 / snapshot.Stages.Sum(s => s.DeltaVVac);
             foreach (var stage in snapshot.Stages) stage.DeltaVVac *= scale;
 
-            var clock = Stopwatch.StartNew();
             var check = ContractCheck.Work(snapshot, "", false, Margin);
-            clock.Stop();
 
-            Assert.True(clock.Elapsed < ContractCheck.SearchBudget, "took " + clock.Elapsed);
             Assert.True(check.SetFits);
             Assert.Contains(check.Fitting, r => r.Guid == "min-land" && r.Ticked);
             Assert.DoesNotContain(check.Fitting, r => r.Guid == "mun-land" && r.Ticked);
