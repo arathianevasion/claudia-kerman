@@ -26,10 +26,10 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void AStockTypeClaudiaDoesNotPlanYetGetsTheHollowMarkWithTheKindTablesReason()
         {
-            var mark = ContractMarks.Of(Fixture("SurveyContract.json"), false);
+            var mark = ContractMarks.Of(Fixture("SatelliteContract.json"), false);
 
             Assert.False(mark.Plannable);
-            Assert.Equal("not yet: surveys aren't planned yet", mark.Hover);
+            Assert.Equal("not yet: satellites aren't planned yet", mark.Hover);
         }
 
         /// <summary>#1048, #1029: a part test met on a hop below orbit over Kerbin is planned, and so is a haul into the Mun's orbit.</summary>
@@ -109,5 +109,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("not yet: no Requirement is left to fly for", mark.Hover);
         }
 
+    
+
+        /// <summary>#1030: a low-flying survey is "not yet" with its reason; a collect-science Contract gets the flag.</summary>
+        [Fact]
+        public void ALowFlyingSurveyGetsTheHollowMarkAndCollectScienceTheFlag()
+        {
+            var survey = ContractMarks.Of(Fixture("SurveyContract.json"), false);
+            var science = ContractMarks.Of(Fixture("CollectScience.json"), false);
+
+            Assert.False(survey.Plannable);
+            Assert.Equal("not yet: low-flying surveys need an aircraft over the waypoint", survey.Hover);
+            Assert.True(science.Plannable);
+            Assert.Equal("Claudia can plan this: collect science in space near the Mun", science.Hover);
+        }
     }
 }

@@ -161,7 +161,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("Also run a crew report in Mun orbit.", text);
             Assert.Contains("land on the Mun", text);
             Assert.Contains("(phase: Mun)", text);
-            Assert.Contains("not yet: surveys aren't planned yet", text);
+            Assert.Contains("not yet: low-flying surveys need an aircraft over the waypoint", text);
             // The card folds to its one line, which stays in the Mission's transcript.
             Assert.Null(mission.View.ContractCheck);
             Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal));

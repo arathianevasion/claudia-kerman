@@ -162,13 +162,10 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
             var section = check.Choose(check.TickedGuids).Section;
 
-            var first = section.IndexOf("0.0° N 170.0° W", StringComparison.Ordinal);
-            var second = section.IndexOf("0.0° N 100.0° E", StringComparison.Ordinal);
-            var third = section.IndexOf("0.0° N 10.0° E", StringComparison.Ordinal);
             var order = section.Substring(section.IndexOf("Survey waypoints", StringComparison.Ordinal));
             Assert.True(order.IndexOf("170.0° W", StringComparison.Ordinal) < order.IndexOf("100.0° E", StringComparison.Ordinal), section);
             Assert.True(order.IndexOf("100.0° E", StringComparison.Ordinal) < order.IndexOf("0.0° N 10.0° E", StringComparison.Ordinal), section);
-            Assert.True(first >= 0 && second >= 0 && third >= 0, section);
+            Assert.Contains("0.0° N 170.0° W", order);
         }
 
         [Fact]
@@ -188,6 +185,119 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             var left = Assert.Single(check.NotThisFlight);
             Assert.Equal("c-s", left.Guid);
             Assert.Equal(LeftOutKind.CompletesLater, left.Kind);
+        }
+    
+
+        private static double LandOnTheMun()
+        {
+            return Check(ContractCheckTests.With(ContractCheckTests.Exploration("c-land", 10000, "Mun:LANDING"))).RouteDeltaV;
+        }
+
+        [Fact]
+        public void GroundWaypointsAreALandingThenAHopToTheNextSite()
+        {
+            // 0.5729578 degrees of longitude on the equator is 2,000 m on the Mun (200 km radius). Its surface gravity is 1.628 m/s²,
+            // so a hop there and down again is 2 * sqrt(1.628 * 2000) = 114.1 m/s.
+            var check = Check(ContractCheckTests.With(Survey("c-g", "2", "GROUND", "crewReport", 0, "0,0", "0,0.5729578")));
+
+            var row = Assert.Single(check.Fitting);
+            Assert.Equal("Mun", row.Phase);
+            Assert.InRange(check.RouteDeltaV - LandOnTheMun(), 113.6, 114.6);
+        }
+
+        [Fact]
+        public void GroundWaypointsAreOrderedByLeastTravelBetweenLandingSites()
+        {
+            var check = Check(ContractCheckTests.With(Survey("c-g", "2", "GROUND", "crewReport", 0, "0,0", "0,2", "0,1")));
+
+            var section = check.Choose(check.TickedGuids).Section;
+
+            var order = section.Substring(section.IndexOf("Survey waypoints", StringComparison.Ordinal));
+            var middle = order.IndexOf("0.0° N 1.0° E", StringComparison.Ordinal);
+            Assert.True(middle > 0, section);
+            Assert.True(order.IndexOf("0.0° N 0.0° E", StringComparison.Ordinal) < middle == middle < order.IndexOf("0.0° N 2.0° E", StringComparison.Ordinal), section);
+        }
+
+        [Fact]
+        public void AGroundWaypointAtAHighLatitudeAddsTheMapsPolarRow()
+        {
+            var snapshot = ContractCheckTests.With(Survey("c-g", "2", "GROUND", "crewReport", 0, "70,0"));
+
+            var check = Check(snapshot);
+
+            var polar = Map(snapshot).Leg("polar:Mun").DeltaV;
+            Assert.InRange(check.RouteDeltaV - LandOnTheMun(), polar - 0.5, polar + 0.5);
+        }
+
+        [Fact]
+        public void AGroundSurveyOnKerbinIsNotYet()
+        {
+            var left = Assert.Single(Check(ContractCheckTests.With(Survey("c-g", "1", "GROUND", "crewReport", 0, "0,-74"))).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.NotYet, left.Kind);
+            Assert.Equal("not yet: ground surveys on Kerbin aren't planned yet", left.Reason);
+        }
+    
+
+        private static PlanServes PlanCheck(GameSnapshot snapshot, params string[] legs)
+        {
+            var check = Check(snapshot);
+            var choice = check.Choose(check.TickedGuids);
+            var plan = new MissionPlan();
+            foreach (var leg in legs) plan.Sequences.Add(new PlannedSequence { Name = leg, Intent = "Fly it.", DeltaV = 100 });
+            return PlanServes.Check(snapshot, plan, choice.Requirements, "", "Kerbin");
+        }
+
+        [Fact]
+        public void APlanThatReachesTheSurveysOrbitButRunsNoScienceThereGoesBackAsAFinding()
+        {
+            var snapshot = ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "3,10"));
+
+            var served = PlanCheck(snapshot, "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit", "Return to Kerbin");
+
+            var problem = Assert.Single(served.Problems);
+            Assert.Contains("crewReport", problem);
+            Assert.Contains("no leg runs the science block", problem);
+        }
+
+        [Fact]
+        public void APlanThatRunsTheScienceBlockAtTheBodyServesTheSurveyAndCollectScience()
+        {
+            var snapshot = ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "3,10"), Science("c-sci", "2", "Space"));
+
+            var served = PlanCheck(snapshot, "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit",
+                "Run science over the survey waypoint", "Return to Kerbin");
+
+            Assert.Empty(served.Problems);
+            Assert.All(served.Record, r => Assert.Equal(1, r.Leg));
+        }
+
+        [Fact]
+        public void ScienceRunAfterLeavingTheBodyDoesNotServeIt()
+        {
+            var snapshot = ContractCheckTests.With(Science("c-sci", "2", "Space"));
+
+            var served = PlanCheck(snapshot, "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit", "Return to Kerbin", "Run science on the way home");
+
+            Assert.Contains("no leg runs the science block", Assert.Single(served.Problems));
+        }
+    
+
+        [Fact]
+        public void ASurveyAddedInARevisedPlanStillNeedsTheScienceBlockThere()
+        {
+            var mun = ContractCheckTests.Exploration("mun", 10000, "Mun:ORBIT");
+            var survey = Survey("c-s", "3", "LOW", "crewReport", 30000, "3,10");
+            var snapshot = ContractCheckTests.With(mun, survey);
+            var chosen = ContractCheck.Work(ContractCheckTests.With(mun), "", false, ContractCheckTests.Margin).Choose(new[] { "mun" }).Requirements;
+            var plan = new MissionPlan { Why = "Adds SurveyContract, as the player asked." };
+            foreach (var leg in new[] { "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit" })
+                plan.Sequences.Add(new PlannedSequence { Name = leg, Intent = "Fly it.", DeltaV = 100 });
+
+            var replan = ContractReplan.Check(snapshot, plan, chosen, "", "Kerbin", new Dictionary<string, string>(), new HashSet<string>(), new List<string> { "also do the Minmus survey" });
+
+            Assert.Equal("crewReport", Assert.Single(replan.Added).Experiment);
+            Assert.Contains("no leg runs the science block", Assert.Single(replan.Problems));
         }
     }
 }
