@@ -67,7 +67,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// launch to orbit with <paramref name="orbit"/>, and the way down home with the craft at <paramref name="descentKg"/> (null: no way
         /// down). The ascent is preferred. <see cref="TestWindow.None"/> with <paramref name="why"/> when none meets it.
         /// </summary>
-        public TestWindow Window(PartTestSpec test, double? hopAp, bool orbit, double? descentKg, out string why)
+        public TestWindow Window(PartTestSpec test, double? hopAp, bool orbit, double? descentKg, out string why, WrittenLaunch written = null)
         {
             why = null;
             var band = test.Band;
@@ -75,12 +75,12 @@ namespace ClaudiaKerman.Core.Contracts
             var misses = new List<string>();
             if (!IsChute(test))
             {
-                var up = hopAp.HasValue ? Hop(hopAp.Value) : orbit ? Ascent() : null;
+                var up = written != null && (hopAp.HasValue || orbit) ? Written(written) : hopAp.HasValue ? Hop(hopAp.Value) : orbit ? Ascent() : null;
                 if (up != null)
                 {
                     var miss = up.Item2 ?? band.Misses(up.Item1);
                     if (miss == null) return TestWindow.Ascent;
-                    misses.Add((hopAp.HasValue ? "on the hop: " : "on the ascent: ") + miss);
+                    misses.Add((hopAp.HasValue || (written != null && written.Suborbital(_home)) ? "on the hop: " : "on the ascent: ") + miss);
                 }
             }
             if (descentKg.HasValue)
@@ -118,12 +118,28 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 string why;
                 // A climb that fails short of orbit by the default shape still says how fast it passes the heights it reached.
-                var flight = SuborbitalHop.Fly(_snapshot, null, true, out why);
+                var flight = SuborbitalHop.Fly(_snapshot, (double?)null, true, out why);
                 _ascent = flight == null ? new List<double[]>() : Path(flight, _home == null ? 0 : _home.AtmosphereHeight);
                 _ascentWhy = flight == null ? why : null;
             }
             return Tuple.Create(_ascent, _ascentWhy);
         }
+
+        /// <summary>#1160: the climb the written launch options fly, kept per options.</summary>
+        private Tuple<List<double[]>, string> Written(WrittenLaunch written)
+        {
+            var key = written.Key;
+            Tuple<List<double[]>, string> flown;
+            if (_written.TryGetValue(key, out flown)) return flown;
+            string why;
+            var flight = SuborbitalHop.Fly(_snapshot, written, true, out why);
+            var top = written.Suborbital(_home) ? written.TargetAp.Value : _home == null ? 0 : _home.AtmosphereHeight;
+            flown = Tuple.Create(flight == null ? new List<double[]>() : Path(flight, top), why);
+            _written[key] = flown;
+            return flown;
+        }
+
+        private readonly Dictionary<string, Tuple<List<double[]>, string>> _written = new Dictionary<string, Tuple<List<double[]>, string>>();
 
         private Tuple<List<double[]>, string> Hop(double targetAp)
         {

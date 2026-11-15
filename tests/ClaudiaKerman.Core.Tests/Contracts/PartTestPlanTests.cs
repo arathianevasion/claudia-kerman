@@ -29,6 +29,53 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return PlanServes.Check(ContractCheckTests.With(ContractCheckTests.BoosterTest("c-test")), plan, new[] { requirement }, "", "Kerbin");
         }
 
+        private static PlanServes CheckLegs(ChosenRequirement requirement, params string[][] legs)
+        {
+            var plan = new MissionPlan();
+            foreach (var leg in legs) plan.Sequences.Add(new PlannedSequence { Name = leg[0], Intent = leg[1], DeltaV = 100 });
+            return PlanServes.Check(ContractCheckTests.With(ContractCheckTests.BoosterTest("c-test")), plan, new[] { requirement }, "", "Kerbin");
+        }
+
+        [Fact]
+        public void ALegWrittenAsAHopByItsLaunchOptionsServesAPartTestInItsBand()
+        {
+            var band = Requirement(TestWindow.Ascent).Test.Band;
+            var ap = System.Math.Round(band.TargetAp(ContractCheckTests.With(ContractCheckTests.BoosterTest("c-test")).Bodies.First(b => b.Name == "Kerbin")));
+
+            var served = CheckLegs(Requirement(TestWindow.Ascent), new[] { "Climb and fall", "Launch with target_ap " + ap + " and turn_start_speed 100000." });
+
+            Assert.Empty(served.Problems);
+            Assert.Equal(0, served.Record.Single().Leg);
+        }
+
+        [Fact]
+        public void LaunchOptionsThatMissTheBandAreAFindingEvenWhereTheDefaultShapeWouldPassIt()
+        {
+            // A hop to a ceiling far under the band never goes through it; the words never say hop.
+            var served = CheckLegs(Requirement(TestWindow.Ascent), new[] { "Climb and fall", "Launch with target_ap 20000 and turn_start_speed 100000." });
+
+            var problem = Assert.Single(served.Problems);
+            Assert.Contains("leg 1 \"Climb and fall\" misses it: on the hop: ", problem);
+            Assert.Contains("51–56 km", problem);
+        }
+
+        [Fact]
+        public void ALegWithNoLaunchOptionsIsJudgedOnTheDefaultShapeAsBefore()
+        {
+            var served = CheckLegs(Requirement(TestWindow.Ascent), new[] { "Launch to low Kerbin orbit", "Fly it." });
+
+            Assert.Contains("misses it: on the ascent: ", Assert.Single(served.Problems));
+        }
+
+        [Fact]
+        public void WrittenOrbitalOptionsAreFlownNotTheDefaultShape()
+        {
+            var plain = CheckLegs(Requirement(TestWindow.Ascent), new[] { "Launch to low Kerbin orbit", "Fly it." }).Problems.Single();
+            var shaped = CheckLegs(Requirement(TestWindow.Ascent), new[] { "Launch to low Kerbin orbit", "Launch with target_ap 80000 and turn_shape 0.8 and throttle_max_q 8000." });
+
+            Assert.NotEqual(plain, shaped.Problems.SingleOrDefault() ?? "");
+        }
+
         [Fact]
         public void AHopStraightUpToTheBandServesTheTest()
         {
