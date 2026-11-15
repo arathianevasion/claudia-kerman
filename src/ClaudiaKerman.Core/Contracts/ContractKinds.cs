@@ -54,13 +54,15 @@ namespace ClaudiaKerman.Core.Contracts
     /// exploration (world-first) ones: a ProgressTrackingParameter of an ExplorationContract, by its <c>targetType</c> and
     /// <c>targetBody</c>; and (#1048) the Requirements met on a hop below orbit over the launch body: reaching space, and a part test
     /// FLYING or SUB_ORBITAL in an altitude band, read whole from its PartTest node's conditions. Every other Contract type is "not
-    /// yet" as a whole, and so are records and the first launch, whose saved settings give no band to price a hop to.
+    /// yet" as a whole, and so are depth records (#1091). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
+    /// meets on the way up; a distance record rides the launch to orbit (#1091).
     /// </summary>
     public static class ContractKinds
     {
         public const string Exploration = "ExplorationContract";
         public const string PartTest = "PartTest";
-        public const string RecordNotYet = "not yet: records and the first launch aren't planned yet";
+        public const string DepthNotYet = "not yet: depth records (underwater) aren't planned yet";
+        public const string RecordAwayNotYet = "not yet: records over other bodies aren't planned yet";
         public const string AwayHopNotYet = "not yet: hops over other bodies aren't planned yet";
         /// <summary>The launch body's index in the game's body list, as a part test's <c>body</c> setting names it: Kerbin, in the stock system.</summary>
         public const string HomeIndex = "1";
@@ -71,9 +73,12 @@ namespace ClaudiaKerman.Core.Contracts
             { "RETURNFROMFLYBY", ContractReach.Flyby }, { "RETURNFROMORBIT", ContractReach.Orbit }, { "RETURNFROMSURFACE", ContractReach.Land },
         };
 
-        private static readonly HashSet<string> BelowOrbit = new HashSet<string>
+        /// <summary>#1091: m; the height at which a craft has left the pad, for the first launch.</summary>
+        private const double FirstLaunchAltitude = 1000;
+
+        private static readonly HashSet<string> Records = new HashSet<string>
         {
-            "FIRSTLAUNCH", "ALTITUDERECORD", "SPEEDRECORD", "DISTANCERECORD", "DEPTHRECORD",
+            "FIRSTLAUNCH", "ALTITUDERECORD", "SPEEDRECORD", "DISTANCERECORD",
         };
 
         private static readonly Dictionary<string, string> OtherReasons = new Dictionary<string, string>
@@ -155,7 +160,8 @@ namespace ClaudiaKerman.Core.Contracts
             ContractReach reach;
             string reason;
             if (type == "REACHSPACE") return body != home ? NotYet(one, AwayHopNotYet) : Hop(one, home, new HopBand { AboveAir = true });
-            if (BelowOrbit.Contains(type)) one.NotYet = RecordNotYet;
+            if (type == "DEPTHRECORD") one.NotYet = DepthNotYet;
+            else if (Records.Contains(type)) return ReadRecord(one, type, body, home);
             else if (OtherReasons.TryGetValue(type, out reason)) one.NotYet = "not yet: " + reason;
             else if (!Reaches.TryGetValue(type, out reach)) one.NotYet = "not yet: " + (type.Length > 0 ? type : "an unnamed milestone") + " isn't a Contract Requirement Claudia can plan yet";
             else if (body.Length == 0) one.NotYet = "not yet: the Contract names no body";
@@ -169,6 +175,46 @@ namespace ClaudiaKerman.Core.Contracts
                 one.Words = !one.Return ? Verb(reach) + " " + Named(body)
                     : "come home from " + (reach == ContractReach.Flyby ? "a flyby of " : reach == ContractReach.Orbit ? "orbit of " : "the surface of ") + Named(body);
             }
+            return one;
+        }
+
+        /// <summary>
+        /// #1091: a record over the launch body. The saved settings name no record, so the band comes from the record's target when the
+        /// Requirement gives one (<c>altitude</c> m, <c>speed</c> m/s) and from the body otherwise: an altitude record is met above the
+        /// atmosphere. Altitude and speed records are a hop through that band, met on the way up on any launch to orbit; a distance record
+        /// and the first launch are met by the launch itself, so they add nothing to any route that launches.
+        /// </summary>
+        private static ReadRequirement ReadRecord(ReadRequirement one, string type, string body, string home)
+        {
+            if (type != "FIRSTLAUNCH" && body.Length > 0 && body != home) return NotYet(one, RecordAwayNotYet);
+            if (type == "FIRSTLAUNCH")
+            {
+                // Any launch meets it: a hop that just leaves the pad, which every route that launches passes on the way up.
+                Hop(one, home, new HopBand { MinAltitude = FirstLaunchAltitude });
+                one.Words = "launch";
+                return one;
+            }
+            if (type == "DISTANCERECORD")
+            {
+                // A hop straight up covers no distance; a launch to orbit covers any a Kerbin record asks, so it rides that trip.
+                one.Body = home;
+                one.Reach = ContractReach.Orbit;
+                one.Phase = home + " orbit";
+                one.Words = "set a distance record over " + home;
+                return one;
+            }
+            var altitude = Number(one.Requirement, "altitude");
+            var speed = Number(one.Requirement, "speed");
+            if (type == "ALTITUDERECORD")
+            {
+                var band = altitude.HasValue ? new HopBand { MinAltitude = altitude } : new HopBand { AboveAir = true };
+                Hop(one, home, band);
+                one.Words = altitude.HasValue ? "set an altitude record over " + home + " at " + band.Through() : "set an altitude record over " + home + " above the air";
+                return one;
+            }
+            if (!speed.HasValue) return NotYet(one, "not yet: the speed record names no speed to fly");
+            Hop(one, home, new HopBand { MinAltitude = 0, MinSpeed = speed });
+            one.Words = "set a speed record over " + home + " at " + System.Math.Round(speed.Value) + " m/s";
             return one;
         }
 
