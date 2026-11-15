@@ -317,6 +317,8 @@ namespace ClaudiaKerman.Core.Missions
         public double Spare;
         /// <summary>The first line: how many Contracts, the route against the craft and the reserve, and the spare or the shortfall.</summary>
         public string Headline = "";
+        /// <summary>#1028: what the planners' re-pricing did to the suggestion, shown under the headline; "" when the best set held.</summary>
+        public string SearchNote = "";
         /// <summary>"Plan these 2"; "Pick a Contract" when none is ticked.</summary>
         public string PlanLabel = "";
         public bool CanPlan;
@@ -380,6 +382,8 @@ namespace ClaudiaKerman.Core.Missions
         public ChuteGroups ChuteGroups;
         /// <summary>The Mission Plan's legs, for the Ship Systems hold (#756); null before there is a plan.</summary>
         public IList<PlannedSequence> PlanLegs;
+        /// <summary>#1029: the Mission's planned part tests, timed by Core for <c>ADDONS:CLAUDIA:PARTTEST</c>; null with no Mission.</summary>
+        public ClaudiaKerman.Core.Contracts.PartTestWatch PartTests;
         /// <summary>The Mission's craft's name, so a Child Vessel's legs are left out of the later legs' delta-v (#832); "" before there is one.</summary>
         public string CraftName = "";
         /// <summary>The Child Vessel the run flies, for <c>ENTRYDROP</c>'s count (#823); "" for the craft.</summary>

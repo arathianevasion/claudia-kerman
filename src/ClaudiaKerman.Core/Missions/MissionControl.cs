@@ -130,6 +130,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
             else if (input is NextPatchDropped) NextPatchDroppedSeen((NextPatchDropped)input);
             else if (input is ChuteWarning) ChuteWarningLine((ChuteWarning)input);
+            else if (input is PartTestNoted) PartTestLine((PartTestNoted)input);
             else if (input is CoastArmed) CoastArmedSeen((CoastArmed)input);
             else if (input is AbortSequence) AbortPressed();
             else if (input is VesselsSeen) VesselsChanged(((VesselsSeen)input).Vessels);
@@ -649,6 +650,7 @@ namespace ClaudiaKerman.Core.Missions
             LinkSeen(previous, snapshot);
             var mission = _mission;
             if (mission == null) return;
+            WatchContracts(mission, snapshot);
             ContinueRunEnd(mission);
             // A plan restored from a save was never offered against a snapshot: the first one after the load is its baseline.
             if (mission.AwaitingApproval && mission.PlanBaseline == null && !mission.InFlight && _scene == GameScene.Flight) mission.PlanBaseline = snapshot;
@@ -702,6 +704,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 Notice("Mission Plan approved.");
                 mission.MissionPlanApproved = true;
+                ApplyContractChanges(mission);
                 var newGoal = ApplyGoalChange(mission);
                 mission.Stage = MissionStage.Sequencing;
                 GroupChutes(mission);
@@ -890,6 +893,7 @@ namespace ClaudiaKerman.Core.Missions
             // #967: back at a coast checkpoint, its check runs first; a plan it keeps is called on the next input.
             if (CoastCheckRunsNow(mission, mission.PendingSequence)) return;
             mission.DueNotified = true;
+            DueTimeDeadlines(mission);
             _commands.Add(new DropWarp());
             // #967: under Auto Mode, with the player in the craft, a reached Due Time is not theirs to approve: Auto Mode's log line follows, or its stop line.
             if (AutoModeTakesDue(mission, mission.PendingSequence)) return;
@@ -1195,6 +1199,8 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             turn.UserText = DepartureLine(mission) + PlanStepLine(mission) + turn.UserText;
+            // #1025: the player's typed words, which alone may add a Contract to a revised plan.
+            if (!string.IsNullOrEmpty(turn.PlayerText) && mission.ChosenRequirements.Count > 0) mission.PlayerAsked.Add(turn.PlayerText);
             if (turn.Purpose == Purpose.Debrief && PrepareDebrief(mission, turn)) return;
             if (turn.Purpose == Purpose.MissionPlan || (turn.Purpose == Purpose.SequencePlan && !turn.ScriptRewrite)) turn.UserText = WithGoalBiomes(mission, turn.UserText);
             mission.Pending = turn;
@@ -2085,6 +2091,7 @@ namespace ClaudiaKerman.Core.Missions
             var first = mission.Plan == null;
             mission.Plan = plan;
             mission.PlanBaseline = _snapshot;
+            ServePlan(mission, plan);
             PlanOffered(mission);
             PlanChildVessels(mission, plan);
             mission.Stage = MissionStage.AwaitingPlanApproval;
@@ -2102,7 +2109,7 @@ namespace ClaudiaKerman.Core.Missions
             if (underMap.Length > 0) Event(mission, "leg_under_map", underMap.Trim());
             // Each Entry's Chute Group and predicted touchdown, from the craft as it is (only Flight's snapshot has the chutes' numbers).
             var groups = _snapshot == null || _scene != GameScene.Flight ? "" : ChuteGroups.Of(_snapshot, plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId).Describe();
-            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName) + underMap + (groups.Length > 0 ? "\nChutes: " + groups : ""), plan.Why);
+            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName, mission.ServesTags) + ContractPlanLines(mission) + underMap + (groups.Length > 0 ? "\nChutes: " + groups : ""), plan.Why);
             PlanNews("Claudia has a Mission Plan for your Approval.");
         }
 
@@ -2571,6 +2578,7 @@ namespace ClaudiaKerman.Core.Missions
                 }
                 view.CurrentSequence = Math.Min(StepsBegun(mission), view.PlanSequences.Count) - 1;
                 view.PlanLegs = mission.Plan != null ? mission.Plan.Sequences : null;
+                view.PartTests = PartTestsOf(mission);
                 view.CraftName = mission.VesselName;
                 view.ProcessorPartId = mission.ProcessorPartId;
                 view.ChuteGroups = mission.Chutes;

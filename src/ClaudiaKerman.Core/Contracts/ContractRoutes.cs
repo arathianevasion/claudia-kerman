@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
 
 namespace ClaudiaKerman.Core.Contracts
 {
@@ -21,8 +22,14 @@ namespace ClaudiaKerman.Core.Contracts
         public readonly Dictionary<string, double> LandUt = new Dictionary<string, double>();
         /// <summary>When the craft is home again; null when the route doesn't come home.</summary>
         public double? HomeUt;
-        /// <summary>When the launch is done (in orbit round home); null when the route has none.</summary>
+        /// <summary>When the launch is done (in orbit round home, or at a hop's apoapsis); null when the route has none.</summary>
         public double? LaunchUt;
+        /// <summary>#1048: the route is a hop below orbit, in words ("reach space over Kerbin"); "" when it isn't.</summary>
+        public string Hop = "";
+        /// <summary>#1029: the apoapsis a hop flies straight up to, m; null when the route isn't a hop.</summary>
+        public double? HopAp;
+        /// <summary>#1028: the Maneuver Sequences it was priced as, for the planners' re-pricing; null for a hop, which its own sim priced.</summary>
+        public List<PlannedSequence> Legs;
 
         /// <summary>When the leg serving <paramref name="requirement"/> finishes; null when the route doesn't serve it.</summary>
         public double? DoneUt(ReadRequirement requirement, string home)
@@ -40,6 +47,11 @@ namespace ClaudiaKerman.Core.Contracts
     /// written as the Maneuver Sequences it needs and judged by <see cref="PlanLegs"/>, so shared legs count once. The player's typed
     /// words are the fixed part of every route: their clauses fly after the Contracts' visits and before the trip home. Each leg carries
     /// a game-time estimate (<see cref="Estimate"/>). The search prices on the Map's figures (no planner search, spec #1021 decision 5).
+    /// <para>
+    /// #1048: from the pad at home, a route whose only need is a hop below orbit over home (<see cref="ContractReach.Hop"/>), with no
+    /// words to fly, is that hop, priced by <see cref="SuborbitalHop"/> to the highest apoapsis its bands ask; any other route launches
+    /// to orbit as before, and its hops are met on the way up and add nothing. A hop the sim can't price is priced as the launch to orbit.
+    /// </para>
     /// </summary>
     internal sealed class ContractRoutes
     {
@@ -82,11 +94,16 @@ namespace ClaudiaKerman.Core.Contracts
         /// The cheapest order of the route serving <paramref name="needs"/> (the furthest each body is reached), coming home when
         /// <paramref name="home"/>; among the orders that keep every deadline in <paramref name="keeps"/> when any does.
         /// </summary>
-        public PricedRoute Best(IDictionary<string, ContractReach> contractNeeds, bool home, Func<PricedRoute, bool> keeps)
+        public PricedRoute Best(IDictionary<string, ContractReach> contractNeeds, bool home, Func<PricedRoute, bool> keeps, IEnumerable<HopBand> hops = null)
         {
             var needs = Needs(contractNeeds);
+            var hop = Hop(needs, hops);
+            if (hop != null) return hop;
             var bodies = needs.Keys.Where(b => b != _home).OrderBy(b => b, StringComparer.Ordinal).ToList();
-            var orders = bodies.Count <= MostBodiesToPermute ? Permutations(bodies) : new[] { NearestNext(bodies) };
+            // #1060: bodies the words put in an order keep it; the rest go where they are cheapest. Words that contradict themselves keep no order.
+            var rules = Reading.Precedes.Where(p => bodies.Contains(p.Key) && bodies.Contains(p.Value)).ToList();
+            if (!Orderable(bodies, rules)) rules.Clear();
+            var orders = bodies.Count <= MostBodiesToPermute ? Permutations(bodies).Where(o => Keeps(o, rules)) : new[] { NearestNext(bodies, rules) };
             PricedRoute best = null, bestKept = null;
             foreach (var order in orders)
             {
@@ -95,6 +112,15 @@ namespace ClaudiaKerman.Core.Contracts
                 if (keeps(route) && (bestKept == null || route.DeltaV < bestKept.DeltaV)) bestKept = route;
             }
             return bestKept ?? best;
+        }
+
+        /// <summary>
+        /// #1028: <paramref name="route"/> re-priced with the planners (plan_ascent, plan_transfer, <see cref="RoutePlanners"/>), m/s: the
+        /// Contract check runs at Start Mission, where the route is priced up front. A hop is its own sim's figure already.
+        /// </summary>
+        public double Planned(PricedRoute route)
+        {
+            return route.Legs == null ? route.DeltaV : PlanLegs.Need(PlanLegs.Judge(_snapshot, route.Legs, "", true));
         }
 
         /// <summary>What the Contracts need with what the words need: where both reach a body, the further reach serves both.</summary>
@@ -113,6 +139,26 @@ namespace ClaudiaKerman.Core.Contracts
         internal bool WordsReturn
         {
             get { return _wordsReturn; }
+        }
+
+        /// <summary>The hop that serves <paramref name="needs"/> on its own; null when they need more than a hop, or the hop can't be priced.</summary>
+        private PricedRoute Hop(IDictionary<string, ContractReach> needs, IEnumerable<HopBand> hops)
+        {
+            var bands = (hops ?? new HopBand[0]).ToList();
+            ContractReach reach;
+            SnapshotBody body;
+            if (bands.Count == 0 || needs.Count != 1 || !needs.TryGetValue(_home, out reach) || reach != ContractReach.Hop || _words.Count > 0
+                || !_snapshot.IsGrounded || Start() != _home || !_bodies.TryGetValue(_home, out body)) return null;
+            var highest = bands.OrderByDescending(b => b.TargetAp(body)).First();
+            var targetAp = highest.TargetAp(body);
+            var key = "hop|" + Math.Round(targetAp);
+            PricedRoute cached;
+            if (_priced.TryGetValue(key, out cached)) return cached;
+            string why;
+            var deltaV = SuborbitalHop.DeltaV(_snapshot, targetAp, out why);
+            var route = deltaV.HasValue ? new PricedRoute { DeltaV = deltaV.Value, Hop = highest.Words(_home), HopAp = targetAp, LaunchUt = _snapshot.Ut + LaunchSeconds, HomeUt = _snapshot.Ut + LaunchSeconds } : null;
+            _priced[key] = route;
+            return route;
         }
 
         private PricedRoute Price(IList<string> order, IDictionary<string, ContractReach> needs, bool home)
@@ -169,6 +215,7 @@ namespace ClaudiaKerman.Core.Contracts
                 }
                 route.HomeUt = ut;
             }
+            route.Legs = legs;
             route.DeltaV = PlanLegs.Need(PlanLegs.Judge(_snapshot, legs, ""));
             _priced[key] = route;
             return route;
@@ -236,14 +283,32 @@ namespace ClaudiaKerman.Core.Contracts
             return chain;
         }
 
-        private List<string> NearestNext(List<string> bodies)
+        private static bool Keeps(IList<string> order, IEnumerable<KeyValuePair<string, string>> rules)
+        {
+            return rules.All(r => order.IndexOf(r.Key) < order.IndexOf(r.Value));
+        }
+
+        /// <summary>Whether some order keeps every rule: the rules hold no loop.</summary>
+        private static bool Orderable(List<string> bodies, List<KeyValuePair<string, string>> rules)
+        {
+            var left = bodies.ToList();
+            while (left.Count > 0)
+            {
+                var free = left.FirstOrDefault(b => !rules.Any(r => r.Value == b && left.Contains(r.Key)));
+                if (free == null) return false;
+                left.Remove(free);
+            }
+            return true;
+        }
+
+        private List<string> NearestNext(List<string> bodies, List<KeyValuePair<string, string>> rules)
         {
             var order = new List<string>();
             var left = bodies.ToList();
             var at = Start();
             while (left.Count > 0)
             {
-                var next = left.OrderBy(b => Transfer(at, b)).First();
+                var next = left.Where(b => !rules.Any(r => r.Value == b && left.Contains(r.Key))).OrderBy(b => Transfer(at, b)).First();
                 order.Add(next);
                 left.Remove(next);
                 at = next;

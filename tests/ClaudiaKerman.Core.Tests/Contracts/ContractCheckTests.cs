@@ -134,9 +134,9 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
-        public void EveryNonExplorationContractIsNotYetWithItsReason()
+        public void EveryContractTypeNotPlannedYetIsNotYetWithItsReason()
         {
-            var files = new[] { "PartTest.json", "SurveyContract.json", "SatelliteContract.json", "PlantFlag.json", "RecoverAsset.json" };
+            var files = new[] { "SurveyContract.json", "SatelliteContract.json", "PlantFlag.json", "RecoverAsset.json" };
             var snapshot = With(files.Select(Fixture).ToArray());
 
             var check = Check(snapshot);
@@ -147,17 +147,106 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.All(check.NotThisFlight, left => Assert.Equal(LeftOutKind.NotYet, left.Kind));
         }
 
+        /// <summary>#1048: reaching space over Kerbin is met on a hop out of the air, not on a trip to orbit.</summary>
         [Fact]
-        public void ARequirementMetBelowOrbitIsNotYetUntilSuborbitalFlightsArePriced()
+        public void AKerbinWorldFirstMetBelowOrbitIsPricedAsAHop()
         {
-            var required = Exploration("c-space", 5000, "Kerbin:REACHSPACE");
+            var snapshot = With(Exploration("c-space", 5000, "Kerbin:REACHSPACE"));
+
+            var check = Check(snapshot);
+
+            var row = Assert.Single(check.Fitting);
+            Assert.Equal("c-space", row.Guid);
+            Assert.Equal("Kerbin hop", row.Phase);
+            Assert.True(check.RouteDeltaV > 1000, "a hop out of the air is not free: " + check.RouteDeltaV);
+            Assert.True(check.RouteDeltaV < Map(snapshot).Leg("launch:Kerbin").DeltaV - 500, "priced " + check.RouteDeltaV + " against the launch to orbit");
+            Assert.Equal("reach space over Kerbin", Assert.Single(check.Legs).Text);
+        }
+
+        /// <summary>
+        /// The player's PartTest of 2026-11-14 (#1048): FLYING over Kerbin, 51,000–56,000 m at 100–260 m/s; the part is the pad craft's
+        /// own Terrier (liquidEngine.v2) for #1029, as the part to test must be aboard.
+        /// </summary>
+        internal static SnapshotContract BoosterTest(string id)
+        {
+            var contract = Fixture("PartTest.json");
+            contract.Guid = id;
+            var test = contract.Requirements[0];
+            test.Settings = test.Settings.Select(s => s.Name == "part" ? new ContractSetting("part", "liquidEngine.v2") : s).ToList();
+            var values = new Dictionary<string, string> { { "minAlt", "51000" }, { "maxAlt", "56000" }, { "minSpd", "100" }, { "maxSpd", "260" } };
+            foreach (var condition in test.Requirements)
+                condition.Settings = condition.Settings.Select(s => values.ContainsKey(s.Name) ? new ContractSetting(s.Name, values[s.Name]) : s).ToList();
+            return contract;
+        }
+
+        /// <summary>The pad craft with its three upper stages emptied: about 3,300 m/s, short of the launch to orbit with the reserve.</summary>
+        private static void BoosterOnly(GameSnapshot snapshot)
+        {
+            foreach (var stage in snapshot.Stages.Where(s => s.Number >= 2 && s.Number <= 4))
+            {
+                stage.DeltaVVac = 0;
+                stage.ThrustVacKn = 0;
+                stage.StartMassT = stage.EndMassT;
+            }
+        }
+
+        [Fact]
+        public void ASuborbitalPartTestIsPricedAsAHopBelowTheLaunchToOrbit()
+        {
+            var snapshot = With(BoosterTest("c-test"));
+
+            var check = Check(snapshot);
+
+            var row = Assert.Single(check.Fitting);
+            Assert.Equal("Kerbin hop", row.Phase);
+            Assert.True(check.RouteDeltaV > 1000, "a hop to 51 km is not free: " + check.RouteDeltaV);
+            Assert.True(check.RouteDeltaV < Map(snapshot).Leg("launch:Kerbin").DeltaV - 500, "priced " + check.RouteDeltaV + " against the launch to orbit");
+            Assert.Equal("hop through 51,000–56,000 m at 100–260 m/s over Kerbin", Assert.Single(check.Legs).Text);
+            Assert.Contains("test liquidEngine.v2 through 51,000–56,000 m at 100–260 m/s over Kerbin", check.Choose(new[] { "c-test" }).Section);
+        }
+
+        [Fact]
+        public void ACraftThatReachesTheBandButNotOrbitHasTheSuborbitalPartTestInThisFlight()
+        {
+            var snapshot = With(BoosterTest("c-test"), Exploration("c-orbit", 9000, "Kerbin:ORBIT"));
+            BoosterOnly(snapshot);
+            Assert.True(CraftDeltaV(snapshot) < Map(snapshot).Leg("launch:Kerbin").DeltaV * (1 + Margin / 100.0));
+
+            var check = Check(snapshot);
+
+            Assert.Equal("c-test", Assert.Single(check.Fitting).Guid);
+            var orbit = check.NotThisFlight.Single(l => l.Guid == "c-orbit");
+            Assert.Equal(LeftOutKind.CraftCant, orbit.Kind);
+        }
+
+        /// <summary>
+        /// #1029 (triage of #1048): the launch to orbit passes 51–56 km far faster than 260 m/s, so the orbit Contract's route doesn't meet
+        /// the test: the two don't fly together, and the one left out says how the ascent misses the band.
+        /// </summary>
+        [Fact]
+        public void AnAscentToOrbitTooFastThroughTheBandDoesNotMeetThePartTestAndSaysWhy()
+        {
+            var check = Check(With(BoosterTest("c-test"), Exploration("c-orbit", 9000, "Kerbin:ORBIT")));
+
+            Assert.Single(check.Fitting);
+            check.Tick("c-test", true);
+            check.Tick("c-orbit", true);
+
+            Assert.False(check.SetFits);
+            Assert.Matches(@"^this craft can't: on the ascent: speed [\d,]+ m/s, above the band, through 51–56 km", check.Problem);
+        }
+
+        [Fact]
+        public void ARecordMetBelowOrbitIsStillNotYetAndAnOptionalOneIsSkipped()
+        {
+            var required = Exploration("c-high", 5000, "Kerbin:ALTITUDERECORD");
             var optional = Exploration("c-mun", 5000, "Mun:ORBIT", "?Kerbin:ALTITUDERECORD");
 
             var check = Check(With(required, optional));
 
-            Assert.Equal("not yet: suborbital flights aren't priced yet (#1048)", check.NotThisFlight.Single(l => l.Guid == "c-space").Reason);
+            Assert.Equal(ContractKinds.RecordNotYet, check.NotThisFlight.Single(l => l.Guid == "c-high").Reason);
             var mun = check.Fitting.Single(r => r.Guid == "c-mun");
-            Assert.Contains("suborbital flights aren't priced yet (#1048)", mun.Note);
+            Assert.Contains(ContractKinds.RecordNotYet.Substring("not yet: ".Length), mun.Note);
         }
 
         [Fact]

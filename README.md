@@ -138,7 +138,7 @@ You need the .NET 10 SDK. The adapter and kOS addon compile against your own KSP
 
 A failing test, or a script that doesn't compile or uses something forbidden, exits non-zero. A build stages the mod in `dist/GameData/ClaudiaKerman/`. To install it, copy that folder into your KSP `GameData` folder, next to kOS and HarmonyKSP. kOS and HarmonyKSP are dependencies you install yourself; they are never bundled.
 
-CI (`.github/workflows/ci.yml`) runs on every push: the core tests, then, with kOS.Safe from the public kOS release, the Script Check tests, a Script Check of every shipped script and block test script, the Core Library tests, and a check that the syntax-error and forbidden-call fixtures fail.
+CI (`.github/workflows/ci.yml`) runs the gate as three parallel jobs (core, kerboscript, scriptcheck; see the file header): the core tests, then, with kOS.Safe from the public kOS release, the Script Check tests, a Script Check of every shipped script and block test script, the Core Library tests, and a check that the syntax-error and forbidden-call fixtures fail.
 
 ### In-game tests
 

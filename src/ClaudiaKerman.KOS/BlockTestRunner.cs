@@ -236,6 +236,7 @@ namespace ClaudiaKerman.KOS
                 MissionDriver.BlockTestTargetId = null;
                 Core.Tools.BlockTestAim.Clear(); // a block test never sees an earlier test's aim (#892)
                 MissionDriver.BlockTestPlan = _spec.Plan.Count > 0 ? _spec.Plan : null;
+                MissionDriver.BlockTestPartTests = _spec.PartTests.Count > 0 ? new Core.Contracts.PartTestWatch(_spec.PartTests, "Kerbin") : null;
 
                 var game = GamePersistence.LoadGame("persistent", SaveFolder, true, false);
                 if (game == null) throw new InvalidOperationException("KSP wouldn't load the scenario save");
@@ -383,6 +384,7 @@ namespace ClaudiaKerman.KOS
             ToolTestGate.Shared.Close();
             MissionDriver.BlockTestTargetId = null;
             MissionDriver.BlockTestPlan = null;
+            MissionDriver.BlockTestPartTests = null;
             Note(result.Headline);
             foreach (var line in result.Lines) Note("  " + line);
             try

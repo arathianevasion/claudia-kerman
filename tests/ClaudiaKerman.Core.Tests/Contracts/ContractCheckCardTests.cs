@@ -92,18 +92,18 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return string.Join("\n", texts);
         }
 
-        private static GameSnapshot TwoAtTheMunAndAPartTest()
+        private static GameSnapshot TwoAtTheMunAndAHaul()
         {
             return ContractCheckTests.With(
                 ContractCheckTests.Fixture("ExplorationContract.json"),
                 ContractCheckTests.Exploration("c-land", 30000, "Mun:LANDING"),
-                ContractCheckTests.Fixture("PartTest.json"));
+                ContractCheckTests.Fixture("SurveyContract.json"));
         }
 
         [Fact]
         public void StartMissionWithAcceptedContractsPostsTheCardAndAsksClaudeNothing()
         {
-            var mission = Control(TwoAtTheMunAndAPartTest());
+            var mission = Control(TwoAtTheMunAndAHaul());
 
             mission.Send(Start(""));
             Settle();
@@ -129,10 +129,25 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(MissionStage.None, mission.View.Stage);
         }
 
+        /// <summary>#1028: the card says when the planners' re-pricing moved the suggestion off the Delta-v Map's best set.</summary>
+        [Fact]
+        public void TheCardCarriesThePlannersRepricingNote()
+        {
+            var mission = Control(ContractSearchTests.DunaOnTheEdge(10283, ContractCheckTests.Exploration("duna", 30000, "Duna:FLYBY"), ContractCheckTests.Exploration("mun", 5000, "Mun:FLYBY")));
+
+            mission.Send(Start(""));
+            Settle();
+
+            var card = mission.View.ContractCheck;
+            Assert.Equal("mun", card.Rows.Single(r => r.Ticked).Guid);
+            Assert.StartsWith("Priced with the planners, the best set by the Delta-v Map came out ", card.SearchNote);
+            Assert.Equal(0, Requests);
+        }
+
         [Fact]
         public void PlanTheseSendsOneStartMissionRequestWithTheContractRouteAndThePlayersWords()
         {
-            var mission = Control(TwoAtTheMunAndAPartTest());
+            var mission = Control(TwoAtTheMunAndAHaul());
             mission.Send(Start("Also run a crew report in Mun orbit."));
             Settle();
             Assert.Equal(0, Requests);
@@ -146,7 +161,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("Also run a crew report in Mun orbit.", text);
             Assert.Contains("land on the Mun", text);
             Assert.Contains("(phase: Mun)", text);
-            Assert.Contains("not yet: part tests aren't planned yet", text);
+            Assert.Contains("not yet: surveys aren't planned yet", text);
             // The card folds to its one line, which stays in the Mission's transcript.
             Assert.Null(mission.View.ContractCheck);
             Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal));
@@ -155,7 +170,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void WithNothingTypedTheMissionPlansFromTheContractsAlone()
         {
-            var mission = Control(TwoAtTheMunAndAPartTest());
+            var mission = Control(TwoAtTheMunAndAHaul());
             mission.Send(Start(""));
             mission.Send(new PlanContracts());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
@@ -169,7 +184,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void StartMissionAgainReplacesTheCardWithTheNewWords()
         {
-            var mission = Control(TwoAtTheMunAndAPartTest());
+            var mission = Control(TwoAtTheMunAndAHaul());
             mission.Send(Start(""));
             Assert.False(mission.View.ContractCheck.CanPlanWithout);
 
@@ -183,7 +198,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void WithTheCraftsDeltaVUnknownTheContractsArentDroppedSilently()
         {
-            var snapshot = TwoAtTheMunAndAPartTest();
+            var snapshot = TwoAtTheMunAndAHaul();
             snapshot.DeltaVSimulator = false;
             var mission = Control(snapshot);
 
@@ -198,7 +213,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void PlanWithoutContractsPlansThePlayersWordsAlone()
         {
-            var mission = Control(TwoAtTheMunAndAPartTest());
+            var mission = Control(TwoAtTheMunAndAHaul());
             mission.Send(Start("Fly to Minmus and capture into orbit."));
             Assert.True(mission.View.ContractCheck.CanPlanWithout);
             mission.Send(new PlanWithoutContracts());
@@ -213,7 +228,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void PlanWithoutContractsNeedsWords()
         {
-            var mission = Control(TwoAtTheMunAndAPartTest());
+            var mission = Control(TwoAtTheMunAndAHaul());
             mission.Send(Start(""));
 
             Assert.False(mission.View.ContractCheck.CanPlanWithout);
@@ -241,7 +256,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void WhenTheTypedWordsAloneDontFitTheCraftCheckGivesItsBlockerAndNoContractIsSuggested()
         {
-            var snapshot = TwoAtTheMunAndAPartTest();
+            var snapshot = TwoAtTheMunAndAHaul();
             foreach (var stage in snapshot.Stages) stage.DeltaVVac *= 0.25;
             var mission = Control(snapshot, false, ScriptedResponse.Fixture("craft-check-fail.sse"));
 
@@ -264,7 +279,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void TickingAndUntickingReSurfacesTheCardInPlaceWithNoRequest()
         {
-            var mission = Control(TwoAtTheMunAndAPartTest());
+            var mission = Control(TwoAtTheMunAndAHaul());
             mission.Send(Start(""));
             var before = mission.View.ContractCheck;
             var both = before.RouteDeltaV;
@@ -289,7 +304,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void UntickingEverythingLeavesNothingToPlan()
         {
-            var mission = Control(TwoAtTheMunAndAPartTest());
+            var mission = Control(TwoAtTheMunAndAHaul());
             mission.Send(Start(""));
             foreach (var row in mission.View.ContractCheck.Rows.ToList()) mission.Send(new TickContract(row.Guid, false));
 
@@ -344,7 +359,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void TheCraftCheckJudgesTheChosenSetNotAFreshSearch()
         {
-            var mission = Control(TwoAtTheMunAndAPartTest());
+            var mission = Control(TwoAtTheMunAndAHaul());
             mission.Send(Start(""));
             mission.Send(new TickContract("c-land", false));
             var chosen = mission.View.ContractCheck.Rows.Single(r => r.Ticked);

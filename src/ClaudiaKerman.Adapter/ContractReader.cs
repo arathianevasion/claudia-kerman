@@ -20,6 +20,9 @@ namespace ClaudiaKerman.Adapter
         /// <summary>The figure at or above which the game's limit means none (it gives <c>int.MaxValue</c> at the top Mission Control level).</summary>
         private const int NoLimit = 1000000;
 
+        /// <summary>How many of the newest finished Contracts the snapshot carries: enough for every Contract of one Mission.</summary>
+        private const int Finished = 30;
+
         /// <summary>The accepted Contracts; null outside Career or before the game's Contract system has loaded.</summary>
         public static SnapshotContracts Read()
         {
@@ -34,11 +37,25 @@ namespace ClaudiaKerman.Adapter
                 read.Limit = limit >= NoLimit ? (int?)null : limit;
             }
             foreach (var contract in system.GetCurrentActiveContracts<Contract>())
-                if (contract != null) read.Accepted.Add(ContractOf(contract));
+            {
+                if (contract == null) continue;
+                var one = Of(contract);
+                ReadRewards(one, contract);
+                read.Accepted.Add(one);
+            }
+            // #1025: the newest finished ones, GUID and state only (no saved form), so Core tells a completion from a failure.
+            var finished = system.ContractsFinished;
+            if (finished != null)
+                foreach (var contract in finished.Skip(System.Math.Max(0, finished.Count - Finished)))
+                    if (contract != null) read.Finished.Add(new FinishedContract { Guid = contract.ContractGuid.ToString(), State = contract.ContractState.ToString() });
             return read;
         }
 
-        private static SnapshotContract ContractOf(Contract contract)
+        /// <summary>
+        /// One Contract, offered or accepted, as plain data: its kind, state, deadline, saved settings and Requirement tree. The rewards
+        /// are read separately (<see cref="ReadRewards"/>), as they run the game's Strategy query, which Mission Control's mark doesn't need.
+        /// </summary>
+        internal static SnapshotContract Of(Contract contract)
         {
             var saved = new ConfigNode("CONTRACT");
             contract.Save(saved);
@@ -52,7 +69,6 @@ namespace ClaudiaKerman.Adapter
                 DeadlineUt = contract.DateDeadline > 0 ? contract.DateDeadline : (double?)null,
                 Settings = SettingsOf(saved),
             };
-            ReadRewards(read, contract);
             for (var i = 0; i < contract.ParameterCount; i++)
             {
                 var requirement = contract.GetParameter(i);

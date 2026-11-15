@@ -518,6 +518,7 @@ namespace ClaudiaKerman.Adapter
                 return;
             }
             GUILayout.Label(card.Headline, _bold);
+            if (card.SearchNote.Length > 0) GUILayout.Label(card.SearchNote, ClaudiaSkin.Secondary);
             DrawRouteBar(card);
             foreach (var row in card.Rows)
             {
@@ -581,7 +582,7 @@ namespace ClaudiaKerman.Adapter
 
         private static string ChipText(LeftOutKind kind)
         {
-            return kind == LeftOutKind.NotYet ? "not yet" : kind == LeftOutKind.CompletesLater ? "completes later" : kind == LeftOutKind.NotSearched ? "not searched" : kind == LeftOutKind.CantWithWords ? "your words win" : "this craft can't";
+            return kind == LeftOutKind.NotYet ? "not yet" : kind == LeftOutKind.CompletesLater ? "completes later" : kind == LeftOutKind.CantWithWords ? "your words win" : "this craft can't";
         }
 
         // ---- Approval: a typed reply that reads like an approval ends the transcript with a checkbox ----

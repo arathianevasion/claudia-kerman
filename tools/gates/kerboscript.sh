@@ -5,7 +5,8 @@
 # It lists the tests, deals the test methods out to SHARDS processes (default: one per performance core on Apple Silicon, else nproc) so each gets
 # about as many test cases and a slice of every class, and runs them at once. The total run must equal the number listed,
 # so no test is dropped or run twice. Prints each shard's summary, then a total in dotnet test's own format (gates.sh
-# reads the last Passed!/Failed! line). Exits non-zero if any shard failed.
+# reads the last Passed!/Failed! line). Exits non-zero if any shard failed. Each shard goes through dotnet-test.sh, so a
+# failed test is rerun once and a pass on the rerun prints `FLAKY <test>` (#1067); Category=Quarantine tests are left out.
 #   tools/gates/kerboscript.sh            (after a build; it runs --no-build)
 #   SHARDS=1 tools/gates/kerboscript.sh   (one process, as before #625)
 # Runs on the checkout it lives in (the repo root is two levels up); GATES_ROOT overrides that.
@@ -15,7 +16,7 @@ K="-p:KOSPluginsDir=${KOS_PLUGINS_DIR:-$HOME/KSP_spike/GameData/kOS/Plugins}"   
 P=tests/ClaudiaKerman.Kerboscript.Tests
 SHARDS=${SHARDS:-$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || nproc 2>/dev/null || echo 4)}
 
-if ! listed=$(dotnet test $P --no-build $K --list-tests 2>&1); then echo "Failed! listing the tests"; echo "$listed" | tail -20; exit 1; fi
+if ! listed=$(dotnet test $P --no-build $K --filter "Category!=Quarantine" --list-tests 2>&1); then echo "Failed! listing the tests"; echo "$listed" | tail -20; exit 1; fi
 # One "cases method" line per test method (a Theory lists once per case), most cases first.
 methods=$(echo "$listed" | awk '/^The following Tests are available:/ { on = 1; next } on && /^    / { sub(/^ +/, ""); sub(/\(.*/, ""); n[$0]++ }
   END { for (m in n) print n[m], m }' | sort -k1,1nr -k2,2)
@@ -34,7 +35,7 @@ cleanup() { [ ${#pids[@]} -gt 0 ] && kill "${pids[@]}" 2>/dev/null; wait 2>/dev/
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 for i in "${!filters[@]}"; do
-  dotnet test $P --no-build $K --filter "${filters[$i]}" > "$dir/$i.out" 2>&1 &
+  bash "$(dirname "$0")/dotnet-test.sh" $P --no-build $K --filter "(${filters[$i]})&Category!=Quarantine" > "$dir/$i.out" 2>&1 &
   pids+=($!)
 done
 
@@ -47,6 +48,7 @@ for i in "${!filters[@]}"; do
   if [ -z "$line" ]; then echo "shard $i: FAIL no summary (rc $rc)"; logs="$logs$(echo "$out" | tail -20)
 "; fail=1; continue; fi
   echo "shard $i: $line"
+  echo "$out" | grep '^FLAKY '
   [ $rc -ne 0 ] && { fail=1; logs="$logs$out
 "; }
   failed=$((failed + $(count Failed "$line"))); passed=$((passed + $(count Passed "$line")))

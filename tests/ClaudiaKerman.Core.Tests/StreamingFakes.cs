@@ -83,6 +83,12 @@ namespace ClaudiaKerman.Core.Tests
             lock (_responses) _responses.Enqueue(response);
         }
 
+        /// <summary>The requests sent so far, copied under the lock a worker thread adds them with: safe to read while requests are still going out.</summary>
+        public HttpRequestSpec[] RequestsSoFar()
+        {
+            lock (_responses) return Requests.ToArray();
+        }
+
         public HttpResponseData Send(HttpRequestSpec request)
         {
             throw new InvalidOperationException("streaming fake only");

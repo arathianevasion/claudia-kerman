@@ -10,14 +10,15 @@ using Xunit;
 namespace ClaudiaKerman.ScriptCheck.Tests
 {
     /// <summary>
-    /// The real Script Check, compiling with kOS.Safe: a script using each forbidden item fails naming that
-    /// item (the list is the spec's, user story 139), and each allowed item passes.
+    /// Shared by the Script Check test classes. Each compile of the bundled Core Library costs ~0.4s and nothing
+    /// in it can be shared between scripts, so the suite is split into classes, which xUnit runs in parallel
+    /// (#1051). Each class builds its own checker; the checker keeps no state between calls.
     /// </summary>
-    public sealed class KosScriptCheckTests
+    public abstract class ScriptCheckTestsBase
     {
-        private readonly IScriptCheck _check = new KosScriptCheck();
+        protected readonly IScriptCheck _check = new KosScriptCheck();
 
-        private void AssertForbidden(string item, string script)
+        protected void AssertForbidden(string item, string script)
         {
             var result = _check.Check(script);
             Assert.True(result.CompileError == null, result.CompileError);
@@ -25,12 +26,24 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.Contains(result.Forbidden, f => f.EndsWith("(" + item + ")"));
         }
 
-        private void AssertAllowed(string script)
+        protected void AssertAllowed(string script)
         {
             var result = _check.Check(script);
             Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()) + "\n" + script);
         }
 
+        protected static string RepoRoot()
+        {
+            var dir = new DirectoryInfo(System.AppContext.BaseDirectory);
+            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "ClaudiaKerman.sln"))) dir = dir.Parent;
+            Assert.NotNull(dir);
+            return dir.FullName;
+        }
+    }
+
+    /// <summary>The real Script Check, compiling with kOS.Safe: Lints.</summary>
+    public sealed class LintsScriptCheckTests : ScriptCheckTestsBase
+    {
         // ---- Lints: warn, never refuse ----
 
         [Theory]
@@ -319,7 +332,11 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
             Assert.Single(result.Warnings, w => w.Contains(DescentLint));
         }
+    }
 
+    /// <summary>The real Script Check, compiling with kOS.Safe: ForbiddenAndAllowed.</summary>
+    public sealed class ForbiddenAndAllowedScriptCheckTests : ScriptCheckTestsBase
+    {
         // ---- Forbidden: one theory per item of the spec's list ----
 
         [Theory]
@@ -606,7 +623,11 @@ namespace ClaudiaKerman.ScriptCheck.Tests
                 Assert.Contains(_check.Check(script).Forbidden, f => f.EndsWith("(call Planning Tools)"));
             }
         }
+    }
 
+    /// <summary>The real Script Check, compiling with kOS.Safe: BlockOptionsAndInternalCalls.</summary>
+    public sealed class BlockOptionsAndInternalCallsScriptCheckTests : ScriptCheckTestsBase
+    {
         // ---- Building Block options (#606): a call the block would refuse at once fails, before anything flies ----
 
         [Fact]
@@ -636,66 +657,6 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         }
 
         // ---- Block-internal calls (ADR 0006, ADR 0007): the Core Library's, never a Mission Script's ----
-
-        [Theory]
-        [InlineData("local s is addons:claudia:landingsite(lexicon(\"biome\", \"Midlands\")).")]
-        [InlineData("local c is addons:claudia.\nprint c:landingsite(lexicon()).")]
-        [InlineData("local f is addons:claudia:LandingSite@.\nprint f(lexicon()).")]
-        [InlineData("local p is addons:claudia:landingpass(lexicon(\"lat\", 0, \"lng\", 20, \"r_pe\", 203000)).\nprint p:burn_ut.")]
-        [InlineData("local c is addons:claudia.\nprint c:LandingPass(lexicon()):next_pass_ut.")]
-        [InlineData("local p is addons:claudia:brakepath(lexicon(\"lat\", 0, \"lng\", 20, \"shape\", \"auto\")).\nprint p:descent_shape.")]
-        [InlineData("local c is addons:claudia.\nprint c:BrakePath(lexicon()):clears.")]
-        [InlineData("local b is addons:claudia:deorbitburn(lexicon(\"lat\", 0, \"lng\", -74)).")]
-        [InlineData("local t is addons:claudia:entrytrim(lexicon(\"to_air\", 3000)).")]
-        [InlineData("print addons:claudia:falleta(lexicon(\"ecc\", 1.07)).")]
-        [InlineData("print addons:claudia:reentryimpact(lexicon()):lat.")]
-        [InlineData("local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).")]
-        [InlineData("print addons:claudia:predictionmiss(lexicon(\"lat\", 0, \"lng\", 0)):km.")]
-        [InlineData("print addons:claudia:turntime(lexicon()):turn_time.")]
-        [InlineData("print addons:claudia:lowcharge(lexicon()):carry_on.")]
-        [InlineData("print addons:claudia:brakeheights(lexicon()):brake_h.")]
-        [InlineData("local t is addons:claudia:braketick(lexicon()).\nprint t:start.")]
-        [InlineData("print addons:claudia:entryloss(lexicon()):carry_on.")]
-        [InlineData("print addons:claudia:groundsettle(lexicon()):done.")]
-        [InlineData("print addons:claudia:entryskip(lexicon()):refusal.")]
-        [InlineData("local t is addons:claudia:TurnTime@.\nprint t(lexicon(\"max_stopping_time\", 2)).")]
-        [InlineData("local e is addons:claudia:ejectionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(e:ut, e:radial, e:normal, e:prograde).")]
-        [InlineData("local c is addons:claudia.\nprint c:EjectionBurn(lexicon(\"target\", \"Minmus\", \"target_pe\", 20000, \"window\", \"next\")):dv.")]
-        [InlineData("local w is addons:claudia:launchwindow(lexicon(\"inc\", 6, \"lan\", 78)).\nprint w:wait.")]
-        [InlineData("print addons:claudia:launchpitch(lexicon()):pitch.")]
-        [InlineData("local k is addons:claudia:correctionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(k:ut, k:radial, k:normal, k:prograde).")]
-        [InlineData("local c is addons:claudia.\nprint c:CorrectionBurn(lexicon(\"target\", \"Kerbin\", \"target_pe\", 35000, \"target_inc\", 0)):dv.")]
-        [InlineData("local o is addons:claudia:orbitburn(lexicon(\"goal\", \"set_inc\", \"value\", 90)).\nadd node(o:ut, o:radial, o:normal, o:prograde).")]
-        [InlineData("local c is addons:claudia.\nprint c:OrbitBurn(lexicon(\"goal\", \"match_plane\", \"target\", \"Minmus\")):dv.")]
-        [InlineData("local h is addons:claudia:returnburn(lexicon(\"target_pe\", 35000)).\nadd node(h:ut, h:radial, h:normal, h:prograde).")]
-        [InlineData("local c is addons:claudia.\nprint c:ReturnBurn(lexicon(\"target_pe\", 35000, \"target_inc\", 30)):dv.")]
-        [InlineData("local a is addons:claudia:chutegroup().\nprint a:uids.")]
-        [InlineData("local a is addons:claudia:entryfinish(lexicon(\"home\", \"1\")).\nprint a:powered.")]
-        [InlineData("local a is addons:claudia:dropcheck(lexicon(\"before\", 1, \"left\", 0)).\nprint a:reason.")]
-        [InlineData("local c is addons:claudia.\nprint c:ChuteGroup:titles.")]
-        [InlineData("local t is addons:claudia:targetvessel().\nprint t:name.")]
-        [InlineData("local c is addons:claudia.\nprint c:TargetVessel:body.")]
-        [InlineData("local h is addons:claudia:dockhold(lexicon(\"port\", \"1\", \"toward\", \"2\")).\nprint h:state.")]
-        [InlineData("local c is addons:claudia.\nprint c:DockHoldState:reason.")]
-        [InlineData("print addons:claudia:dockguide(lexicon(\"along\", 10)):fire.")]
-        [InlineData("print addons:claudia:dockholdlevel(lexicon(\"level\", \"\")):changed.")]
-        [InlineData("local c is addons:claudia.\nprint c:DockFuel(lexicon(\"distance\", 150)):error.")]
-        [InlineData("print addons:claudia:burnworth(lexicon(\"block\", \"circularize\")):skip.")]
-        [InlineData("print addons:claudia:burnthrough(lexicon()):burn_through.")]
-        [InlineData("print addons:claudia:burntime(lexicon()):burn_time.")]
-        [InlineData("print addons:claudia:returnmiss(lexicon(\"target_pe\", 35000, \"pe\", 36000)):error.")]
-        [InlineData("print addons:claudia:turnplan(lexicon(\"angle\", 140, \"left_s\", 60)):coast_rate.")]
-        [InlineData("print addons:claudia:burstturn(lexicon(), lexicon(\"error\", 40)):rcs_on.")]
-        [InlineData("print addons:claudia:shipsystems(\"liftoff\"):done.")]
-        [InlineData("addons:claudia:encounterwatch(lexicon()).")]
-        [InlineData("print addons:claudia:encounterwatchdropped.")]
-        [InlineData("print addons:claudia:liftoffclear(lexicon(\"core\", \"1\")):decouplers.")]
-        [InlineData("print addons:claudia:autodropfree():free.")]
-        public void ABlockInternalCallInAMissionScriptFails(string script)
-        {
-            AssertForbidden("call block-internal calculations", script);
-            AssertForbidden("call block-internal calculations", CoreLibrary.Bundle(script));
-        }
 
         // #711: dock_hold's settled report changes the hold's state, so it is block-internal (ADR 0014 guardrail 5): refused in a
         // Mission Script. The mod's own dock_hold makes it, and passes as the mod's (TheDockHoldProgramPassesTheCheckAsTheModsOwn).
@@ -834,7 +795,11 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             var result = _check.Check(CoreLibrary.Bundle("print 1.\nprint addons:claudia:landingsite(lexicon())."));
             Assert.Contains("line 2: :LANDINGSITE (call block-internal calculations)", result.Forbidden);
         }
+    }
 
+    /// <summary>The real Script Check, compiling with kOS.Safe: BlockInternalCallsInTheLibrary.</summary>
+    public sealed class BlockInternalCallsInTheLibraryScriptCheckTests : ScriptCheckTestsBase
+    {
         [Fact]
         public void AMissionScriptCopyingTheLibrarysBannerIsStillAMissionScript()
         {
@@ -922,6 +887,13 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.Contains(_check.Check(block).Forbidden, f => f.EndsWith(":ORBITBURN (call block-internal calculations)"));
         }
 
+        /// <summary>#1029: PARTTEST is the Core Library's (launch and reentry, from claudia_tick): a Mission Script can't time a part test itself.</summary>
+        [Fact]
+        public void AMissionScriptCannotAskForAPartTest()
+        {
+            Assert.Contains(_check.Check("local pt is addons:claudia:parttest(\"launch\").\nprint pt.\n").Forbidden, f => f.EndsWith(":PARTTEST (call block-internal calculations)"));
+        }
+
         [Fact]
         public void DockFileAlonePassesOnlyAsCoreLibrary()
         {
@@ -999,7 +971,11 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         {
             AssertAllowed("list engines in engs.\nfor e in engs { e:activate(). }\nengs[0]:shutdown().");
         }
+    }
 
+    /// <summary>The real Script Check, compiling with kOS.Safe: ReturnAndCompiling.</summary>
+    public sealed class ReturnAndCompilingScriptCheckTests : ScriptCheckTestsBase
+    {
         // ---- A bare return(...) statement ----
 
         [Theory]
@@ -1078,49 +1054,14 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             AssertAllowed("function deploy { parameter p. p:getmodule(\"ModuleParachute\"):doevent(\"deploy chute\"). }\n"
                 + "deploy(ship:partstagged(\"chute\")[0]).\nprint vessel(\"Other\"):altitude.");
         }
+    }
+
+    /// <summary>The real Script Check, compiling with kOS.Safe: OtherVesselAliases.</summary>
+    public sealed class OtherVesselAliasesScriptCheckTests : ScriptCheckTestsBase
+    {
+        private const string Light = ShardedScripts.Light;
 
         // #654: the other-vessel taint follows scope. Every route by which another vessel reaches a name still ends in a refusal.
-        private const string Light = ":getmodule(\"ModuleLight\"):doevent(\"lights on\").";
-
-        [Theory]
-        [InlineData("function poke { parameter p. p" + Light + " }\npoke(vessel(\"Other\"):parts[0]).")]
-        [InlineData("function f { local p is target:parts[0]. p" + Light + " }\nf().")]
-        [InlineData("local t is target.\nfunction f { t:parts[0]" + Light + " }\nf().")]
-        [InlineData("function f { global g is target. }\nf().\ng:parts[0]" + Light)]
-        [InlineData("function f { set g to target. }\nf().\nfunction h { g:parts[0]" + Light + " }\nh().")]
-        [InlineData("local x is ship.\nfunction f { set x to target. }\nf().\nx:parts[0]" + Light)]
-        [InlineData("function f { set x to target. local x is ship. print x. }\nf().\nx:parts[0]" + Light)]
-        [InlineData("local a is target.\nlocal b is a.\nset c to b.\nc:parts[0]" + Light)]
-        [InlineData("function keep { parameter x. set kept to x. }\nkeep(target).\nkept:parts[0]" + Light)]
-        [InlineData("lock lk to target.\nlk:parts[0]" + Light)]
-        [InlineData("lock lk to vessel(\"Other\").\nfunction f { lk:parts[0]" + Light + " }\nf().")]
-        [InlineData("function g { return vessel(\"Other\"). }\ng():parts[0]" + Light)]
-        [InlineData("function id { parameter x. return x. }\nid(target):parts[0]" + Light)]
-        [InlineData("function g { return vessel(\"Other\"). }\nlocal d is g@.\nd:call():parts[0]" + Light)]
-        [InlineData("function poke { parameter p. p" + Light + " }\nlocal d is poke@.\nd:call(target:parts[0]).")]
-        [InlineData("function poke { parameter p. p" + Light + " }\npoke@:bind(target:parts[0]):call().")]
-        [InlineData("local f is { parameter o. o" + Light + " }.\nf(target:parts[0]).")]
-        [InlineData("print lexicon(\"f\", { parameter o. o" + Light + " return 0. })[\"f\"]:call(target:parts[0]).")]
-        [InlineData("function outer { parameter a. function inner { a:parts[0]" + Light + " } inner(). }\nouter(target).")]
-        [InlineData("function c { parameter z. z" + Light + " }\nfunction b { parameter y. c(y). }\nb(target:parts[0]).")]
-        [InlineData("function b { parameter y. c(y). }\nfunction c { parameter z. z" + Light + " }\nb(target:parts[0]).")]
-        [InlineData("function f { parameter o is ship. o:parts[0]" + Light + " }\nf(target).")]
-        [InlineData("until false {\n  local p is target:parts[0].\n  if true { local b is 1. break. }\n  p" + Light + "\n}")]
-        [InlineData("local t is target.\nwhen true then { t:parts[0]" + Light + " }")]
-        [InlineData("if true { local p is ship. if true { local n is 1. } set p to target. p:parts[0]" + Light + " }")]
-        [InlineData("function poke { parameter p. p" + Light + " }\nlocal d is poke@.\nd(target:parts[0]).")]
-        [InlineData("function outer { parameter a. function inner { set a to target. } inner(). a:parts[0]" + Light + " }\nouter(ship).")]
-        [InlineData("function f { parameter a. if a { return 1. } local p is target:parts[0]. p" + Light + " }\nf(true).")]
-        [InlineData("function f { parameter a. local p is 0. if a { set p to target. } else { set p to ship. } p:parts[0]" + Light + " }\nf(true).")]
-        [InlineData("local x is ship.\n{\n  if ship:altitude > 1 local x is target.\n  x:parts[0]" + Light + "\n}")]
-        [InlineData("local x is ship.\n{\n  if ship:altitude > 1 print 1. else local x is vessel(\"Other\").\n  x:parts[0]" + Light + "\n}")]
-        [InlineData("function g { local x is ship. { if ship:altitude > 1 local x is target. return x. } }\ng():parts[0]" + Light)]
-        [InlineData("function f { parameter x. { if ship:altitude > 1 local x is target. x:parts[0]" + Light + " } }\nf(ship).")]
-        public void AnotherVesselReachedThroughAnyAliasIsStillRefused(string script)
-        {
-            AssertForbidden("change or message other vessels", script);
-            AssertForbidden("change or message other vessels", CoreLibrary.Bundle(script));
-        }
 
         [Fact]
         public void AnUnrelatedFunctionWithTheSameParameterNameIsNotTainted()
@@ -1167,7 +1108,11 @@ namespace ClaudiaKerman.ScriptCheck.Tests
                 Assert.True(result.Passed, file + ": " + string.Join("; ", result.Problems.ToArray()));
             }
         }
+    }
 
+    /// <summary>The real Script Check, compiling with kOS.Safe: CoreLibraryAndUndefinedCalls.</summary>
+    public sealed class CoreLibraryAndUndefinedCallsScriptCheckTests : ScriptCheckTestsBase
+    {
         // ---- The Core Library (ADR 0003: it must pass the same check), as the mod bundles it ----
 
         [Fact]
@@ -1238,13 +1183,181 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             var fixture = Path.Combine(RepoRoot(), "tools", "ClaudiaKerman.KsCompile", "fixtures", "undefined-call.ks");
             Assert.Equal(new[] { "line 4: deorbit_ksc" }, KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle(File.ReadAllText(fixture))));
         }
+    }
 
-        private static string RepoRoot()
+    /// <summary>
+    /// The scripts each shard class of the two big refusal theories checks, plain and bundled with the Core Library. A theory
+    /// runs on one thread, so these are dealt round-robin across <see cref="Shards"/> classes, which xUnit runs in parallel (#1051).
+    /// </summary>
+    public static class ShardedScripts
+    {
+        public const int Shards = 4;
+
+        public static IEnumerable<object[]> Shard(string[] all, int shard)
         {
-            var dir = new DirectoryInfo(System.AppContext.BaseDirectory);
-            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "ClaudiaKerman.sln"))) dir = dir.Parent;
-            Assert.NotNull(dir);
-            return dir.FullName;
+            for (var i = shard; i < all.Length; i += Shards) yield return new object[] { all[i] };
         }
+
+        public static readonly string[] BlockInternalCall = {
+            "local s is addons:claudia:landingsite(lexicon(\"biome\", \"Midlands\")).",
+            "local c is addons:claudia.\nprint c:landingsite(lexicon()).",
+            "local f is addons:claudia:LandingSite@.\nprint f(lexicon()).",
+            "local p is addons:claudia:landingpass(lexicon(\"lat\", 0, \"lng\", 20, \"r_pe\", 203000)).\nprint p:burn_ut.",
+            "local c is addons:claudia.\nprint c:LandingPass(lexicon()):next_pass_ut.",
+            "local p is addons:claudia:brakepath(lexicon(\"lat\", 0, \"lng\", 20, \"shape\", \"auto\")).\nprint p:descent_shape.",
+            "local c is addons:claudia.\nprint c:BrakePath(lexicon()):clears.",
+            "local b is addons:claudia:deorbitburn(lexicon(\"lat\", 0, \"lng\", -74)).",
+            "local t is addons:claudia:entrytrim(lexicon(\"to_air\", 3000)).",
+            "print addons:claudia:falleta(lexicon(\"ecc\", 1.07)).",
+            "print addons:claudia:reentryimpact(lexicon()):lat.",
+            "local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).",
+            "print addons:claudia:predictionmiss(lexicon(\"lat\", 0, \"lng\", 0)):km.",
+            "print addons:claudia:turntime(lexicon()):turn_time.",
+            "print addons:claudia:lowcharge(lexicon()):carry_on.",
+            "print addons:claudia:brakeheights(lexicon()):brake_h.",
+            "local t is addons:claudia:braketick(lexicon()).\nprint t:start.",
+            "print addons:claudia:entryloss(lexicon()):carry_on.",
+            "print addons:claudia:groundsettle(lexicon()):done.",
+            "print addons:claudia:entryskip(lexicon()):refusal.",
+            "local t is addons:claudia:TurnTime@.\nprint t(lexicon(\"max_stopping_time\", 2)).",
+            "local e is addons:claudia:ejectionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(e:ut, e:radial, e:normal, e:prograde).",
+            "local c is addons:claudia.\nprint c:EjectionBurn(lexicon(\"target\", \"Minmus\", \"target_pe\", 20000, \"window\", \"next\")):dv.",
+            "local w is addons:claudia:launchwindow(lexicon(\"inc\", 6, \"lan\", 78)).\nprint w:wait.",
+            "print addons:claudia:launchpitch(lexicon()):pitch.",
+            "local k is addons:claudia:correctionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(k:ut, k:radial, k:normal, k:prograde).",
+            "local c is addons:claudia.\nprint c:CorrectionBurn(lexicon(\"target\", \"Kerbin\", \"target_pe\", 35000, \"target_inc\", 0)):dv.",
+            "local o is addons:claudia:orbitburn(lexicon(\"goal\", \"set_inc\", \"value\", 90)).\nadd node(o:ut, o:radial, o:normal, o:prograde).",
+            "local c is addons:claudia.\nprint c:OrbitBurn(lexicon(\"goal\", \"match_plane\", \"target\", \"Minmus\")):dv.",
+            "local h is addons:claudia:returnburn(lexicon(\"target_pe\", 35000)).\nadd node(h:ut, h:radial, h:normal, h:prograde).",
+            "local c is addons:claudia.\nprint c:ReturnBurn(lexicon(\"target_pe\", 35000, \"target_inc\", 30)):dv.",
+            "local a is addons:claudia:chutegroup().\nprint a:uids.",
+            "local a is addons:claudia:entryfinish(lexicon(\"home\", \"1\")).\nprint a:powered.",
+            "local a is addons:claudia:dropcheck(lexicon(\"before\", 1, \"left\", 0)).\nprint a:reason.",
+            "local c is addons:claudia.\nprint c:ChuteGroup:titles.",
+            "local t is addons:claudia:targetvessel().\nprint t:name.",
+            "local c is addons:claudia.\nprint c:TargetVessel:body.",
+            "local h is addons:claudia:dockhold(lexicon(\"port\", \"1\", \"toward\", \"2\")).\nprint h:state.",
+            "local c is addons:claudia.\nprint c:DockHoldState:reason.",
+            "print addons:claudia:dockguide(lexicon(\"along\", 10)):fire.",
+            "print addons:claudia:dockholdlevel(lexicon(\"level\", \"\")):changed.",
+            "local c is addons:claudia.\nprint c:DockFuel(lexicon(\"distance\", 150)):error.",
+            "print addons:claudia:burnworth(lexicon(\"block\", \"circularize\")):skip.",
+            "print addons:claudia:burnthrough(lexicon()):burn_through.",
+            "print addons:claudia:burntime(lexicon()):burn_time.",
+            "print addons:claudia:returnmiss(lexicon(\"target_pe\", 35000, \"pe\", 36000)):error.",
+            "print addons:claudia:turnplan(lexicon(\"angle\", 140, \"left_s\", 60)):coast_rate.",
+            "print addons:claudia:burstturn(lexicon(), lexicon(\"error\", 40)):rcs_on.",
+            "print addons:claudia:shipsystems(\"liftoff\"):done.",
+            "addons:claudia:encounterwatch(lexicon()).",
+            "print addons:claudia:encounterwatchdropped.",
+            "print addons:claudia:liftoffclear(lexicon(\"core\", \"1\")):decouplers.",
+            "print addons:claudia:autodropfree():free.",
+        };
+
+        public const string Light = ":getmodule(\"ModuleLight\"):doevent(\"lights on\").";
+
+        public static readonly string[] OtherVesselAlias = {
+            "function poke { parameter p. p" + Light + " }\npoke(vessel(\"Other\"):parts[0]).",
+            "function f { local p is target:parts[0]. p" + Light + " }\nf().",
+            "local t is target.\nfunction f { t:parts[0]" + Light + " }\nf().",
+            "function f { global g is target. }\nf().\ng:parts[0]" + Light,
+            "function f { set g to target. }\nf().\nfunction h { g:parts[0]" + Light + " }\nh().",
+            "local x is ship.\nfunction f { set x to target. }\nf().\nx:parts[0]" + Light,
+            "function f { set x to target. local x is ship. print x. }\nf().\nx:parts[0]" + Light,
+            "local a is target.\nlocal b is a.\nset c to b.\nc:parts[0]" + Light,
+            "function keep { parameter x. set kept to x. }\nkeep(target).\nkept:parts[0]" + Light,
+            "lock lk to target.\nlk:parts[0]" + Light,
+            "lock lk to vessel(\"Other\").\nfunction f { lk:parts[0]" + Light + " }\nf().",
+            "function g { return vessel(\"Other\"). }\ng():parts[0]" + Light,
+            "function id { parameter x. return x. }\nid(target):parts[0]" + Light,
+            "function g { return vessel(\"Other\"). }\nlocal d is g@.\nd:call():parts[0]" + Light,
+            "function poke { parameter p. p" + Light + " }\nlocal d is poke@.\nd:call(target:parts[0]).",
+            "function poke { parameter p. p" + Light + " }\npoke@:bind(target:parts[0]):call().",
+            "local f is { parameter o. o" + Light + " }.\nf(target:parts[0]).",
+            "print lexicon(\"f\", { parameter o. o" + Light + " return 0. })[\"f\"]:call(target:parts[0]).",
+            "function outer { parameter a. function inner { a:parts[0]" + Light + " } inner(). }\nouter(target).",
+            "function c { parameter z. z" + Light + " }\nfunction b { parameter y. c(y). }\nb(target:parts[0]).",
+            "function b { parameter y. c(y). }\nfunction c { parameter z. z" + Light + " }\nb(target:parts[0]).",
+            "function f { parameter o is ship. o:parts[0]" + Light + " }\nf(target).",
+            "until false {\n  local p is target:parts[0].\n  if true { local b is 1. break. }\n  p" + Light + "\n}",
+            "local t is target.\nwhen true then { t:parts[0]" + Light + " }",
+            "if true { local p is ship. if true { local n is 1. } set p to target. p:parts[0]" + Light + " }",
+            "function poke { parameter p. p" + Light + " }\nlocal d is poke@.\nd(target:parts[0]).",
+            "function outer { parameter a. function inner { set a to target. } inner(). a:parts[0]" + Light + " }\nouter(ship).",
+            "function f { parameter a. if a { return 1. } local p is target:parts[0]. p" + Light + " }\nf(true).",
+            "function f { parameter a. local p is 0. if a { set p to target. } else { set p to ship. } p:parts[0]" + Light + " }\nf(true).",
+            "local x is ship.\n{\n  if ship:altitude > 1 local x is target.\n  x:parts[0]" + Light + "\n}",
+            "local x is ship.\n{\n  if ship:altitude > 1 print 1. else local x is vessel(\"Other\").\n  x:parts[0]" + Light + "\n}",
+            "function g { local x is ship. { if ship:altitude > 1 local x is target. return x. } }\ng():parts[0]" + Light,
+            "function f { parameter x. { if ship:altitude > 1 local x is target. x:parts[0]" + Light + " } }\nf(ship).",
+        };
+    }
+
+    public abstract class BlockInternalCallRefusedTests : ScriptCheckTestsBase
+    {
+        /// <summary>Each shard class hides this with its own slice.</summary>
+        public static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.BlockInternalCall, 0); } }
+
+        [Theory]
+        [MemberData(nameof(Scripts))]
+        public void ABlockInternalCallInAMissionScriptFails(string script)
+        {
+            AssertForbidden("call block-internal calculations", script);
+            AssertForbidden("call block-internal calculations", CoreLibrary.Bundle(script));
+        }
+    }
+
+    public sealed class BlockInternalCallRefusedTests1 : BlockInternalCallRefusedTests
+    {
+        public new static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.BlockInternalCall, 0); } }
+    }
+
+    public sealed class BlockInternalCallRefusedTests2 : BlockInternalCallRefusedTests
+    {
+        public new static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.BlockInternalCall, 1); } }
+    }
+
+    public sealed class BlockInternalCallRefusedTests3 : BlockInternalCallRefusedTests
+    {
+        public new static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.BlockInternalCall, 2); } }
+    }
+
+    public sealed class BlockInternalCallRefusedTests4 : BlockInternalCallRefusedTests
+    {
+        public new static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.BlockInternalCall, 3); } }
+    }
+
+    public abstract class OtherVesselAliasRefusedTests : ScriptCheckTestsBase
+    {
+        /// <summary>Each shard class hides this with its own slice.</summary>
+        public static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.OtherVesselAlias, 0); } }
+
+        [Theory]
+        [MemberData(nameof(Scripts))]
+        public void AnotherVesselReachedThroughAnyAliasIsStillRefused(string script)
+        {
+            AssertForbidden("change or message other vessels", script);
+            AssertForbidden("change or message other vessels", CoreLibrary.Bundle(script));
+        }
+    }
+
+    public sealed class OtherVesselAliasRefusedTests1 : OtherVesselAliasRefusedTests
+    {
+        public new static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.OtherVesselAlias, 0); } }
+    }
+
+    public sealed class OtherVesselAliasRefusedTests2 : OtherVesselAliasRefusedTests
+    {
+        public new static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.OtherVesselAlias, 1); } }
+    }
+
+    public sealed class OtherVesselAliasRefusedTests3 : OtherVesselAliasRefusedTests
+    {
+        public new static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.OtherVesselAlias, 2); } }
+    }
+
+    public sealed class OtherVesselAliasRefusedTests4 : OtherVesselAliasRefusedTests
+    {
+        public new static IEnumerable<object[]> Scripts { get { return ShardedScripts.Shard(ShardedScripts.OtherVesselAlias, 3); } }
     }
 }

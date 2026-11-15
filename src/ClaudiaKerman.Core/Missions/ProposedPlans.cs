@@ -56,12 +56,14 @@ namespace ClaudiaKerman.Core.Missions
         /// <paramref name="goalStands"/> when the mod asked for a revision of a Mission under way whose goal stands (#697): a plan
         /// with no sequences, which declines the goal, is refused then.
         /// </summary>
+        /// <param name="contractProblems">#1024: the chosen Contract Requirements the plan leaves unserved or can't meet (<see cref="Contracts.PlanServes"/>), as problems to fix; null with no Contracts chosen.</param>
         /// <param name="legNote">
         /// #757: the plan's legs under the Delta-v Map (<see cref="PlanLegs.Note"/>), "" for none. Such a plan is still accepted, with the note: a leg
         /// matched by its words must never be able to refuse a Mission, and she may hand it in again or keep it.
         /// </param>
         public static ToolOutcome Check(ToolUseBlock use, ICollection<string> leftTheCraft, bool needsNewGoal, bool allowsNewGoal = true,
-            bool goalStands = false, System.Func<MissionPlan, string> legNote = null)
+            bool goalStands = false, System.Func<MissionPlan, string> legNote = null,
+            System.Func<MissionPlan, IList<string>> contractProblems = null)
         {
             var problems = new List<string>();
             var plan = use.InputIsValid ? Read(use.InputJson, problems) : null;
@@ -77,6 +79,8 @@ namespace ClaudiaKerman.Core.Missions
                 if (goalStands && plan.Sequences.Count == 0)
                     problems.Add("this is a revision of a Mission still under way: give the sequences still to fly; "
                         + "to give up on the goal, say so in the Debrief's follow-up instead");
+                // #1024: a plan that leaves a chosen Contract Requirement unserved goes back to her before the player sees it.
+                if (contractProblems != null && plan.Sequences.Count > 0) problems.AddRange(contractProblems(plan));
             }
             if (problems.Count == 0)
             {

@@ -67,6 +67,8 @@ namespace ClaudiaKerman.Core.Missions
             mission.Coast = null;
             mission.LeaveSnapshot = null;
             mission.CheckPending = false;
+            mission.ContractGaps.Clear();
+            mission.Hold = null;
         }
 
         private static string RunEventsJson(Mission mission)
@@ -133,7 +135,7 @@ namespace ClaudiaKerman.Core.Missions
                 CrossingFact(mission);
                 // RunFacts first: it finishes a drop being measured, which the run total rebases.
                 var facts = RunFacts(mission);
-                turn.UserText = turn.UserText.Replace(MissionPrompts.RunDeltaVSlot, RunDeltaV(mission, turn.Report)) + facts;
+                turn.UserText = turn.UserText.Replace(MissionPrompts.RunDeltaVSlot, RunDeltaV(mission, turn.Report)) + facts + ContractDebriefText(mission);
                 // The chutes the entries still to fly may open, from the craft as the run left it (one may be used or lost).
                 GroupChutes(mission);
                 if (mission.ScienceKept.Count > 0 && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;

@@ -28,6 +28,90 @@ namespace ClaudiaKerman.Core.Missions
             public string ContractWords = "";
             /// <summary>#1022: the Contract Route section of its first request; "" with no Contracts chosen.</summary>
             public string ContractRoute = "";
+            /// <summary>#1024: the Contract Requirements the player chose; the plan proposal is checked against them. Empty with none chosen.</summary>
+            public List<ChosenRequirement> ChosenRequirements = new List<ChosenRequirement>();
+            /// <summary>#1024: the Contract Route's record of the leg serving each chosen Requirement, from the plan on offer.</summary>
+            public List<ServedRequirement> ServedBy = new List<ServedRequirement>();
+            /// <summary>#1024: the Serves tags of each leg of the plan on offer, from the mod; empty with none chosen.</summary>
+            public IList<string[]> ServesTags = new List<string[]>();
+            /// <summary>#1025: what the player typed during the Mission; a revised plan may add a Contract only at their asking.</summary>
+            public readonly List<string> PlayerAsked = new List<string>();
+            /// <summary>#1025: the plan on offer's drops (GUID, the line with the reason) and the Requirements it adds; applied at its Approval.</summary>
+            public Dictionary<string, string> PlanDrops = new Dictionary<string, string>();
+            public List<ChosenRequirement> PlanAdded = new List<ChosenRequirement>();
+        }
+
+        /// <summary>#1025: copies of what the revised plan's Contract check needs, taken on the main thread for the tool's worker.</summary>
+        private sealed class ContractInputs
+        {
+            public List<ChosenRequirement> Chosen;
+            public string Words;
+            public Dictionary<string, string> Droppable;
+            public HashSet<string> Completed;
+            public HashSet<string> Ended;
+            public List<string> Asked;
+            public int FirstUnflown;
+        }
+
+        private static ContractInputs ContractInputsOf(Mission mission)
+        {
+            return new ContractInputs
+            {
+                Chosen = mission.ChosenRequirements.ToList(), Words = mission.ContractWords,
+                Droppable = new Dictionary<string, string>(mission.Contracts.Droppable), Completed = new HashSet<string>(mission.Contracts.Completed),
+                Asked = mission.PlayerAsked.ToList(), Ended = new HashSet<string>(mission.Contracts.Ended),
+                FirstUnflown = mission.Plan == null ? 0 : MissionCards.LegInHand(StepsBegun(mission), mission.SequenceCounted),
+            };
+        }
+
+        private static ContractReplan Replan(GameSnapshot snapshot, MissionPlan plan, ContractInputs inputs)
+        {
+            return ContractReplan.Check(snapshot, plan, inputs.Chosen, inputs.Words, CraftCheckFlow.HomeBody, inputs.Droppable, inputs.Completed, inputs.Asked, inputs.Ended, inputs.FirstUnflown);
+        }
+
+        /// <summary>
+        /// #1024: the chosen Contract Requirements a proposed Mission Plan leaves unserved or can't meet, as findings for Claudia; the Serves
+        /// tags and the Contract Route's record are made when the plan is offered (<see cref="OfferMissionPlan"/>).
+        /// </summary>
+        private static IList<string> ContractProblems(GameSnapshot snapshot, MissionPlan plan, ContractInputs inputs)
+        {
+            if (snapshot == null || (inputs.Chosen.Count == 0 && inputs.Asked.Count == 0)) return new string[0];
+            return Replan(snapshot, plan, inputs).Problems;
+        }
+
+        /// <summary>#1024: the plan's Serves tags and the Contract Route's record, set on the Mission as the plan is offered.</summary>
+        private void ServePlan(Mission mission, MissionPlan plan)
+        {
+            mission.ServedBy = new List<ServedRequirement>();
+            mission.ServesTags = new List<string[]>();
+            mission.PlanDrops = new Dictionary<string, string>();
+            mission.PlanAdded = new List<ChosenRequirement>();
+            if (_snapshot == null || (mission.ChosenRequirements.Count == 0 && mission.PlayerAsked.Count == 0) || plan.Sequences.Count == 0) return;
+            var served = Replan(_snapshot, plan, ContractInputsOf(mission));
+            mission.ServedBy = served.Record;
+            mission.ServesTags = served.Legs;
+            mission.PlanDrops = served.Drops;
+            mission.PlanAdded = served.Added;
+        }
+
+        /// <summary>#1025: the plan on offer's Contract drops and additions, for its card; "" with none.</summary>
+        private static string ContractPlanLines(Mission mission)
+        {
+            var text = "";
+            if (mission.PlanDrops.Count > 0) text += "\nDrops: " + string.Join("; ", mission.PlanDrops.Values.ToArray());
+            if (mission.PlanAdded.Count > 0) text += "\nAdds, as you asked: " + string.Join("; ", mission.PlanAdded.Select(r => r.Title).Distinct().ToArray());
+            return text;
+        }
+
+        /// <summary>#1025: the approved plan's drops and additions become the Mission's chosen Contracts.</summary>
+        private void ApplyContractChanges(Mission mission)
+        {
+            if (mission.PlanDrops.Count == 0 && mission.PlanAdded.Count == 0) return;
+            mission.ChosenRequirements = mission.ChosenRequirements.Where(r => !mission.PlanDrops.ContainsKey(ContractWatch.GuidOf(r.Key)))
+                .Concat(mission.PlanAdded.Where(a => mission.ChosenRequirements.All(r => r.Key != a.Key))).ToList();
+            foreach (var drop in mission.PlanDrops.Values) Notice("Contract dropped from the Mission: " + drop + ".");
+            mission.PlanDrops = new Dictionary<string, string>();
+            mission.PlanAdded = new List<ChosenRequirement>();
         }
 
         /// <summary>How many Contracts the latest Game Snapshot has accepted.</summary>
@@ -98,6 +182,7 @@ namespace ClaudiaKerman.Core.Missions
             if (start.Contracts == null || start.Contracts.Guids.Count == 0) return;
             mission.ContractWords = start.Contracts.Words;
             mission.ContractRoute = start.Contracts.Section;
+            mission.ChosenRequirements = start.Contracts.Requirements;
             Note(LogKind.Notice, start.Contracts.Summary);
             _folded = null;
         }
@@ -122,6 +207,7 @@ namespace ClaudiaKerman.Core.Missions
                 Accepted = check.Accepted, Words = check.Words,
                 Rows = check.Fitting.ToList(),
                 Headline = check.Headline(ticked.Count),
+                SearchNote = check.SearchNote,
                 NotThisFlight = check.NotThisFlight.ToList(),
                 CraftDeltaV = check.CraftDeltaV, RouteDeltaV = check.RouteDeltaV, ReservePercent = check.ReservePercent, Reserve = check.Reserve, Spare = check.Spare,
                 PlanLabel = ticked.Count > 0 ? "Plan these " + ticked.Count : "Pick a Contract",

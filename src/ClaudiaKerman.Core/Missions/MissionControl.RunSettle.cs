@@ -28,6 +28,8 @@ namespace ClaudiaKerman.Core.Missions
             public RunOutcome Outcome;
             public double EndUt;
             public DateTime Deadline;
+            /// <summary>The craft has settled (or the wait timed out); a Contract hold may still keep the Debrief (#1025).</summary>
+            public bool Settled;
         }
 
         private sealed partial class Mission
@@ -87,7 +89,13 @@ namespace ClaudiaKerman.Core.Missions
             }
             var snapshot = _snapshot;
             var after = snapshot != null && snapshot.Ut >= wait.EndUt;
-            if (Clock() < wait.Deadline && !(after && (!NeedsSettling(snapshot) || IsSettled(snapshot)))) return;
+            if (!wait.Settled)
+            {
+                if (Clock() < wait.Deadline && !(after && (!NeedsSettling(snapshot) || IsSettled(snapshot)))) return;
+                wait.Settled = true;
+            }
+            // #1025: a leg serving a Contract Requirement holds until the game marks it met, or the hold times out.
+            if (HeldForContracts(mission)) return;
             mission.Settle = null;
             BeginRunDebrief(mission, wait.Outcome);
         }

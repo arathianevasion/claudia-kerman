@@ -463,6 +463,16 @@ namespace ClaudiaKerman.Core.Missions
         }
     }
 
+    /// <summary>#1029: a part test was run, or its window passed unrun: one line for the log, the Mission's events and the run's events for the Debrief.</summary>
+    public sealed class PartTestNoted : MissionInput
+    {
+        public readonly string Text;
+        public PartTestNoted(string text)
+        {
+            Text = text;
+        }
+    }
+
     /// <summary>
     /// <c>reentry</c> found, above the air, that nothing can land the craft (#827): one line for the Mission's events, log and Debrief. It is never an Alert, and the
     /// conversation hears of it only in the Debrief.
