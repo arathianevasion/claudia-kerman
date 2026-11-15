@@ -73,7 +73,7 @@ namespace ClaudiaKerman.Core.Contracts
         public SwapOffer Swap;
     }
 
-    /// <summary>#1023: "Swap in X for Y": the ticked Contracts that go out so the one comes in and the set still fits.</summary>
+    /// <summary>#1023: "Swap in X for Y": the ticked Contract that goes out (#1159: one) so the one comes in and the set still fits.</summary>
     public sealed class SwapOffer
     {
         /// <summary>The Contract that comes in.</summary>
@@ -608,9 +608,10 @@ namespace ClaudiaKerman.Core.Contracts
         }
 
         /// <summary>
-        /// The swap that brings <paramref name="wanted"/> into <paramref name="set"/> by taking out the fewest ticked Contracts, when it doesn't
-        /// fit as it is and does fit that way; among the fewest, the least reward given up, then the least delta-v. Only the ticked set's
-        /// subsets are tried: the Contract search isn't run again. Null when it fits as a plain tick, or can't fit at all.
+        /// #1159: the swap that brings <paramref name="wanted"/> into <paramref name="set"/> by taking out one ticked Contract, when it doesn't
+        /// fit as it is and does fit that way; each ticked Contract is tried singly, priced once, and the best kept: the least reward given up,
+        /// then the least delta-v. The work is one route per ticked Contract, not one per subset, and the Contract search isn't run again.
+        /// Null when it fits as a plain tick, or no single swap fits.
         /// </summary>
         private SwapOffer SwapFor(Planned wanted, List<Planned> set)
         {
@@ -618,31 +619,24 @@ namespace ClaudiaKerman.Core.Contracts
             if (!Works(alone, Route(alone))) return null;
             var plain = set.Concat(alone).ToList();
             if (Works(plain, Route(plain))) return null;
-            for (var size = 1; size <= set.Count; size++)
+            Planned bestGone = null;
+            List<Planned> bestKept = null;
+            PricedRoute bestRoute = null;
+            foreach (var gone in set)
             {
-                List<Planned> bestGone = null, bestKept = null;
-                PricedRoute bestRoute = null;
-                foreach (var gone in Combinations(set, size))
+                var kept = set.Where(p => p != gone).Concat(alone).ToList();
+                var route = Route(kept);
+                if (!Works(kept, route)) continue;
+                // The set that keeps more reward is the better one, so the one that gives up the least.
+                if (bestGone == null || Better(kept, route, bestKept, bestRoute))
                 {
-                    var kept = set.Where(p => !gone.Contains(p)).Concat(alone).ToList();
-                    var route = Route(kept);
-                    if (!Works(kept, route)) continue;
-                    // The set that keeps more reward is the better one, so the one that gives up the least.
-                    if (bestGone == null || Better(kept, route, bestKept, bestRoute))
-                    {
-                        bestGone = gone;
-                        bestKept = kept;
-                        bestRoute = route;
-                    }
+                    bestGone = gone;
+                    bestKept = kept;
+                    bestRoute = route;
                 }
-                if (bestGone == null) continue;
-                return new SwapOffer
-                {
-                    Guid = wanted.Contract.Guid, Drop = bestGone.Select(p => p.Contract.Guid).ToArray(),
-                    Label = "Swap in " + wanted.Title + " for " + string.Join(" and ", bestGone.Select(p => p.Title).ToArray()),
-                };
             }
-            return null;
+            if (bestGone == null) return null;
+            return new SwapOffer { Guid = wanted.Contract.Guid, Drop = new[] { bestGone.Contract.Guid }, Label = "Swap in " + wanted.Title + " for " + bestGone.Title };
         }
 
         private static bool Better(IList<Planned> set, PricedRoute route, IList<Planned> than, PricedRoute thanRoute)
