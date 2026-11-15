@@ -113,10 +113,7 @@ function reentry_open_action {
   if mode = "none" or out {
     return "wait".
   }
-  if agl <= last_agl {
-    return "deploy".
-  }
-  if speed <= max_speed and pressure >= min_pressure {
+  if agl <= last_agl or (speed <= max_speed and pressure >= min_pressure) {
     return "deploy".
   }
   return "wait".
@@ -131,10 +128,7 @@ function reentry_chute_stage {
     return "wait".
   }
   if has_drogues and not drogues_out {
-    if reentry_drogue_action(mode, drogues_out, speed, agl, pressure) = "deploy" {
-      return "drogues".
-    }
-    return "wait".
+    return choose "drogues" if reentry_drogue_action(mode, drogues_out, speed, agl, pressure) = "deploy" else "wait".
   }
   if reentry_chute_action(mode, mains_out, speed, agl, pressure) = "deploy" {
     return "mains".

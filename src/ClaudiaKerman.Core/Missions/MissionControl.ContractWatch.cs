@@ -31,6 +31,34 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>The gap of each served Requirement the last run's leg left unmet, by key; cleared as a run starts.</summary>
             public readonly Dictionary<string, string> ContractGaps = new Dictionary<string, string>();
             public ContractHold Hold;
+            /// <summary>#1029: Core's timing of the planned part tests, and the chosen Requirements it was last given.</summary>
+            public PartTestWatch PartTests;
+            public List<ChosenRequirement> PartTestsFrom;
+        }
+
+        /// <summary>#1029: the Mission's part test watch, given the chosen Requirements again when a revised plan changed them.</summary>
+        private static PartTestWatch PartTestsOf(Mission mission)
+        {
+            if (mission.PartTests == null) mission.PartTests = new PartTestWatch(mission.ChosenRequirements, CraftCheckFlow.HomeBody);
+            else if (!ReferenceEquals(mission.PartTestsFrom, mission.ChosenRequirements)) mission.PartTests.Use(mission.ChosenRequirements);
+            mission.PartTestsFrom = mission.ChosenRequirements;
+            return mission.PartTests;
+        }
+
+        /// <summary>#1029: a part test run or its window missed: a log row, a line in the Mission's events and the run's events. Never an Alert.</summary>
+        private void PartTestLine(PartTestNoted noted)
+        {
+            var mission = _mission;
+            if (mission == null) return;
+            Note(LogKind.Notice, "Part test: " + noted.Text);
+            if (mission.Folder != null) Event(mission, "part_test", noted.Text);
+            if (IsRunning(mission)) mission.RunEvents.Add(_ut, RunEventKind.PartTest, noted.Text);
+        }
+
+        /// <summary>A part test the mod times (#1029): its moment is Core's, so whether it was run, not where the craft is, says if it is met.</summary>
+        private static bool Timed(ChosenRequirement requirement)
+        {
+            return requirement.Test != null && !requirement.Test.Haul && requirement.Test.Window != TestWindow.None;
         }
 
         /// <summary>A Game Snapshot's Contracts against the Mission's chosen ones: the completion lines go out now, the rest waits for a Debrief.</summary>
@@ -57,8 +85,11 @@ namespace ClaudiaKerman.Core.Missions
             var snapshot = _snapshot;
             var unmet = UnmetServed(mission, snapshot);
             if (unmet.Count == 0) return Released(mission);
-            var meeting = unmet.Where(r => ContractWatch.ConditionsHold(snapshot, r, CraftCheckFlow.HomeBody)).ToList();
-            foreach (var requirement in unmet.Except(meeting)) Missed(mission, requirement, ContractWatch.Gap(snapshot, requirement));
+            var tests = PartTestsOf(mission);
+            foreach (var test in unmet.Where(r => Timed(r) && !tests.Ran(r.Key)))
+                Missed(mission, test, tests.Gap(test.Key) ?? "the test's window never came: the flight didn't reach " + (test.Test.Band != null ? test.Test.Band.Through() : test.Test.Situation.ToLowerInvariant()));
+            var meeting = unmet.Where(r => Timed(r) ? tests.Ran(r.Key) : ContractWatch.ConditionsHold(snapshot, r, CraftCheckFlow.HomeBody)).ToList();
+            foreach (var requirement in unmet.Except(meeting).Where(r => !Timed(r))) Missed(mission, requirement, ContractWatch.Gap(snapshot, requirement));
             if (meeting.Count == 0) return Released(mission);
             var now = Math.Max(_ut, snapshot.Ut);
             if (mission.Hold == null) mission.Hold = new ContractHold();

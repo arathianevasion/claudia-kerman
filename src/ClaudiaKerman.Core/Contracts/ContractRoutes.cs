@@ -26,6 +26,8 @@ namespace ClaudiaKerman.Core.Contracts
         public double? LaunchUt;
         /// <summary>#1048: the route is a hop below orbit, in words ("reach space over Kerbin"); "" when it isn't.</summary>
         public string Hop = "";
+        /// <summary>#1029: the apoapsis a hop flies straight up to, m; null when the route isn't a hop.</summary>
+        public double? HopAp;
         /// <summary>#1028: the Maneuver Sequences it was priced as, for the planners' re-pricing; null for a hop, which its own sim priced.</summary>
         public List<PlannedSequence> Legs;
 
@@ -154,7 +156,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (_priced.TryGetValue(key, out cached)) return cached;
             string why;
             var deltaV = SuborbitalHop.DeltaV(_snapshot, targetAp, out why);
-            var route = deltaV.HasValue ? new PricedRoute { DeltaV = deltaV.Value, Hop = highest.Words(_home), LaunchUt = _snapshot.Ut + LaunchSeconds, HomeUt = _snapshot.Ut + LaunchSeconds } : null;
+            var route = deltaV.HasValue ? new PricedRoute { DeltaV = deltaV.Value, Hop = highest.Words(_home), HopAp = targetAp, LaunchUt = _snapshot.Ut + LaunchSeconds, HomeUt = _snapshot.Ut + LaunchSeconds } : null;
             _priced[key] = route;
             return route;
         }

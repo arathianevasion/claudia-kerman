@@ -36,6 +36,10 @@ namespace ClaudiaKerman.Core.Contracts
         public string Words = "";
         /// <summary>#1048: the band a <see cref="ContractReach.Hop"/> flies through; null for every other reach.</summary>
         public HopBand Band;
+        /// <summary>#1029: the part test or haul it is; null for every other kind.</summary>
+        public PartTestSpec Test;
+        /// <summary>#1029: "this craft can't: …" when the craft can't meet it (the part isn't aboard, the band isn't passed); "" otherwise.</summary>
+        public string CraftCant = "";
 
         public bool Plannable
         {
@@ -55,7 +59,6 @@ namespace ClaudiaKerman.Core.Contracts
         public const string Exploration = "ExplorationContract";
         public const string PartTest = "PartTest";
         public const string RecordNotYet = "not yet: records and the first launch aren't planned yet";
-        public const string HaulNotYet = "not yet: hauls aren't planned yet";
         public const string AwayHopNotYet = "not yet: hops over other bodies aren't planned yet";
         /// <summary>The launch body's index in the game's body list, as a part test's <c>body</c> setting names it: Kerbin, in the stock system.</summary>
         public const string HomeIndex = "1";
@@ -123,9 +126,11 @@ namespace ClaudiaKerman.Core.Contracts
                 if (requirement.State == "Complete") continue;
                 if (contract.Kind == PartTest && requirement.Kind == PartTest)
                 {
-                    read.Add(ReadPartTest(requirement, home));
+                    read.Add(ReadPartTest(requirement, requirements.Where(r => TestConditions.Contains(r.Kind)), home));
                     continue;
                 }
+                // A haul's conditions sit beside its PartTest Requirement: read with it.
+                if (contract.Kind == PartTest && TestConditions.Contains(requirement.Kind) && requirements.Any(r => r.Kind == PartTest)) continue;
                 if (requirement.Requirements.Count > 0)
                 {
                     Walk(contract, requirement.Requirements, home, read);
@@ -165,29 +170,86 @@ namespace ClaudiaKerman.Core.Contracts
             return one;
         }
 
+        /// <summary>The stock system's bodies by their index in the game's body list, as a part test's <c>body</c> setting names them.</summary>
+        private static readonly string[] StockBodies =
+            { "Sun", "Kerbin", "Mun", "Minmus", "Moho", "Eve", "Duna", "Ike", "Jool", "Laythe", "Vall", "Bop", "Tylo", "Gilly", "Pol", "Dres", "Eeloo" };
+
+        /// <summary>The conditions a part test's tree holds beside or under its PartTest Requirement: read with it, never on their own.</summary>
+        private static readonly HashSet<string> TestConditions = new HashSet<string>
+            { "ReachDestination", "ReachSituation", "ReachAltitudeEnvelope", "ReachSpeedEnvelope" };
+
+        /// <summary>#1029: a part test needing level flight in the air, or a run along the ground.</summary>
+        public const string AircraftNotYet = "not yet: needs sustained flight in the atmosphere (aircraft)";
+        public const string TestAwayNotYet = "not yet: tests in orbit or away from Kerbin aren't planned yet (launch and reentry run them)";
+
         /// <summary>
-        /// #1048: a part test, whole: a hop when it is no haul, FLYING or SUB_ORBITAL over the launch body, in the altitude band (and
-        /// speed band, when given) its conditions set. The test itself (staging the part, Run Test) isn't flown yet (#1029).
+        /// #1048, #1029: a part test or haul, whole, its conditions read beside or under it (<paramref name="siblings"/>). Over the launch body,
+        /// FLYING or SUB_ORBITAL in an altitude band (and speed band, when given) is a band the craft flies through on its ascent or its descent
+        /// (<see cref="PartTestSpec"/>; the Contract check picks which); LANDED or SPLASHED there is met home again after the reentry. A haul
+        /// carries the part, so ORBITING or LANDED elsewhere is that visit. A test elsewhere or in orbit, one along the ground at speed and an
+        /// ESCAPING one are "not yet".
         /// </summary>
-        private static ReadRequirement ReadPartTest(ContractRequirement requirement, string home)
+        private static ReadRequirement ReadPartTest(ContractRequirement requirement, IEnumerable<ContractRequirement> siblings, string home)
         {
             var one = new ReadRequirement { Requirement = requirement };
-            if (Setting(requirement, "haul").ToUpperInvariant() == "TRUE") return NotYet(one, HaulNotYet);
+            var haul = Setting(requirement, "haul").ToUpperInvariant() == "TRUE";
             var situation = Setting(requirement, "situation").ToUpperInvariant();
-            var conditions = requirement.Requirements;
+            var conditions = requirement.Requirements.Concat(siblings).ToList();
             var altitude = conditions.FirstOrDefault(c => c.Kind == "ReachAltitudeEnvelope");
-            if ((situation != "FLYING" && situation != "SUB_ORBITAL") || altitude == null) return NotYet(one, TypeNotYet(PartTest));
-            if (Setting(requirement, "body") != HomeIndex) return NotYet(one, AwayHopNotYet);
             var speed = conditions.FirstOrDefault(c => c.Kind == "ReachSpeedEnvelope");
-            var band = new HopBand
+            var body = BodyAt(Setting(requirement, "body"));
+            var part = Setting(requirement, "part");
+            one.Test = new PartTestSpec { Part = part, Haul = haul, Situation = situation };
+            if (body == null) return NotYet(one, "not yet: the Contract's body isn't one Claudia knows");
+            var athome = body == home;
+            if (situation == "FLYING" || situation == "SUB_ORBITAL")
             {
-                MinAltitude = Number(altitude, "minAlt"), MaxAltitude = Number(altitude, "maxAlt"),
-                MinSpeed = speed == null ? null : Number(speed, "minSpd"), MaxSpeed = speed == null ? null : Number(speed, "maxSpd"),
-            };
-            if (!band.MinAltitude.HasValue) return NotYet(one, TypeNotYet(PartTest));
-            Hop(one, home, band);
-            one.Words = "test " + Setting(requirement, "part") + " " + band.Words(home).Substring("hop ".Length);
+                if (altitude == null) return NotYet(one, TypeNotYet(PartTest));
+                if (!athome) return NotYet(one, AwayHopNotYet);
+                var band = new HopBand
+                {
+                    MinAltitude = Number(altitude, "minAlt"), MaxAltitude = Number(altitude, "maxAlt"),
+                    MinSpeed = speed == null ? null : Number(speed, "minSpd"), MaxSpeed = speed == null ? null : Number(speed, "maxSpd"),
+                };
+                if (!band.MinAltitude.HasValue) return NotYet(one, TypeNotYet(PartTest));
+                one.Test.Band = band;
+                Hop(one, home, band);
+                one.Words = (haul ? "carry " : "test ") + part + " " + band.Words(home).Substring("hop ".Length);
+                return one;
+            }
+            if (situation == "LANDED" || situation == "SPLASHED")
+            {
+                if (speed != null || altitude != null) return NotYet(one, AircraftNotYet);
+                if (athome)
+                {
+                    one.Body = home;
+                    one.Reach = ContractReach.Land;
+                    one.Return = true;
+                    one.Phase = "Return";
+                    one.Words = (haul ? "bring " + part + " home, " : "test " + part + " home, ") + (situation == "LANDED" ? "landed" : "splashed down");
+                    return one;
+                }
+                if (!haul || situation == "SPLASHED") return NotYet(one, TestAwayNotYet);
+                return Visit(one, body, ContractReach.Land, "carry " + part + " to the surface of " + Named(body), home);
+            }
+            if (situation == "ORBITING" && haul) return Visit(one, body, ContractReach.Orbit, "carry " + part + " into orbit round " + Named(body), home);
+            return NotYet(one, situation == "ORBITING" ? TestAwayNotYet : TypeNotYet(PartTest));
+        }
+
+        private static ReadRequirement Visit(ReadRequirement one, string body, ContractReach reach, string words, string home)
+        {
+            one.Body = body;
+            one.Reach = reach;
+            one.Phase = body == home ? body + " orbit" : body;
+            one.Words = words;
             return one;
+        }
+
+        /// <summary>The body a part test's <c>body</c> index names in the stock system; null when unknown.</summary>
+        private static string BodyAt(string index)
+        {
+            int at;
+            return int.TryParse(index, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out at) && at >= 0 && at < StockBodies.Length ? StockBodies[at] : null;
         }
 
         private static ReadRequirement Hop(ReadRequirement one, string home, HopBand band)

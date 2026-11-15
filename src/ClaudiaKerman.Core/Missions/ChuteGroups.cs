@@ -367,13 +367,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             var chutes = entry.Chutes.Select(c => Copy(snapshot.Craft.Parts.First(p => p.Id == c.PartId).Chute)).ToList();
             entry.EndAltitude = EndAltitudeOf(body);
-            var top = body.Radius + body.AtmosphereHeight;
-            var apo = top + Math.Max(5000, 0.1 * body.AtmosphereHeight);
-            var peri = body.Radius + 0.3 * body.AtmosphereHeight;
-            var orbit = Conic.FromElements(body.Gm, (apo + peri) / 2, (apo - peri) / (apo + peri), 0, 0, 0, Math.PI, 0);
-            var frame = new BodyFrame { LonOffset = 0, Handed = 1, Ut = 0, RotationPeriod = body.RotationPeriod };
-            var craft = new FallingCraft(entry.MassKg, chutes);
-            var prediction = ReentryPredictor.Predict(body, orbit, 0, entry.EndAltitude, entry.MassKg, new SnapshotAir(body), craft, frame);
+            var prediction = Fall(body, entry.MassKg, chutes, false);
             if (prediction.Error != null)
             {
                 entry.Unpredicted = prediction.Error;
@@ -383,7 +377,21 @@ namespace ClaudiaKerman.Core.Missions
             entry.PoweredFinish = entry.TouchdownSpeed > TouchdownLimit;
         }
 
-        private static ReentryChute Copy(ReentryChute chute)
+        /// <summary>
+        /// The predictor's fall of a craft of <paramref name="massKg"/> with <paramref name="chutes"/> from a low entry on <paramref name="body"/>
+        /// to its <see cref="EndAltitudeOf"/>, chutes opened by reentry's rules; with <paramref name="profile"/> the speed at each height (#1029).
+        /// </summary>
+        internal static ReentryPrediction Fall(SnapshotBody body, double massKg, IList<ReentryChute> chutes, bool profile)
+        {
+            var top = body.Radius + body.AtmosphereHeight;
+            var apo = top + Math.Max(5000, 0.1 * body.AtmosphereHeight);
+            var peri = body.Radius + 0.3 * body.AtmosphereHeight;
+            var orbit = Conic.FromElements(body.Gm, (apo + peri) / 2, (apo - peri) / (apo + peri), 0, 0, 0, Math.PI, 0);
+            var frame = new BodyFrame { LonOffset = 0, Handed = 1, Ut = 0, RotationPeriod = body.RotationPeriod };
+            return ReentryPredictor.Predict(body, orbit, 0, EndAltitudeOf(body), massKg, new SnapshotAir(body), new FallingCraft(massKg, chutes), frame, true, profile);
+        }
+
+        internal static ReentryChute Copy(ReentryChute chute)
         {
             return new ReentryChute
             {
@@ -397,7 +405,7 @@ namespace ClaudiaKerman.Core.Missions
         /// (highest number first), each from its start mass, as the Margin check spends them; the craft as it is when the
         /// stages aren't known.
         /// </summary>
-        private static double MassAfter(GameSnapshot snapshot, double deltaV)
+        internal static double MassAfter(GameSnapshot snapshot, double deltaV)
         {
             var stages = snapshot.Stages.Where(s => s.DeltaVVac > 0 && s.StartMassT > s.EndMassT && s.EndMassT > 0).OrderByDescending(s => s.Number).ToList();
             var mass = snapshot.Craft.MassTonnes;

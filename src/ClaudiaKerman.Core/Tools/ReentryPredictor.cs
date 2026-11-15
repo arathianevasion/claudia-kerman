@@ -170,6 +170,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>When the first parachute starts to open (semi-deploys), and when the heat shield goes; -1 for never.</summary>
         public double ChuteUt = -1;
         public double ShieldUt = -1;
+        /// <summary>#1029: where <c>reentry</c>'s rule armed each chute (opened it, at its normal timing): height above sea level m, air speed m/s.</summary>
+        public readonly Dictionary<ReentryChute, double[]> Armed = new Dictionary<ReentryChute, double[]>();
+        /// <summary>#1029: with a profile asked for, the fall at each accepted step in the air: height above sea level m, air speed m/s.</summary>
+        public readonly List<double[]> Profile = new List<double[]>();
         /// <summary>The integrator's accepted steps, and the craft's drag asked for (each one also asks the air once).</summary>
         public int Steps;
         public int Evaluations;
@@ -214,6 +218,8 @@ namespace ClaudiaKerman.Core.Tools
         private double _peak;
         private double _openingPeak;
         private double _lastResortSpeed;
+        private bool _profile;
+        private ReentryPrediction _prediction;
         private int _evaluations;
         private bool _shieldGone;
         /// <summary>The unit normal of the airflow's plane as the craft entered the air: lift is square to it.</summary>
@@ -246,14 +252,14 @@ namespace ClaudiaKerman.Core.Tools
         /// opened: each stays stowed, its drag as the craft has it stowed; one already open stays open.
         /// </summary>
         public static ReentryPrediction Predict(SnapshotBody body, Conic orbit, double fromUt, double groundAltitude, double massKg,
-            IReentryAir air, IReentryCraft craft, BodyFrame frame, bool chutes = true)
+            IReentryAir air, IReentryCraft craft, BodyFrame frame, bool chutes = true, bool profile = false)
         {
             if (body == null || orbit == null || air == null || craft == null || frame == null)
                 return Fail("the body, orbit, air, craft and frame must all be given");
             if (body.AtmosphereHeight <= 0) return Fail(body.Name + " has no atmosphere");
             if (!SearchInput.Finite(fromUt) || !SearchInput.Finite(groundAltitude)) return Fail("the start time and the ground's height must be finite");
             if (!SearchInput.Finite(massKg) || massKg <= 0) return Fail("the craft's mass must be a positive number of kg");
-            var predictor = new ReentryPredictor(body, air, craft, frame, groundAltitude, chutes) { _mass = massKg };
+            var predictor = new ReentryPredictor(body, air, craft, frame, groundAltitude, chutes) { _mass = massKg, _profile = profile };
             return predictor.Fly(orbit, fromUt, frame);
         }
 
@@ -262,6 +268,7 @@ namespace ClaudiaKerman.Core.Tools
             var radius = _body.Radius;
             var top = radius + _body.AtmosphereHeight;
             var prediction = new ReentryPrediction();
+            _prediction = prediction;
             if (orbit.Radius(t) <= radius + _ground) return Fail("the craft is already on the ground");
             var solver = new Bs3 { Rtol = Rtol, Atol = 1e-6, Hmax = MaxStep, MaxSteps = MaxSteps, OnStep = ReadOpening };
             OdeFunction f = Derivative;
@@ -385,6 +392,7 @@ namespace ClaudiaKerman.Core.Tools
             if (chute.State == ReentryChuteState.Stowed && !chute.Of.Drogue && _lastResortSpeed <= 0 && Slower(y, ReentryRules.ChuteMaxSpeed) < 0)
                 _lastResortSpeed = AirSpeed(y);
             chute.State++;
+            if (chute.State == ReentryChuteState.Armed && !prediction.Armed.ContainsKey(chute.Of)) prediction.Armed[chute.Of] = new[] { Height(y), AirSpeed(y) };
             if (chute.State < ReentryChuteState.SemiDeployed) return;
             chute.OpenedUt = t;
             if (prediction.ChuteUt < 0) prediction.ChuteUt = t;
@@ -471,6 +479,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>At an accepted step: the air's pull in g with the chutes' drag in, while one is still opening (#923).</summary>
         private void ReadOpening(double[] y, double t)
         {
+            if (_profile && _prediction != null && Height(y) < _body.AtmosphereHeight) _prediction.Profile.Add(new[] { Height(y), AirSpeed(y) });
             var opening = false;
             foreach (var chute in _chutes)
                 if ((chute.State == ReentryChuteState.SemiDeployed && Opening(t, chute, chute.Of.SemiSeconds) < 1)

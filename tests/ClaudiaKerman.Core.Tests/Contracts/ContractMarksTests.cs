@@ -31,17 +31,17 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("not yet: surveys aren't planned yet", mark.Hover);
         }
 
-        /// <summary>#1048: a part test met on a hop below orbit over Kerbin is planned; a haul isn't yet.</summary>
+        /// <summary>#1048, #1029: a part test met on a hop below orbit over Kerbin is planned, and so is a haul into the Mun's orbit.</summary>
         [Fact]
-        public void APartTestOnAHopGetsTheFlagAndAHaulTheHollowMark()
+        public void APartTestOnAHopAndAHaulIntoOrbitBothGetTheFlag()
         {
             var test = ContractMarks.Of(Fixture("PartTest.json"), false);
             var haul = ContractMarks.Of(Fixture("PartTest-haul.json"), false);
 
             Assert.True(test.Plannable);
             Assert.Equal("Claudia can plan this: test solidBooster.sm.v2 through 6,000–10,000 m at 210–280 m/s over Kerbin", test.Hover);
-            Assert.False(haul.Plannable);
-            Assert.Equal("not yet: hauls aren't planned yet", haul.Hover);
+            Assert.True(haul.Plannable);
+            Assert.Equal("Claudia can plan this: carry batteryBank into orbit round the Mun", haul.Hover);
         }
 
         /// <summary>A mod's Contract is "not yet" even when its type shares a stock name: its Requirements may mean something else.</summary>

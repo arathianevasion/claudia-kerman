@@ -130,6 +130,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
             else if (input is NextPatchDropped) NextPatchDroppedSeen((NextPatchDropped)input);
             else if (input is ChuteWarning) ChuteWarningLine((ChuteWarning)input);
+            else if (input is PartTestNoted) PartTestLine((PartTestNoted)input);
             else if (input is CoastArmed) CoastArmedSeen((CoastArmed)input);
             else if (input is AbortSequence) AbortPressed();
             else if (input is VesselsSeen) VesselsChanged(((VesselsSeen)input).Vessels);
@@ -2577,6 +2578,7 @@ namespace ClaudiaKerman.Core.Missions
                 }
                 view.CurrentSequence = Math.Min(StepsBegun(mission), view.PlanSequences.Count) - 1;
                 view.PlanLegs = mission.Plan != null ? mission.Plan.Sequences : null;
+                view.PartTests = PartTestsOf(mission);
                 view.CraftName = mission.VesselName;
                 view.ProcessorPartId = mission.ProcessorPartId;
                 view.ChuteGroups = mission.Chutes;

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Linq;
 using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Missions;
 
@@ -20,6 +21,17 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         public static double? DeltaV(GameSnapshot snapshot, double targetAp, out string why)
         {
+            var flight = Fly(snapshot, targetAp, false, out why);
+            return flight != null && why == null ? flight.DeltaVToOrbit : (double?)null;
+        }
+
+        /// <summary>
+        /// #1029: the hop flown, its climb tracked when <paramref name="track"/>, or (with <paramref name="targetAp"/> null) the launch to
+        /// orbit as plan_ascent flies it by default; null with <paramref name="why"/> when it can't be flown, and with <paramref name="why"/>
+        /// set when it doesn't get there (its track up to there is still the climb flown).
+        /// </summary>
+        internal static AscentFlight Fly(GameSnapshot snapshot, double? targetAp, bool track, out string why)
+        {
             PlanAscent.Setup setup;
             var refusal = PlanAscent.Prepare(JsonReader.Parse("{}"), snapshot, out setup);
             if (refusal != null)
@@ -27,12 +39,29 @@ namespace ClaudiaKerman.Core.Tools
                 why = refusal.Summary;
                 return null;
             }
-            setup.Options.TargetAp = targetAp;
-            setup.Options.TurnStartSpeed = double.PositiveInfinity;
-            setup.Options.Hop = true;
-            var flight = AscentSim.Fly(setup.Options, setup.Air, setup.Drag, setup.Stages);
-            why = flight.ReachesHop ? null : "the hop to " + Math.Round(targetAp) + " m: " + flight.Failure;
-            return flight.ReachesHop ? flight.DeltaVToOrbit : (double?)null;
+            setup.Options.Track = track;
+            if (targetAp.HasValue)
+            {
+                setup.Options.TargetAp = targetAp.Value;
+                setup.Options.TurnStartSpeed = double.PositiveInfinity;
+                setup.Options.Hop = true;
+            }
+            AscentFlight flight;
+            if (targetAp.HasValue) flight = AscentSim.Fly(setup.Options, setup.Air, setup.Drag, setup.Stages);
+            else
+            {
+                // The launch to orbit by plan_ascent's search: the shape that reaches orbit with the most left, else the highest.
+                var tried = new System.Collections.Generic.List<AscentFlight>();
+                foreach (var shape in PlanAscent.Shapes())
+                {
+                    setup.Options.TurnShape = shape;
+                    tried.Add(AscentSim.Fly(setup.Options, setup.Air, setup.Drag, setup.Stages));
+                }
+                flight = tried.Where(f => f.ReachesOrbit).OrderByDescending(f => Math.Round(f.DeltaVLeft)).FirstOrDefault() ?? tried.OrderByDescending(f => f.BestAp).First();
+            }
+            var reached = targetAp.HasValue ? flight.ReachesHop : flight.ReachesOrbit;
+            why = reached ? null : (targetAp.HasValue ? "the hop to " + Math.Round(targetAp.Value) + " m: " : "the launch to orbit: ") + flight.Failure;
+            return flight;
         }
     }
 }

@@ -97,7 +97,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return ContractCheckTests.With(
                 ContractCheckTests.Fixture("ExplorationContract.json"),
                 ContractCheckTests.Exploration("c-land", 30000, "Mun:LANDING"),
-                ContractCheckTests.Fixture("PartTest-haul.json"));
+                ContractCheckTests.Fixture("SurveyContract.json"));
         }
 
         [Fact]
@@ -161,7 +161,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("Also run a crew report in Mun orbit.", text);
             Assert.Contains("land on the Mun", text);
             Assert.Contains("(phase: Mun)", text);
-            Assert.Contains("not yet: hauls aren't planned yet", text);
+            Assert.Contains("not yet: surveys aren't planned yet", text);
             // The card folds to its one line, which stays in the Mission's transcript.
             Assert.Null(mission.View.ContractCheck);
             Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal));
