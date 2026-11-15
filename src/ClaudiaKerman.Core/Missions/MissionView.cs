@@ -382,6 +382,8 @@ namespace ClaudiaKerman.Core.Missions
         public ChuteGroups ChuteGroups;
         /// <summary>The Mission Plan's legs, for the Ship Systems hold (#756); null before there is a plan.</summary>
         public IList<PlannedSequence> PlanLegs;
+        /// <summary>#1029: the Mission's planned part tests, timed by Core for <c>ADDONS:CLAUDIA:PARTTEST</c>; null with no Mission.</summary>
+        public ClaudiaKerman.Core.Contracts.PartTestWatch PartTests;
         /// <summary>The Mission's craft's name, so a Child Vessel's legs are left out of the later legs' delta-v (#832); "" before there is one.</summary>
         public string CraftName = "";
         /// <summary>The Child Vessel the run flies, for <c>ENTRYDROP</c>'s count (#823); "" for the craft.</summary>

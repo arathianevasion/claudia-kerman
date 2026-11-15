@@ -30,6 +30,8 @@ namespace ClaudiaKerman.Core.Missions
         ChuteWarning,
         /// <summary>The orbit the run left crosses a moon's sphere of influence (#867), with the moon, the time and the fix. The latest stands for the run.</summary>
         MoonCrossing,
+        /// <summary>#1029: a part test was run, or its window passed unrun, with why.</summary>
+        PartTest,
     }
 
     public sealed class RunEvent
@@ -142,6 +144,7 @@ namespace ClaudiaKerman.Core.Missions
                 case RunEventKind.DarkLanding: return "landed in the dark";
                 case RunEventKind.ChuteWarning: return "no safe landing";
                 case RunEventKind.MoonCrossing: return "orbit crosses a moon";
+                case RunEventKind.PartTest: return "part test";
                 default: return "run stopped";
             }
         }

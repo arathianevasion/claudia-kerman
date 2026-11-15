@@ -426,5 +426,20 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("request real 3.0 s, UT 1003, target 6000, rails, asked KSP's pick, reached 1000x, attempt 1, in coast", lines);
             Assert.Contains("block coast: first request 3.0 s, 4.0 s at 1x in waits, top rate 1000x (physics 1x), 1 requests, 0 retries, 0 drops", lines);
         }
+
+        /// <summary>#1029: a block test plans its part tests for PARTTEST, as a Mission's chosen Contract Requirements would.</summary>
+        [Fact]
+        public void APartTestLineIsAPlannedTestForItsBlock()
+        {
+            var spec = BlockTestSpec.Parse("t", "block = launch\npart_test = ascent | solidBooster.sm.v2 | FLYING | 3000 | 6000 | 100 | 400\npart_test = descent | parachuteSingle | FLYING | 500 | 4000\n");
+
+            Assert.Equal(2, spec.PartTests.Count);
+            var booster = spec.PartTests[0].Test;
+            Assert.Equal(ClaudiaKerman.Core.Contracts.TestWindow.Ascent, booster.Window);
+            Assert.Equal(3000, booster.Band.MinAltitude);
+            Assert.Equal(400, booster.Band.MaxSpeed);
+            Assert.True(spec.PartTests[1].Test.Chute);
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = launch\npart_test = sideways | x | FLYING\n"));
+        }
     }
 }

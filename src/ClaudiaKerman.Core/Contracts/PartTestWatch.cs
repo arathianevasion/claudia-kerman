@@ -41,8 +41,8 @@ namespace ClaudiaKerman.Core.Contracts
         public string Uid = "";
         /// <summary>The Requirement's key; "" when nothing is signalled.</summary>
         public string Key = "";
-        /// <summary>For the run's events: "ran the test of X at 9,000 m, 250 m/s", or a window passed unrun; "" when nothing happened.</summary>
-        public string Note = "";
+        /// <summary>For the run's events: "ran the test of X at 9,000 m, 250 m/s", and each window passed unrun this tick; empty when nothing happened.</summary>
+        public readonly List<string> Notes = new List<string>();
     }
 
     /// <summary>
@@ -64,6 +64,7 @@ namespace ClaudiaKerman.Core.Contracts
             public bool CantAct;
         }
 
+        private readonly object _gate = new object();
         private readonly string _home;
         private List<ChosenRequirement> _tests = new List<ChosenRequirement>();
         private readonly HashSet<string> _ran = new HashSet<string>();
@@ -79,17 +80,22 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The Mission's chosen Requirements changed (a revised plan): what was run and missed is kept.</summary>
         public void Use(IEnumerable<ChosenRequirement> chosen)
         {
-            _tests = chosen.Where(r => r.Test != null && !r.Test.Haul && r.Test.Window != TestWindow.None).ToList();
+            lock (_gate) _tests = chosen.Where(r => r.Test != null && !r.Test.Haul && r.Test.Window != TestWindow.None).ToList();
         }
 
         /// <summary>There is a test left to run in <paramref name="block"/>: the block need not read the craft otherwise.</summary>
         public bool Pending(string block)
         {
-            return _tests.Any(t => !_ran.Contains(t.Key) && BlockOf(t.Test.Window) == block);
+            lock (_gate) return _tests.Any(t => !_ran.Contains(t.Key) && BlockOf(t.Test.Window) == block);
         }
 
         /// <summary>The block's one action this tick, if any.</summary>
         public TestSignal Tick(string block, TestCraft craft)
+        {
+            lock (_gate) return TickLocked(block, craft);
+        }
+
+        private TestSignal TickLocked(string block, TestCraft craft)
         {
             var signal = new TestSignal();
             foreach (var requirement in _tests.Where(t => !_ran.Contains(t.Key) && BlockOf(t.Test.Window) == block))
@@ -101,7 +107,8 @@ namespace ClaudiaKerman.Core.Contracts
                 var inBand = test.Band == null ? craft.Situation == test.Situation : test.Band.HoldsAltitude(craft.Altitude);
                 if (!inBand)
                 {
-                    Left(requirement);
+                    var gap = Left(requirement);
+                    if (gap != null) signal.Notes.Add("the window for \"" + requirement.Words + "\" passed unrun: " + gap);
                     continue;
                 }
                 var holds = craft.Situation == test.Situation && (test.Band == null || test.Band.HoldsSpeed(craft.Speed)) && part != null;
@@ -114,7 +121,7 @@ namespace ClaudiaKerman.Core.Contracts
                     signal.How = how;
                     signal.Uid = part.Uid;
                     signal.Key = requirement.Key;
-                    signal.Note = "ran the test of " + test.Part + " (" + how + ") at " + Whole(craft.Altitude) + " m, " + Whole(craft.Speed) + " m/s";
+                    signal.Notes.Add("ran the test of " + test.Part + " (" + how + ") at " + Whole(craft.Altitude) + " m, " + Whole(craft.Speed) + " m/s");
                     continue;
                 }
                 Pass pass;
@@ -133,10 +140,10 @@ namespace ClaudiaKerman.Core.Contracts
         }
 
         /// <summary>The craft left the band (or the situation) with the test unrun: the pass's gap.</summary>
-        private void Left(ChosenRequirement requirement)
+        private string Left(ChosenRequirement requirement)
         {
             Pass pass;
-            if (!_passes.TryGetValue(requirement.Key, out pass)) return;
+            if (!_passes.TryGetValue(requirement.Key, out pass)) return null;
             _passes.Remove(requirement.Key);
             var test = requirement.Test;
             var through = test.Band == null ? test.Situation.ToLowerInvariant() : "through " + test.Band.Through();
@@ -147,24 +154,19 @@ namespace ClaudiaKerman.Core.Contracts
                 : pass.CantAct ? "the part had no Run Test and wasn't the next stage " + through
                 : "the conditions never held at once " + through;
             _gaps[requirement.Key] = gap;
+            return gap;
         }
 
         public bool Ran(string key)
         {
-            return _ran.Contains(key);
+            lock (_gate) return _ran.Contains(key);
         }
 
         /// <summary>Why the test's window passed unrun, from the last pass; null when none has.</summary>
         public string Gap(string key)
         {
             string gap;
-            return _gaps.TryGetValue(key, out gap) ? gap : null;
-        }
-
-        /// <summary>The planned tests of the Mission.</summary>
-        public IList<ChosenRequirement> Tests
-        {
-            get { return _tests; }
+            lock (_gate) return _gaps.TryGetValue(key, out gap) ? gap : null;
         }
 
         private static string BlockOf(TestWindow window)
