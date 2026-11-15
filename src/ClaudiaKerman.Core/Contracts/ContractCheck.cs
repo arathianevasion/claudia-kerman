@@ -45,8 +45,6 @@ namespace ClaudiaKerman.Core.Contracts
         CraftCant,
         /// <summary>The route finishes it too near its deadline.</summary>
         CompletesLater,
-        /// <summary>Past the most the search takes.</summary>
-        NotSearched,
         /// <summary>#1036: the player's typed words rule out what it needs; the words win.</summary>
         CantWithWords,
     }

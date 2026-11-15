@@ -39,7 +39,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             clock.Stop();
 
             Assert.True(clock.Elapsed < ContractCheck.SearchBudget, "took " + clock.Elapsed);
-            Assert.DoesNotContain(check.NotThisFlight, l => l.Kind == LeftOutKind.NotSearched);
+            // Every Contract was searched: the ones left out are left out for the craft, none for the search.
+            Assert.All(check.NotThisFlight, l => Assert.Equal(LeftOutKind.CraftCant, l.Kind));
             Assert.Equal(contracts.Length, check.Fitting.Count + check.NotThisFlight.Count);
             Assert.True(check.SetFits);
             // The pad craft flies the Mun and Minmus landings and comes home: every Kerbin-system Contract fits together.
