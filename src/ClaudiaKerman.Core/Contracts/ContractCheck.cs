@@ -243,7 +243,8 @@ namespace ClaudiaKerman.Core.Contracts
                 var read = ContractKinds.Read(contract, _home);
                 var title = Title(contract, read);
                 foreach (var test in read.Where(r => r.Plannable && r.Test != null)) JudgeTest(test);
-                var cant = read.FirstOrDefault(r => r.Plannable && r.Test != null && r.CraftCant.Length > 0 && !r.Requirement.Optional);
+                foreach (var science in read.Where(r => r.Plannable && r.Experiment != null)) JudgeScience(science);
+                var cant = read.FirstOrDefault(r => r.Plannable && r.CraftCant.Length > 0 && !r.Requirement.Optional);
                 if (cant != null && read.All(r => r.Plannable || r.Requirement.Optional))
                 {
                     NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Kind = LeftOutKind.CraftCant, Reason = cant.CraftCant });
@@ -297,6 +298,29 @@ namespace ClaudiaKerman.Core.Contracts
             if (_judge.Window(test, hopAp, true, _judge.DownKg(CraftDeltaV), out why) != TestWindow.None) return;
             if (test.Situation == "FLYING" && !test.Chute) read.CraftCant = "this craft can't: no flight passes " + test.Band.Card();
             else read.CraftCant = "this craft can't: " + why;
+        }
+
+        /// <summary>
+        /// #1030: collect science or a survey against this craft: the science block runs the experiment, so it must be aboard ("this craft
+        /// can't: …"): a crew report needs a kerbal aboard, any experiment (collect science) an experiment part or a kerbal. A space band whose
+        /// ceiling is under the lowest orbit priced round the body is "not yet".
+        /// </summary>
+        private void JudgeScience(ReadRequirement read)
+        {
+            var crewed = _snapshot.Crew.Count > 0;
+            if (read.Experiment.Length == 0)
+            {
+                if (!crewed && _snapshot.Experiments.Count == 0) read.CraftCant = "this craft can't: no science experiment aboard";
+            }
+            else if (read.Experiment == "crewReport")
+            {
+                if (!crewed) read.CraftCant = "this craft can't: a crew report needs a kerbal aboard";
+            }
+            else if (_snapshot.Experiments.All(e => e.ExperimentId != read.Experiment)) read.CraftCant = "this craft can't: no " + read.Experiment + " experiment aboard";
+            var waypoint = read.Waypoint;
+            var body = waypoint == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == waypoint.Body);
+            if (body != null && waypoint.MaxAltitude.HasValue && waypoint.MaxAltitude.Value < DeltaVMap.LowOrbit(body) - body.Radius)
+                read.NotYet = "not yet: the survey's band, below " + Whole(waypoint.MaxAltitude.Value / 1000) + " km, is under the lowest orbit priced round " + ContractKinds.Named(body.Name);
         }
 
         /// <summary>

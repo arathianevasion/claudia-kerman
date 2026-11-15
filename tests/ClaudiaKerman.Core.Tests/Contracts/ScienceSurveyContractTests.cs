@@ -84,5 +84,46 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(orbit.RouteDeltaV, check.RouteDeltaV, 3);
             Assert.Empty(check.NotThisFlight);
         }
+    
+
+        [Fact]
+        public void ASurveysExperimentMustBeOnTheCraftOrItIsThisCraftCant()
+        {
+            // The pad craft carries a crew report (its pod, Claudia aboard) and no thermometer.
+            var snapshot = ContractCheckTests.With(Survey("c-temp", "2", "LOW", "temperatureScan", 30000, "3,10"), Survey("c-crew", "2", "LOW", "crewReport", 30000, "3,10"));
+
+            var check = Check(snapshot);
+
+            Assert.Equal("c-crew", Assert.Single(check.Fitting).Guid);
+            var left = Assert.Single(check.NotThisFlight);
+            Assert.Equal("c-temp", left.Guid);
+            Assert.Equal(LeftOutKind.CraftCant, left.Kind);
+            Assert.Equal("this craft can't: no temperatureScan experiment aboard", left.Reason);
+        }
+
+        [Fact]
+        public void CollectScienceNeedsSomeExperimentOrAKerbalAboard()
+        {
+            var snapshot = ContractCheckTests.With(Science("c-sci", "2", "Space"));
+            snapshot.Experiments.Clear();
+            snapshot.Crew.Clear();
+
+            var left = Assert.Single(Check(snapshot).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.CraftCant, left.Kind);
+            Assert.Equal("this craft can't: no science experiment aboard", left.Reason);
+        }
+
+        [Fact]
+        public void LowFlyingSurveysAreNotYetWithTheReason()
+        {
+            // The fixture: a LOW band over Kerbin, below 17.5 km, in the air.
+            var check = Check(ContractCheckTests.With(ContractCheckTests.Fixture("SurveyContract.json")));
+
+            var left = Assert.Single(check.NotThisFlight);
+            Assert.Equal(LeftOutKind.NotYet, left.Kind);
+            Assert.Equal("not yet: low-flying surveys need an aircraft over the waypoint", left.Reason);
+            Assert.Empty(check.Fitting);
+        }
     }
 }
