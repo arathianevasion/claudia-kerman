@@ -317,6 +317,8 @@ namespace ClaudiaKerman.Core.Missions
         public double Spare;
         /// <summary>The first line: how many Contracts, the route against the craft and the reserve, and the spare or the shortfall.</summary>
         public string Headline = "";
+        /// <summary>#1028: what the planners' re-pricing did to the suggestion, shown under the headline; "" when the best set held.</summary>
+        public string SearchNote = "";
         /// <summary>"Plan these 2"; "Pick a Contract" when none is ticked.</summary>
         public string PlanLabel = "";
         public bool CanPlan;
