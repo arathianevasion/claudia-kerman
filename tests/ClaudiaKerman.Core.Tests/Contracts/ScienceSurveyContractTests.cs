@@ -125,5 +125,69 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("not yet: low-flying surveys need an aircraft over the waypoint", left.Reason);
             Assert.Empty(check.Fitting);
         }
+    
+
+        private static double OrbitOfTheMun()
+        {
+            return Check(ContractCheckTests.With(ContractCheckTests.Exploration("c-orbit", 10000, "Mun:ORBIT"))).RouteDeltaV;
+        }
+
+        [Fact]
+        public void ASpaceBandWaypointNearTheEquatorAddsThePlaneChangeThatPutsTheGroundTrackOverIt()
+        {
+            var check = Check(ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "3,10")));
+
+            var row = Assert.Single(check.Fitting);
+            Assert.Equal("Mun", row.Phase);
+            // A turn of 3 degrees in low Mun orbit (214 km from the centre, 551.7 m/s): 2 * 551.7 * sin(1.5 deg) = 28.9 m/s.
+            Assert.InRange(check.RouteDeltaV - OrbitOfTheMun(), 28.4, 29.4);
+        }
+
+        [Fact]
+        public void AHighLatitudeSpaceBandWaypointCostsNoMoreThanThePolarRow()
+        {
+            var snapshot = ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "45,10"));
+
+            var check = Check(snapshot);
+
+            // A 45 degree turn in low orbit is 422 m/s; aiming the plane on the approach is the Map's polar row, cheaper.
+            Assert.InRange(check.RouteDeltaV - OrbitOfTheMun(), Map(snapshot).Leg("polar:Mun").DeltaV - 0.5, Map(snapshot).Leg("polar:Mun").DeltaV + 0.5);
+        }
+
+        [Fact]
+        public void SpaceBandWaypointsAreFlownInTheOrderOfTheirPasses()
+        {
+            // The body turns east under the orbit, so the track sweeps west: from 170 W (after the widest gap) to 100 E, then 10 E.
+            var check = Check(ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "0,10", "0,100", "0,-170")));
+
+            var section = check.Choose(check.TickedGuids).Section;
+
+            var first = section.IndexOf("0.0° N 170.0° W", StringComparison.Ordinal);
+            var second = section.IndexOf("0.0° N 100.0° E", StringComparison.Ordinal);
+            var third = section.IndexOf("0.0° N 10.0° E", StringComparison.Ordinal);
+            var order = section.Substring(section.IndexOf("Survey waypoints", StringComparison.Ordinal));
+            Assert.True(order.IndexOf("170.0° W", StringComparison.Ordinal) < order.IndexOf("100.0° E", StringComparison.Ordinal), section);
+            Assert.True(order.IndexOf("100.0° E", StringComparison.Ordinal) < order.IndexOf("0.0° N 10.0° E", StringComparison.Ordinal), section);
+            Assert.True(first >= 0 && second >= 0 && third >= 0, section);
+        }
+
+        [Fact]
+        public void TheWaitForThePassCountsAgainstTheDeadline()
+        {
+            // About 29,000 s to low Mun orbit; the first pass is up to half a turn of the Mun (69,492 s) later. A deadline 60,000 s out
+            // keeps the orbit with its day to spare, not the survey.
+            var survey = Survey("c-s", "2", "LOW", "crewReport", 30000, "3,10");
+            var orbit = ContractCheckTests.Exploration("c-orbit", 10000, "Mun:ORBIT");
+            var snapshot = ContractCheckTests.With(survey, orbit);
+            survey.DeadlineUt = snapshot.Ut + 60000;
+            orbit.DeadlineUt = snapshot.Ut + 60000;
+
+            var check = Check(snapshot);
+
+            Assert.Equal("c-orbit", Assert.Single(check.Fitting).Guid);
+            var left = Assert.Single(check.NotThisFlight);
+            Assert.Equal("c-s", left.Guid);
+            Assert.Equal(LeftOutKind.CompletesLater, left.Kind);
+        }
     }
 }
