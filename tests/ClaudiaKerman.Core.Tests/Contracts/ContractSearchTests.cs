@@ -64,6 +64,42 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Timing.Within(ContractCheck.SearchBudget.TotalMilliseconds, () => Assert.NotEmpty(Check(TwelveGroups(30000, 20000)).Fitting));
         }
 
+        /// <summary>#1159: twelve Contracts over eight bodies, the craft with room for the first few only, so Swap in is offered for the rest.</summary>
+        private static SnapshotContract[] TwelveOverEightBodies()
+        {
+            return new[]
+            {
+                Exploration("mun", 9000, "Mun:ORBIT"), Exploration("minmus", 8000, "Minmus:ORBIT"), Exploration("kerbin", 1000, "Kerbin:ORBIT"),
+                Exploration("mun-fly", 2000, "Mun:FLYBY"), Exploration("min-fly", 2000, "Minmus:FLYBY"), Exploration("duna", 30000, "Duna:FLYBY"),
+                Exploration("eve", 30000, "Eve:FLYBY"), Exploration("moho", 30000, "Moho:FLYBY"), Exploration("jool", 30000, "Jool:FLYBY"),
+                Exploration("dres", 30000, "Dres:FLYBY"), Exploration("eeloo", 30000, "Eeloo:FLYBY"), Exploration("mun-land", 20000, "Mun:LANDING"),
+            };
+        }
+
+        /// <summary>#1159: a tick, an untick and a Swap in each re-price in well under a frame budget, however many Contracts are ticked.</summary>
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void TickingUntickingAndSwappingOnTwelveContractsOverEightBodiesEachRePriceUnder50Ms()
+        {
+            var snapshot = With(TwelveOverEightBodies());
+            var check = ContractCheck.Work(snapshot, "", false, Margin);
+            // Tick everything Core plans: the biggest set a tick can re-price.
+            foreach (var guid in check.Fitting.Select(r => r.Guid).Concat(check.NotThisFlight.Where(l => l.Tickable).Select(l => l.Guid)).ToList()) check.Tick(guid, true);
+            var first = check.Fitting.Concat<object>(check.NotThisFlight).Count();
+            Assert.Equal(12, first);
+
+            Timing.Within(50, () => { check.Tick("mun", false); check.Tick("mun", true); }, 7);
+            Timing.Within(50, () => check.Tick("duna", false), 7);
+            Timing.Within(50, () => check.Tick("duna", true), 7);
+            // Back to the suggested set: the Contracts left out are offered a swap, and applying one re-prices just as fast.
+            var fresh = ContractCheck.Work(snapshot, "", false, Margin);
+            var offered = fresh.NotThisFlight.Where(l => l.Swap != null).ToList();
+            Assert.NotEmpty(offered);
+            var swap = offered[0].Swap;
+            Timing.Within(50, () => { fresh.SwapIn(swap.Guid); Assert.Contains(fresh.TickedGuids, g => g == swap.Guid); fresh.SwapIn(swap.Drop[0]); }, 7);
+            Assert.Equal(1, fresh.Searches);
+        }
+
         /// <summary>Twelve groups, each a different set of bodies and reaches, all in Kerbin's system; every one fits alone.</summary>
         private static SnapshotContract[] TwelveGroups(double munLandFunds, double minmusLandFunds)
         {
