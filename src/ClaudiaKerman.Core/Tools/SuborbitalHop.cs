@@ -22,7 +22,7 @@ namespace ClaudiaKerman.Core.Tools
         public static double? DeltaV(GameSnapshot snapshot, double targetAp, out string why)
         {
             var flight = Fly(snapshot, targetAp, false, out why);
-            return flight != null && why == null ? flight.DeltaVToOrbit : (double?)null;
+            return flight != null && why == null ? flight.DeltaVToOrbitOrHop : (double?)null;
         }
 
         /// <summary>

@@ -182,7 +182,7 @@ namespace ClaudiaKerman.Core.Tools
     internal sealed class AscentFlight
     {
         public bool ReachesOrbit;
-        /// <summary>#1048: a hop (<see cref="AscentOptions.Hop"/>) got its apoapsis to TargetAp; <see cref="DeltaVToOrbit"/> is then what that took.</summary>
+        /// <summary>#1048: a hop (<see cref="AscentOptions.Hop"/>) got its apoapsis to TargetAp; <see cref="DeltaVToOrbitOrHop"/> is then what that took.</summary>
         public bool ReachesHop;
         /// <summary>Why not; "" when it does.</summary>
         public string Failure = "";
@@ -199,7 +199,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The highest apoapsis reached, m: ranks the shapes that fail.</summary>
         public double BestAp;
         /// <summary>Delta-v spent from the pad to a circular orbit (a hop: to its apoapsis), m/s.</summary>
-        public double DeltaVToOrbit;
+        public double DeltaVToOrbitOrHop;
         /// <summary>Apoapsis the circularization left, m; 0 until it ends.</summary>
         public double OrbitAp;
         /// <summary>Periapsis the circularization left, m; 0 until it ends.</summary>
@@ -463,7 +463,7 @@ namespace ClaudiaKerman.Core.Tools
                 var s = Math.Sin(pitch * Math.PI / 180);
                 ax += force / _mass * (c * ex + s * ux);
                 ay += force / _mass * (c * ey + s * uy);
-                _flight.DeltaVToOrbit += force / _mass * dt;
+                _flight.DeltaVToOrbitOrHop += force / _mass * dt;
             }
             var spd = Math.Sqrt(horizontal * horizontal + vertical * vertical);
             if (density > 0 && spd > 0)
