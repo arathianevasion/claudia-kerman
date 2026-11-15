@@ -1997,9 +1997,18 @@ function claudia_tick {
       return staging.
     }
   }
+  if ctx:block = "launch" or ctx:block = "reentry" { claudia_part_test(ctx). }
   // Auto-staging may already have moved last_ut past now.
   set ctx:last_ut to max(now, ctx:last_ut).
   return claudia_abort_reason(ctx:opt, choose ctx:ec_tick:call() if ctx:haskey("ec_tick") else claudia_ec_pct(), now - ctx:start_ut, max(0, ctx:parts - ship:parts:length)).
+}
+
+// A part test due now (#1029): Core's PARTTEST times it; the block stages, or runs the part's own Run Test (a chute's: never staged, ADR 0019).
+function claudia_part_test {
+  parameter ctx.
+  local pt is addons:claudia:parttest(ctx:block).
+  if pt:how = "stage" { stage. } else if pt:how = "run" { for p in ship:parts { if p:uid = pt:uid { p:getmodule("ModuleTestSubject"):doevent("run test"). } } }
+  if pt:how <> "" { wait 0.5. set ctx:parts to ship:parts:length. claudia_restart_clock(ctx). }
 }
 
 // Ship Systems (#756): the lift-off cue, then until the mod reports them retracted, at most 10 s (Core's ShipSystemsStowWait).
