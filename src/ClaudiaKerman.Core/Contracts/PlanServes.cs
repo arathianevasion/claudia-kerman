@@ -66,6 +66,8 @@ namespace ClaudiaKerman.Core.Contracts
             public bool Home;
             /// <summary>#1029: a hop below orbit over home: up through the air and back down.</summary>
             public bool Hop;
+            /// <summary>#1160: the launch options the leg's words write; null when it writes none (then plan_ascent's default shape is judged).</summary>
+            public WrittenLaunch Launch;
         }
 
         /// <param name="from">#1025: the first leg that may serve a Requirement; the legs before it are walked only for where the craft is.</param>
@@ -145,8 +147,9 @@ namespace ClaudiaKerman.Core.Contracts
             }
             string why;
             var body = SequenceWords.Body(snapshot, home);
+            var launch = by.Launch != null && (!by.Hop || by.Launch.TargetAp.HasValue) ? by.Launch : null;
             var window = ascent
-                ? judge.Window(test, by.Hop && body != null ? test.Band.TargetAp(body) : (double?)null, !by.Hop, null, out why)
+                ? judge.Window(test, launch != null && by.Hop ? launch.TargetAp : by.Hop && body != null ? test.Band.TargetAp(body) : (double?)null, !by.Hop, null, out why, launch)
                 : judge.Window(test, null, false, judge.DownKg(0), out why);
             if (window == TestWindow.None)
                 problems.Add(what + ", but leg " + (by.Leg + 1) + " \"" + plan.Sequences[by.Leg].Name + "\" misses it: " + why
@@ -177,17 +180,19 @@ namespace ClaudiaKerman.Core.Contracts
                 var sequence = plan.Sequences[i];
                 if (!MissionCards.FliesCraft(snapshot.Craft.Name, sequence.Vessel)) continue;
                 var words = SequenceWords.ActionWords(sequence);
+                var written = WrittenLaunch.Read(sequence.Name + " " + sequence.Intent);
                 var landing = SequenceWords.Landing.IsMatch(words);
                 var captures = SequenceWords.Capture.IsMatch(words) || Orbit.IsMatch(words);
                 var trips = SequenceWords.Trip.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words);
                 var target = trips ? SequenceWords.TripTarget(snapshot, words, at, home) : null;
                 var goesHome = trips && target != null && target.Name == home && at != null && at.Name != home;
                 var add = new System.Action<string, ContractReach, bool>((body, reach, back) =>
-                    touches.Add(new Touch { Leg = i, Order = touches.Count, Body = body, Reach = reach, Home = back }));
-                if (HopWords.IsMatch(sequence.Name + " " + words) && !captures && at != null && at.Name == home)
+                    touches.Add(new Touch { Leg = i, Order = touches.Count, Body = body, Reach = reach, Home = back, Launch = written }));
+                var homeNow = at != null && at.Name == home;
+                if (homeNow && (written != null && written.IsHop(homeBody) || HopWords.IsMatch(sequence.Name + " " + words) && !captures))
                 {
                     // #1029: up through the air over home and back down; it goes nowhere else.
-                    touches.Add(new Touch { Leg = i, Order = touches.Count, Body = home, Reach = ContractReach.Hop, Hop = true });
+                    touches.Add(new Touch { Leg = i, Order = touches.Count, Body = home, Reach = ContractReach.Hop, Hop = true, Launch = written });
                     continue;
                 }
                 if (goesHome && landing && SequenceWords.Landing.Match(words).Index < SequenceWords.Trip.Match(words).Index)
