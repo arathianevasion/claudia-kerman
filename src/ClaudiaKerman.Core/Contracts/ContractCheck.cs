@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -122,8 +123,14 @@ namespace ClaudiaKerman.Core.Contracts
     /// </summary>
     public sealed class ContractCheck
     {
-        /// <summary>Above this many plannable Contracts the rest are left out of the search (spec #1021's grouping is a later ticket).</summary>
-        public const int MostSearched = 10;
+        /// <summary>#1028: up to this many plannable Contracts are searched one by one; above it, in groups by the bodies they need.</summary>
+        public const int MostOneByOne = 10;
+        /// <summary>#1028: up to this many groups are searched exhaustively; above it, added greedily by reward per extra m/s.</summary>
+        public const int MostGroups = 10;
+        /// <summary>#1028: how many times a set the planners price short falls to the next best before it is reported.</summary>
+        public const int MostFallbacks = 3;
+        /// <summary>#1028: the time the search may take before a suggestion is on the card.</summary>
+        public static readonly TimeSpan SearchBudget = TimeSpan.FromSeconds(2);
         /// <summary>The spare a deadline needs: this fraction of the time to it, and at least a Kerbin day.</summary>
         public const double DeadlineSpareFraction = 0.10;
         /// <summary>The Serves tag for what the player typed.</summary>
@@ -154,6 +161,11 @@ namespace ClaudiaKerman.Core.Contracts
         public string Problem = "";
         /// <summary>How many times the Contract search has run: once, at <see cref="Work"/>; ticking, unticking and swapping never search (#1023).</summary>
         public int Searches;
+        /// <summary>
+        /// #1028: what the planners' re-pricing did to the suggestion: the best set by the Delta-v Map came out short and the next best is
+        /// suggested, or every set tried came out short and none is; "" when the best set held.
+        /// </summary>
+        public string SearchNote = "";
         public List<ContractCheckRow> Fitting = new List<ContractCheckRow>();
         public List<LeftOutContract> NotThisFlight = new List<LeftOutContract>();
         /// <summary>#1036: the ticked set's route leg by leg, with what each serves.</summary>
@@ -218,12 +230,6 @@ namespace ClaudiaKerman.Core.Contracts
                     Contract = contract, Title = title, Requirements = read.Where(r => r.Plannable && ruledOut.All(o => o.Read != r)).ToList(),
                     Note = skipped.Count == 0 ? "" : "optional Requirement skipped: " + string.Join("; ", skipped.ToArray()),
                 });
-            }
-            var searched = _planned.OrderByDescending(p => p.Contract.Funds).ThenByDescending(p => p.Contract.Science).ThenByDescending(p => p.Contract.Reputation).Take(MostSearched).ToList();
-            foreach (var over in _planned.Where(p => !searched.Contains(p)).ToList())
-            {
-                NotThisFlight.Add(new LeftOutContract { Guid = over.Contract.Guid, Title = over.Title, Kind = LeftOutKind.NotSearched, Reason = "not searched: only the " + MostSearched + " best paid Contracts are searched" });
-                _planned.Remove(over);
             }
         }
 
@@ -336,30 +342,31 @@ namespace ClaudiaKerman.Core.Contracts
 
         // ---- The search ----
 
+        /// <summary>
+        /// #1028: the search on the Delta-v Map's figures ranks the sets that work (<see cref="Ranked"/>); the best is re-priced with the
+        /// planners (<see cref="ContractRoutes.Planned"/>), falling to the next best up to <see cref="MostFallbacks"/> times; a set that
+        /// still comes out short is reported in <see cref="SearchNote"/> and nothing is pre-ticked.
+        /// </summary>
         private void Search()
         {
             Searches++;
-            List<Planned> best = new List<Planned>();
-            PricedRoute bestRoute = Route(best);
-            for (var size = _planned.Count; size > 0; size--)
+            var best = new List<Planned>();
+            var shorts = new List<double>();
+            foreach (var set in Ranked().Take(MostFallbacks + 1))
             {
-                List<Planned> found = null;
-                PricedRoute foundRoute = null;
-                foreach (var set in Combinations(_planned, size))
+                var planned = _routes.Planned(Route(set));
+                if (Fits(planned))
                 {
-                    var route = Route(set);
-                    if (!Works(set, route)) continue;
-                    if (found == null || Better(set, route, found, foundRoute))
-                    {
-                        found = set;
-                        foundRoute = route;
-                    }
+                    best = set;
+                    break;
                 }
-                if (found == null) continue;
-                best = found;
-                bestRoute = foundRoute;
-                break;
+                shorts.Add(Short(planned));
             }
+            if (shorts.Count > 0)
+                SearchNote = best.Count > 0
+                    ? "Priced with the planners, the best set by the Delta-v Map came out " + Whole(shorts[0]) + " m/s short" + (shorts.Count > 1 ? ", and the next " + (shorts.Count - 1) + " too" : "") + "; the next best is suggested."
+                    : "Priced with the planners, the " + (shorts.Count == 1 ? "only set" : shorts.Count + " best sets") + " by the Delta-v Map came out short ("
+                        + string.Join(", ", shorts.Select(Whole).ToArray()) + " m/s); none is suggested. Tick Contracts to price them.";
             foreach (var planned in _planned)
             {
                 if (best.Contains(planned))
@@ -373,6 +380,94 @@ namespace ClaudiaKerman.Core.Contracts
                 else NotThisFlight.Add(WhyNot(planned, best));
             }
             Reprice();
+        }
+
+        /// <summary>
+        /// The sets that work on the Map's figures, best first, as many as the planners may try. The units searched are the Contracts that
+        /// work alone, one by one up to <see cref="MostOneByOne"/>, else grouped by the bodies they need; up to <see cref="MostGroups"/> units
+        /// are searched exhaustively within <see cref="SearchBudget"/>, more are added greedily (<see cref="Greedy"/>).
+        /// </summary>
+        private List<List<Planned>> Ranked()
+        {
+            var clock = Stopwatch.StartNew();
+            var able = _planned.Where(p => Works(new[] { p }, Route(new[] { p }))).ToList();
+            var units = able.Count <= MostOneByOne ? able.Select(p => new List<Planned> { p }).ToList() : able.GroupBy(NeedsKey).Select(g => g.ToList()).ToList();
+            if (units.Count > MostGroups) return Greedy(units);
+            var ranked = Exhaustive(units, clock);
+            return ranked.Count == 0 && clock.Elapsed > SearchBudget ? Greedy(units) : ranked;
+        }
+
+        /// <summary>The bodies a Contract needs, how far, and whether it comes home: the Contracts in one group fly the same route.</summary>
+        private static string NeedsKey(Planned planned)
+        {
+            var needs = ContractNeeds(new[] { planned }).OrderBy(n => n.Key, StringComparer.Ordinal).Select(n => n.Key + ":" + n.Value);
+            return string.Join(",", needs.ToArray()) + (planned.Requirements.Any(r => r.Return) ? "|home" : "");
+        }
+
+        /// <summary>
+        /// Every union of <paramref name="units"/>, the most units first, ranked by how many Contracts, then <see cref="Better"/>; it stops
+        /// once no smaller union can hold as many Contracts as the last kept, or at <see cref="SearchBudget"/> with what it has.
+        /// </summary>
+        private List<List<Planned>> Exhaustive(List<List<Planned>> units, Stopwatch clock)
+        {
+            var kept = new List<Tuple<List<Planned>, PricedRoute>>();
+            var largest = units.Select(u => u.Count).OrderByDescending(c => c).ToList();
+            for (var size = units.Count; size > 0; size--)
+            {
+                if (kept.Count > MostFallbacks && largest.Take(size).Sum() < kept[MostFallbacks].Item1.Count) break;
+                foreach (var pick in Combinations(units, size))
+                {
+                    if (clock.Elapsed > SearchBudget) return kept.Select(k => k.Item1).ToList();
+                    var set = pick.SelectMany(u => u).ToList();
+                    var route = Route(set);
+                    if (!Works(set, route)) continue;
+                    var at = kept.FindIndex(k => set.Count > k.Item1.Count || (set.Count == k.Item1.Count && Better(set, route, k.Item1, k.Item2)));
+                    kept.Insert(at < 0 ? kept.Count : at, Tuple.Create(set, route));
+                    if (kept.Count > MostFallbacks + 1) kept.RemoveAt(kept.Count - 1);
+                }
+            }
+            return kept.Select(k => k.Item1).ToList();
+        }
+
+        /// <summary>
+        /// Above <see cref="MostGroups"/> groups: from the player's words alone, add the group with the most reward per extra m/s (funds,
+        /// then science, then reputation) that keeps the set working, until none does. The next best sets are that set less the group added
+        /// last, again and again.
+        /// </summary>
+        private List<List<Planned>> Greedy(List<List<Planned>> units)
+        {
+            var added = new List<List<Planned>>();
+            var set = new List<Planned>();
+            var route = Route(set);
+            var left = units.ToList();
+            while (true)
+            {
+                List<Planned> pick = null;
+                PricedRoute pickRoute = null;
+                double[] pickScore = null;
+                foreach (var unit in left)
+                {
+                    var with = set.Concat(unit).ToList();
+                    var priced = Route(with);
+                    if (!Works(with, priced)) continue;
+                    var extra = Math.Max(1, priced.DeltaV - route.DeltaV);
+                    var score = new[] { unit.Sum(p => p.Contract.Funds) / extra, unit.Sum(p => p.Contract.Science) / extra, unit.Sum(p => p.Contract.Reputation) / extra };
+                    if (pick == null || score.Zip(pickScore, (a, b) => a.CompareTo(b)).FirstOrDefault(c => c != 0) > 0)
+                    {
+                        pick = unit;
+                        pickRoute = priced;
+                        pickScore = score;
+                    }
+                }
+                if (pick == null) break;
+                added.Add(pick);
+                left.Remove(pick);
+                set = set.Concat(pick).ToList();
+                route = pickRoute;
+            }
+            var ranked = new List<List<Planned>>();
+            for (var n = added.Count; n > 0 && ranked.Count <= MostFallbacks; n--) ranked.Add(added.Take(n).SelectMany(u => u).ToList());
+            return ranked;
         }
 
         private static string PhaseOf(Planned planned)
@@ -534,11 +629,11 @@ namespace ClaudiaKerman.Core.Contracts
             return spare >= 0 ? Whole(spare) + " m/s to spare" : Whole(-spare) + " m/s short";
         }
 
-        private static IEnumerable<List<Planned>> Combinations(List<Planned> items, int size, int from = 0)
+        private static IEnumerable<List<T>> Combinations<T>(List<T> items, int size, int from = 0)
         {
             if (size == 0)
             {
-                yield return new List<Planned>();
+                yield return new List<T>();
                 yield break;
             }
             for (var i = from; i <= items.Count - size; i++)

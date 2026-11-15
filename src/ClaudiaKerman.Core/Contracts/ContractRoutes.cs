@@ -26,6 +26,8 @@ namespace ClaudiaKerman.Core.Contracts
         public double? LaunchUt;
         /// <summary>#1048: the route is a hop below orbit, in words ("reach space over Kerbin"); "" when it isn't.</summary>
         public string Hop = "";
+        /// <summary>#1028: the Maneuver Sequences it was priced as, for the planners' re-pricing; null for a hop, which its own sim priced.</summary>
+        public List<PlannedSequence> Legs;
 
         /// <summary>When the leg serving <paramref name="requirement"/> finishes; null when the route doesn't serve it.</summary>
         public double? DoneUt(ReadRequirement requirement, string home)
@@ -105,6 +107,15 @@ namespace ClaudiaKerman.Core.Contracts
                 if (keeps(route) && (bestKept == null || route.DeltaV < bestKept.DeltaV)) bestKept = route;
             }
             return bestKept ?? best;
+        }
+
+        /// <summary>
+        /// #1028: <paramref name="route"/> re-priced with the planners (plan_ascent, plan_transfer, <see cref="RoutePlanners"/>), m/s: the
+        /// Contract check runs at Start Mission, where the route is priced up front. A hop is its own sim's figure already.
+        /// </summary>
+        public double Planned(PricedRoute route)
+        {
+            return route.Legs == null ? route.DeltaV : PlanLegs.Need(PlanLegs.Judge(_snapshot, route.Legs, "", true));
         }
 
         /// <summary>What the Contracts need with what the words need: where both reach a body, the further reach serves both.</summary>
@@ -199,6 +210,7 @@ namespace ClaudiaKerman.Core.Contracts
                 }
                 route.HomeUt = ut;
             }
+            route.Legs = legs;
             route.DeltaV = PlanLegs.Need(PlanLegs.Judge(_snapshot, legs, ""));
             _priced[key] = route;
             return route;
