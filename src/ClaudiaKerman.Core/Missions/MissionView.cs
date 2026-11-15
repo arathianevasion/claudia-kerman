@@ -311,6 +311,8 @@ namespace ClaudiaKerman.Core.Missions
         public IList<Contracts.LeftOutContract> NotThisFlight = new List<Contracts.LeftOutContract>();
         public double CraftDeltaV;
         public double RouteDeltaV;
+        /// <summary>#1164: the route total was re-priced on the Delta-v Map after an edit; "Plan these" runs the planners.</summary>
+        public bool RouteIsEstimate;
         public int ReservePercent;
         public double Reserve;
         /// <summary>Left over the route and the reserve, m/s; below 0, the shortfall.</summary>

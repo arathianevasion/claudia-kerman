@@ -153,6 +153,8 @@ namespace ClaudiaKerman.Core.Contracts
         public double CraftDeltaV;
         /// <summary>The suggested set's route with the player's words, m/s.</summary>
         public double RouteDeltaV;
+        /// <summary>#1164: the player has ticked, unticked or swapped, so <see cref="RouteDeltaV"/> is the Delta-v Map's figure, rougher than the planners'; false as first suggested.</summary>
+        public bool RouteIsEstimate;
         public int ReservePercent;
         /// <summary>The reserve the route keeps, m/s.</summary>
         public double Reserve;
@@ -567,6 +569,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (on) _ticked.Add(guid);
             else _ticked.Remove(guid);
             Reprice();
+            RouteIsEstimate = true;
         }
 
         /// <summary>Applies the swap offered for <paramref name="guid"/>: the others go out and it comes in. Nothing when none is offered now.</summary>
@@ -577,6 +580,7 @@ namespace ClaudiaKerman.Core.Contracts
             foreach (var gone in offer.Drop) _ticked.Remove(gone);
             _ticked.Add(guid);
             Reprice();
+            RouteIsEstimate = true;
         }
 
         /// <summary>The ticked Contracts.</summary>
@@ -703,7 +707,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The card's first line: "2 of 3 Contracts · route 4,912 m/s of 8,036 · reserve 737 (15%) · 2,387 m/s to spare".</summary>
         public string Headline(int chosen)
         {
-            return chosen + " of " + Accepted + " Contracts" + (Words.Length > 0 ? " with your words" : "") + " · route " + Whole(RouteDeltaV) + " m/s of "
+            return chosen + " of " + Accepted + " Contracts" + (Words.Length > 0 ? " with your words" : "") + " · route " + (RouteIsEstimate ? "≈ " + Whole(RouteDeltaV) + " m/s (estimate)" : Whole(RouteDeltaV) + " m/s") + " of "
                 + Whole(CraftDeltaV) + " · reserve " + Whole(Reserve) + " (" + ReservePercent + "%) · " + SpareText(Spare);
         }
 
