@@ -292,6 +292,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void ASpeedRecordAndADistanceRecordAreMetOnTheWayToOrbitAtNoExtraCost()
+        {
+            var orbitOnly = Check(With(Exploration("c-orbit", 9000, "Kerbin:ORBIT")));
+            var snapshot = With(Aiming(Exploration("c-speed", 5000, "Kerbin:SPEEDRECORD"), "speed", "300"),
+                Exploration("c-distance", 4000, "Kerbin:DISTANCERECORD"), Exploration("c-orbit", 9000, "Kerbin:ORBIT"));
+
+            var check = Check(snapshot);
+
+            Assert.Equal(3, check.Fitting.Count);
+            Assert.Equal(orbitOnly.RouteDeltaV, check.RouteDeltaV, 3);
+        }
+
+        [Fact]
         public void ADepthRecordIsNotYetWithItsReasonAndAnOptionalOneIsSkipped()
         {
             var required = Exploration("c-deep", 5000, "Kerbin:DEPTHRECORD");

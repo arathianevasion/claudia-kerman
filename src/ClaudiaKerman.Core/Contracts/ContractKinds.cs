@@ -54,8 +54,8 @@ namespace ClaudiaKerman.Core.Contracts
     /// exploration (world-first) ones: a ProgressTrackingParameter of an ExplorationContract, by its <c>targetType</c> and
     /// <c>targetBody</c>; and (#1048) the Requirements met on a hop below orbit over the launch body: reaching space, and a part test
     /// FLYING or SUB_ORBITAL in an altitude band, read whole from its PartTest node's conditions. Every other Contract type is "not
-    /// yet" as a whole, and so are depth records (#1091). Altitude and speed records over the launch body are a hop, distance records and the first launch
-    /// are met by a launch (#1091).
+    /// yet" as a whole, and so are depth records (#1091). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
+    /// meets on the way up; a distance record rides the launch to orbit (#1091).
     /// </summary>
     public static class ContractKinds
     {
