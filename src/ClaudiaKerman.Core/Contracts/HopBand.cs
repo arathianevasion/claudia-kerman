@@ -68,6 +68,12 @@ namespace ClaudiaKerman.Core.Contracts
             return Km(min) + "–" + Km(MaxAltitude.Value) + " km";
         }
 
+        /// <summary>#1162: the band as the card writes it, "51–56 km, 100–260 m/s"; the altitude alone with no speed band.</summary>
+        public string Card()
+        {
+            return Through() + (MinSpeed.HasValue || MaxSpeed.HasValue ? ", " + Range(MinSpeed, MaxSpeed) + " m/s" : "");
+        }
+
         /// <summary>#1029: whether <paramref name="altitude"/> m is in the altitude band (never for <see cref="AboveAir"/>, whose band is the body's).</summary>
         public bool HoldsAltitude(double altitude)
         {

@@ -226,8 +226,8 @@ namespace ClaudiaKerman.Core.Contracts
         private static readonly HashSet<string> TestConditions = new HashSet<string>
             { "ReachDestination", "ReachSituation", "ReachAltitudeEnvelope", "ReachSpeedEnvelope" };
 
-        /// <summary>#1029: a part test needing level flight in the air, or a run along the ground.</summary>
-        public const string AircraftNotYet = "not yet: needs sustained flight in the atmosphere (aircraft)";
+        /// <summary>#1029, #1162: a part test needing a run along the ground at speed.</summary>
+        public const string AircraftNotYet = "not yet: aircraft or rover";
         public const string TestAwayNotYet = "not yet: tests in orbit or away from Kerbin aren't planned yet (launch and reentry run them)";
 
         /// <summary>

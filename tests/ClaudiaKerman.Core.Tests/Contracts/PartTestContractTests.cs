@@ -90,16 +90,18 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
             var left = Assert.Single(check.NotThisFlight);
             Assert.Equal(LeftOutKind.NotYet, left.Kind);
-            Assert.Equal("not yet: needs sustained flight in the atmosphere (aircraft)", left.Reason);
+            Assert.Equal("not yet: aircraft or rover", left.Reason);
         }
 
         [Fact]
-        public void AFlyingTestNoAscentOrDescentPassesNeedsAnAircraft()
+        public void AFlyingTestNoFlightPassesIsThisCraftCantWithTheBand()
         {
             // Under 500 m at 900 m/s: a rocket is far slower that low, climbing or falling.
             var check = Check(ContractCheckTests.With(Test("c-low", "liquidEngine.v2", "FLYING", Band(0, 500, 900, 1000))));
 
-            Assert.Equal(ContractKinds.AircraftNotYet, Assert.Single(check.NotThisFlight).Reason);
+            var left = Assert.Single(check.NotThisFlight);
+            Assert.Equal(LeftOutKind.CraftCant, left.Kind);
+            Assert.Equal("this craft can't: no flight passes 0–0.5 km, 900–1,000 m/s", left.Reason);
         }
 
         [Fact]
