@@ -45,7 +45,13 @@ namespace ClaudiaKerman.Core.Contracts
         public string Words(string home)
         {
             if (AboveAir) return "reach space over " + home;
-            return "hop through " + Range(MinAltitude, MaxAltitude) + " m" + AtSpeed() + " over " + home;
+            return "hop " + Through(home);
+        }
+
+        /// <summary>The band in words, without the hop: "through 51,000–56,000 m at 100–260 m/s over Kerbin".</summary>
+        public string Through(string home)
+        {
+            return "through " + Range(MinAltitude, MaxAltitude) + " m" + AtSpeed() + " over " + home;
         }
 
         /// <summary>The speed band in words, " at 100–260 m/s"; "" with none.</summary>

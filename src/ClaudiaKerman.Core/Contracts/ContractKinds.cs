@@ -9,14 +9,16 @@ namespace ClaudiaKerman.Core.Contracts
     /// <summary>What the leg serving a Contract Requirement must achieve at its body, in the order a visit reaches them.</summary>
     public enum ContractReach
     {
-        /// <summary>#1048: fly through a band below orbit over the launch body, on a hop (<see cref="ReadRequirement.Band"/>).</summary>
-        Hop = 0,
+        /// <summary>No reach set: not a hop, not a visit.</summary>
+        None = 0,
+        /// <summary>#1048: fly through a band below orbit over the launch body, on a hop (<see cref="ReadRequirement.Band"/>). Sorts below Flyby, so any launch to orbit meets it.</summary>
+        Hop = 1,
         /// <summary>Pass the body: a trip there, no capture.</summary>
-        Flyby = 1,
+        Flyby = 2,
         /// <summary>Be in orbit round it: the trip and its capture.</summary>
-        Orbit = 2,
+        Orbit = 3,
         /// <summary>Land on it.</summary>
-        Land = 3,
+        Land = 4,
     }
 
     /// <summary>One Contract Requirement as the kind table reads it: what its serving leg must achieve, or why it is "not yet".</summary>
@@ -214,7 +216,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (!band.MinAltitude.HasValue) return NotYet(one, TypeNotYet(PartTest));
                 one.Test.Band = band;
                 Hop(one, home, band);
-                one.Words = (haul ? "carry " : "test ") + part + " " + band.Words(home).Substring("hop ".Length);
+                one.Words = (haul ? "carry " : "test ") + part + " " + band.Through(home);
                 return one;
             }
             if (situation == "LANDED" || situation == "SPLASHED")

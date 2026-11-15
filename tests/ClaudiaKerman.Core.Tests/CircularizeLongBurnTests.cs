@@ -59,7 +59,7 @@ namespace ClaudiaKerman.Core.Tests
                 new List<AscentStage> { Stage(1, 400, 340, 290, 20, 9), Stage(0, 120, 15, 345, 7, 2) });
             _out.WriteLine("shape " + turnShape + ", ecc stop " + eccStop + ": " + (flight.ReachesOrbit ? "orbit" : flight.Failure) + ", coast_ap " + Math.Round(flight.CoastAp)
                 + ", ap " + Math.Round(flight.OrbitAp) + ", pe " + Math.Round(flight.OrbitPe) + ", ecc " + Math.Round(flight.OrbitEcc, 5) + ", stop " + flight.CircularizeStop
-                + ", dv_to_orbit " + Math.Round(flight.DeltaVToOrbit));
+                + ", dv_to_orbit " + Math.Round(flight.DeltaVToOrbitOrHop));
             return flight;
         }
 
