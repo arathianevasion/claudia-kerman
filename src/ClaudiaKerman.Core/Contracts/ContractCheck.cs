@@ -213,6 +213,24 @@ namespace ClaudiaKerman.Core.Contracts
             return check;
         }
 
+        /// <summary>
+        /// #1090: for typed words that don't fit this craft, the Contracts met on a hop below orbit that the craft could fly without them,
+        /// "Test liquidEngine.v2 at 51–56 km"; "" when there are none, or no words were typed.
+        /// </summary>
+        public string HopsWithoutWords()
+        {
+            if (Words.Length == 0 || !Priceable) return "";
+            var bare = Work(_snapshot, "", Remote, ReservePercent);
+            var lines = new List<string>();
+            foreach (var row in bare.Fitting.Where(r => r.Ticked))
+            {
+                var planned = bare._planned.FirstOrDefault(p => p.Contract.Guid == row.Guid);
+                if (planned == null || planned.Requirements.Any(r => r.Band == null)) continue;
+                lines.AddRange(planned.Requirements.Select(r => r.Test != null ? "Test " + r.Test.Part + " at " + r.Band.Through() : r.Words + " at " + r.Band.Through()));
+            }
+            return string.Join("; ", lines.Distinct().ToArray());
+        }
+
         private void Read()
         {
             foreach (var contract in _snapshot.Contracts.Accepted)

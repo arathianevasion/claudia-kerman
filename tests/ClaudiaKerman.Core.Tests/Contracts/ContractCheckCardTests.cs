@@ -269,6 +269,54 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(MissionStage.None, mission.View.Stage);
         }
 
+        // ---- #1090: typed words that don't fit a craft that can't reach orbit ----
+
+        private const string WordsNeedingOrbit = "Fly to Minmus and capture into orbit.";
+
+        private static GameSnapshot ReachesTheBandButNotOrbit(params SnapshotContract[] contracts)
+        {
+            var snapshot = ContractCheckTests.With(contracts);
+            ContractCheckTests.BoosterOnly(snapshot);
+            return snapshot;
+        }
+
+        [Fact]
+        public void TypedWordsThatDontFitAreRefusedAndTheRefusalNamesThePartTestTheCraftCouldFly()
+        {
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.BoosterTest("c-test")));
+
+            mission.Send(Start(WordsNeedingOrbit));
+            Settle();
+
+            Assert.Null(mission.View.ContractCheck);
+            Assert.Equal("Your words don't fit this craft with the Craft Check's reserve. Without your words this craft could fly: Test liquidEngine.v2 at 51–56 km.", mission.View.StartForm.Refusal);
+            Assert.Equal(0, Requests);
+        }
+
+        [Fact]
+        public void TypedWordsThatDontFitWithNoHopContractAcceptedStartAsBefore()
+        {
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.Exploration("c-mun", 10000, "Mun:ORBIT")));
+
+            mission.Send(Start(WordsNeedingOrbit));
+            Settle();
+
+            Assert.Null(mission.View.ContractCheck);
+            Assert.Equal("", mission.View.StartForm.Refusal);
+        }
+
+        [Fact]
+        public void WithNoWordsTheSameCraftGetsTheHopContractInThisFlight()
+        {
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.BoosterTest("c-test")));
+
+            mission.Send(Start(""));
+            Settle();
+
+            Assert.Equal("c-test", Assert.Single(mission.View.ContractCheck.Rows).Guid);
+            Assert.Equal("", mission.View.StartForm.Refusal);
+        }
+
         // ---- #1023: ticking, unticking and Swap in on the card ----
 
         private static GameSnapshot MunAndMinmusTheCraftFliesOneOf()
