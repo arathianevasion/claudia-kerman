@@ -319,6 +319,8 @@ namespace ClaudiaKerman.Core.Missions
         public string Headline = "";
         /// <summary>#1028: what the planners' re-pricing did to the suggestion, shown under the headline; "" when the best set held.</summary>
         public string SearchNote = "";
+        /// <summary>#1163: says the player's words give conflicting orders and the cheapest is used; "" when they don't.</summary>
+        public string OrderNote = "";
         /// <summary>"Plan these 2"; "Pick a Contract" when none is ticked.</summary>
         public string PlanLabel = "";
         public bool CanPlan;
