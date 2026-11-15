@@ -21,7 +21,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The limit that holds at every body.</summary>
         public const string Anywhere = "*";
 
-        private static readonly Regex Clause = new Regex(@"[.;:,!?]|\b(?:and|then)\b", RegexOptions.IgnoreCase);
+        private static readonly Regex Clause = new Regex(@"([.;:,!?]|\b(?:and|then|after|before)\b)", RegexOptions.IgnoreCase);
         private static readonly Regex Negated = new Regex(@"\b(?:don['’]?t|do\s+not|never|no|not|without|avoid(?:ing)?|skip(?:ping)?)\b", RegexOptions.IgnoreCase);
         private static readonly Regex Only = new Regex(@"\b(?:only|just|merely)\b", RegexOptions.IgnoreCase);
         private static readonly Regex Orbit = new Regex(@"\borbit(?:s|ing|ed)?\b", RegexOptions.IgnoreCase);
@@ -37,14 +37,55 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The clauses read here, trimmed: the Craft Check's legs for them are priced as needs instead.</summary>
         public readonly HashSet<string> Consumed = new HashSet<string>();
 
+        /// <summary>#1060: the bodies the words put in an order, as (earlier, later) pairs: "then", "before" and "after" order what they join.</summary>
+        public readonly List<KeyValuePair<string, string>> Precedes = new List<KeyValuePair<string, string>>();
+
         public static WordsReading Read(GameSnapshot snapshot, string words, string home)
         {
             var read = new WordsReading();
             var bodies = snapshot.Bodies.Select(b => b.Name).Where(n => n.Length > 0 && n != home).Distinct().ToList();
             string lastBody = null;
-            foreach (var raw in Clause.Split(words ?? ""))
+            // #1060: the bodies of the clauses joined so far ("orbit the Mun and orbit Minmus"), and of the group before it.
+            var group = new List<string>();
+            var previous = new List<string>();
+            var join = 0; // +1 the next clause is after the group before it ("then", "before"), -1 it is before it ("after")
+            var leading = 0; // "After orbiting Minmus, land on the Mun": the first group is before (+1) or after (-1) the next
+            var pieces = Clause.Split(words ?? "");
+            // The Craft Check's own clauses split at "then" and "and" but not "after" and "before": a clause read in parts is consumed whole.
+            var whole = new System.Text.StringBuilder();
+            var consumedBefore = 0;
+            for (var p = 0; p < pieces.Length; p++)
             {
-                var clause = raw.Trim();
+                var clause = pieces[p].Trim();
+                if (p % 2 == 1)
+                {
+                    var word = clause.ToLowerInvariant();
+                    if (word == "after" || word == "before") whole.Append(pieces[p]);
+                    else
+                    {
+                        if (read.Consumed.Count > consumedBefore) read.Consumed.Add(whole.ToString().Trim());
+                        whole.Clear();
+                        consumedBefore = read.Consumed.Count;
+                    }
+                    var connective = word == "then" || word == "before" || word == "after";
+                    if ((connective || word.Length == 1 && ".;!?".Contains(word)) || leading != 0)
+                    {
+                        // A group ends at a connective, at the end of a sentence, and after a leading "after"/"before" clause.
+                        if (group.Count > 0)
+                        {
+                            previous = group;
+                            group = new List<string>();
+                            if (leading != 0) { if (!connective) join = leading; leading = 0; }
+                        }
+                    }
+                    if (connective)
+                    {
+                        if (previous.Count == 0 && group.Count == 0) leading = word == "after" ? 1 : word == "before" ? -1 : 0;
+                        else join = word == "after" ? -1 : 1;
+                    }
+                    continue;
+                }
+                whole.Append(pieces[p]);
                 if (clause.Length == 0) continue;
                 var named = bodies.Where(b => Names(clause, b)).ToList();
                 var namesHome = Names(clause, home);
@@ -73,8 +114,12 @@ namespace ClaudiaKerman.Core.Contracts
                 if (named.Count == 0 && !namesHome && lastBody != null && reach != ContractReach.Flyby) named = new List<string> { lastBody };
                 if (named.Count == 0) continue;
                 read.Need(named, reach.Value, clause);
+                if (join != 0) read.Order(previous, named, join > 0);
+                join = 0;
+                group.AddRange(named);
                 lastBody = named[named.Count - 1];
             }
+            if (read.Consumed.Count > consumedBefore) read.Consumed.Add(whole.ToString().Trim());
             return read;
         }
 
@@ -93,6 +138,13 @@ namespace ClaudiaKerman.Core.Contracts
                 Needs[body] = reach;
                 NeedWords[body] = clause;
             }
+        }
+
+        private void Order(IEnumerable<string> last, IEnumerable<string> next, bool nextIsLater)
+        {
+            foreach (var a in last)
+                foreach (var b in next)
+                    if (a != b) Precedes.Add(nextIsLater ? new KeyValuePair<string, string>(a, b) : new KeyValuePair<string, string>(b, a));
         }
 
         private void Limit(IList<string> bodies, ContractReach most, string clause)
