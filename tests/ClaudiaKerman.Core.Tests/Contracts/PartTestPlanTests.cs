@@ -60,6 +60,27 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void WrittenLaunchOptionsAreReadByNameAndUnit()
+        {
+            var read = WrittenLaunch.Read("Launch with target_ap: 55 km, turn_start_speed=100000 and stage_limit 2; target_ap_max 9");
+
+            Assert.Equal(55000, read.TargetAp);
+            Assert.Equal(100000, read.TurnStartSpeed);
+            Assert.Equal(2, read.StageLimit);
+            Assert.Null(WrittenLaunch.Read("Launch to orbit, target_ap_max 9"));
+        }
+
+        [Fact]
+        public void WrittenHopOptionsPassWhereTheDefaultShapeMisses()
+        {
+            var band = Requirement(TestWindow.Ascent).Test.Band;
+            var ap = System.Math.Round(band.TargetAp(ContractCheckTests.With(ContractCheckTests.BoosterTest("c-test")).Bodies.First(b => b.Name == "Kerbin")));
+
+            Assert.Single(CheckLegs(Requirement(TestWindow.Ascent), new[] { "Climb and fall", "Fly it." }).Problems);
+            Assert.Empty(CheckLegs(Requirement(TestWindow.Ascent), new[] { "Climb and fall", "Launch with target_ap " + ap + " and turn_start_speed 100000." }).Problems);
+        }
+
+        [Fact]
         public void ALegWithNoLaunchOptionsIsJudgedOnTheDefaultShapeAsBefore()
         {
             var served = CheckLegs(Requirement(TestWindow.Ascent), new[] { "Launch to low Kerbin orbit", "Fly it." });

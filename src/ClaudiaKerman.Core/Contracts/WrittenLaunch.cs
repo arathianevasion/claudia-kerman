@@ -39,9 +39,9 @@ namespace ClaudiaKerman.Core.Contracts
 
         private static double? Number(string words, string name)
         {
-            var m = Regex.Match(words, @"\b" + name + @"\s*(?:=|:|of|to)?\s*(-?\d+(?:\.\d+)?)", RegexOptions.IgnoreCase);
+            var m = Regex.Match(words, @"\b" + name + @"\b\s*(?:=|:|of|to)?\s*(\d+(?:\.\d+)?)(\s*km\b)?", RegexOptions.IgnoreCase);
             double value;
-            return m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out value) ? value : (double?)null;
+            return m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out value) ? (m.Groups[2].Success ? value * 1000 : value) : (double?)null;
         }
 
         /// <summary>The target apoapsis is below orbit over <paramref name="body"/>: under the top of its air.</summary>
