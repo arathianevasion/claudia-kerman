@@ -519,6 +519,7 @@ namespace ClaudiaKerman.Adapter
             }
             GUILayout.Label(card.Headline, _bold);
             if (card.SearchNote.Length > 0) GUILayout.Label(card.SearchNote, ClaudiaSkin.Secondary);
+            if (card.OrderNote.Length > 0) GUILayout.Label(card.OrderNote, ClaudiaSkin.Secondary);
             DrawRouteBar(card);
             foreach (var row in card.Rows)
             {

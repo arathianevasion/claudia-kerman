@@ -135,6 +135,17 @@ namespace ClaudiaKerman.Core.Contracts
             return needs;
         }
 
+        /// <summary>#1163: the words order the bodies in a loop ("A then B then A"), so the route keeps none of it and takes the cheapest order.</summary>
+        public bool ConflictingOrders
+        {
+            get
+            {
+                // As Best reads them: a rule naming the home body orders no leg of the route.
+                var rules = Reading.Precedes.Where(p => p.Key != _home && p.Value != _home).ToList();
+                return rules.Count > 0 && !Orderable(rules.SelectMany(r => new[] { r.Key, r.Value }).Distinct().ToList(), rules);
+            }
+        }
+
         /// <summary>Whether the words themselves ask for the trip home.</summary>
         internal bool WordsReturn
         {

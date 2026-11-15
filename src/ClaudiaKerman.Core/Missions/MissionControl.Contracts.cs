@@ -213,7 +213,7 @@ namespace ClaudiaKerman.Core.Missions
                 Accepted = check.Accepted, Words = check.Words,
                 Rows = check.Fitting.ToList(),
                 Headline = check.Headline(ticked.Count),
-                SearchNote = check.SearchNote,
+                SearchNote = check.SearchNote, OrderNote = check.OrderNote,
                 NotThisFlight = check.NotThisFlight.ToList(),
                 CraftDeltaV = check.CraftDeltaV, RouteDeltaV = check.RouteDeltaV, ReservePercent = check.ReservePercent, Reserve = check.Reserve, Spare = check.Spare,
                 PlanLabel = ticked.Count > 0 ? "Plan these " + ticked.Count : "Pick a Contract",

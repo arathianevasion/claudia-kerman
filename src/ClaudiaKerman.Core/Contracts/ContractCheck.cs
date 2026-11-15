@@ -169,6 +169,8 @@ namespace ClaudiaKerman.Core.Contracts
         /// suggested, or every set tried came out short and none is; "" when the best set held.
         /// </summary>
         public string SearchNote = "";
+        /// <summary>#1163: "your words give conflicting orders: using the cheapest" when the words order the bodies in a loop; "" otherwise.</summary>
+        public string OrderNote = "";
         public List<ContractCheckRow> Fitting = new List<ContractCheckRow>();
         public List<LeftOutContract> NotThisFlight = new List<LeftOutContract>();
         /// <summary>#1036: the ticked set's route leg by leg, with what each serves.</summary>
@@ -205,6 +207,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (check.Accepted == 0 || !check.Priceable) return check;
             check.CraftDeltaV = snapshot.Stages.Sum(s => s.DeltaVVac);
             check._routes = new ContractRoutes(snapshot, check.Words, check._home);
+            if (check._routes.ConflictingOrders) check.OrderNote = "your words give conflicting orders: using the cheapest";
             check._judge = new PartTestJudge(snapshot, check._home);
             check.Read();
             // #1048: with no typed words, a Contract met on a hop below orbit may fit a craft that can't reach orbit.
