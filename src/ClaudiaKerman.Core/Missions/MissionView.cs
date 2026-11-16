@@ -311,6 +311,8 @@ namespace ClaudiaKerman.Core.Missions
         public IList<Contracts.LeftOutContract> NotThisFlight = new List<Contracts.LeftOutContract>();
         public double CraftDeltaV;
         public double RouteDeltaV;
+        /// <summary>#1164: the route total was re-priced on the Delta-v Map after an edit; "Plan these" runs the planners.</summary>
+        public bool RouteIsEstimate;
         public int ReservePercent;
         public double Reserve;
         /// <summary>Left over the route and the reserve, m/s; below 0, the shortfall.</summary>
@@ -319,6 +321,8 @@ namespace ClaudiaKerman.Core.Missions
         public string Headline = "";
         /// <summary>#1028: what the planners' re-pricing did to the suggestion, shown under the headline; "" when the best set held.</summary>
         public string SearchNote = "";
+        /// <summary>#1163: says the player's words give conflicting orders and the cheapest is used; "" when they don't.</summary>
+        public string OrderNote = "";
         /// <summary>"Plan these 2"; "Pick a Contract" when none is ticked.</summary>
         public string PlanLabel = "";
         public bool CanPlan;

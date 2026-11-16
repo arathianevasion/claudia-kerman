@@ -136,8 +136,11 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void EveryContractTypeNotPlannedYetIsNotYetWithItsReason()
         {
-            var files = new[] { "SurveyContract.json", "SatelliteContract.json", "PlantFlag.json", "RecoverAsset.json" };
-            var snapshot = With(files.Select(Fixture).ToArray());
+            var files = new[] { "SurveyContract.json", "TourismContract.json", "RecoverAsset.json" };
+            var contracts = files.Select(Fixture).ToArray();
+            // #1034: tourism is planned now; ISRU stays "not yet", read from the tourism fixture's tree.
+            contracts[1].Kind = "ISRUContract";
+            var snapshot = With(contracts);
 
             var check = Check(snapshot);
 
@@ -180,7 +183,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         /// <summary>The pad craft with its three upper stages emptied: about 3,300 m/s, short of the launch to orbit with the reserve.</summary>
-        private static void BoosterOnly(GameSnapshot snapshot)
+        internal static void BoosterOnly(GameSnapshot snapshot)
         {
             foreach (var stage in snapshot.Stages.Where(s => s.Number >= 2 && s.Number <= 4))
             {
@@ -236,17 +239,93 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Matches(@"^this craft can't: on the ascent: speed [\d,]+ m/s, above the band, through 51–56 km", check.Problem);
         }
 
-        [Fact]
-        public void ARecordMetBelowOrbitIsStillNotYetAndAnOptionalOneIsSkipped()
+        /// <summary>#1091: <paramref name="contract"/>'s first Requirement with the record's target setting (<c>altitude</c> m, <c>speed</c> m/s).</summary>
+        private static SnapshotContract Aiming(SnapshotContract contract, string name, string value)
         {
-            var required = Exploration("c-high", 5000, "Kerbin:ALTITUDERECORD");
-            var optional = Exploration("c-mun", 5000, "Mun:ORBIT", "?Kerbin:ALTITUDERECORD");
+            contract.Requirements[0].Settings.Add(new ContractSetting(name, value));
+            return contract;
+        }
+
+        [Fact]
+        public void AnAltitudeRecordBelowOrbitIsAHopAndInThisFlightForACraftThatReachesIt()
+        {
+            var snapshot = With(Aiming(Exploration("c-alt", 5000, "Kerbin:ALTITUDERECORD"), "altitude", "30000"));
+            BoosterOnly(snapshot);
+
+            var check = Check(snapshot);
+
+            var row = Assert.Single(check.Fitting);
+            Assert.Equal("Kerbin hop", row.Phase);
+            Assert.True(check.RouteDeltaV > 500, "a hop to 30 km is not free: " + check.RouteDeltaV);
+            Assert.True(check.RouteDeltaV < Map(snapshot).Leg("launch:Kerbin").DeltaV - 500, "priced " + check.RouteDeltaV + " against the launch to orbit");
+            Assert.Empty(check.NotThisFlight);
+        }
+
+        [Fact]
+        public void AnAltitudeRecordAboveTheAtmosphereIsMetOnTheWayToOrbitAtNoExtraCost()
+        {
+            var orbitOnly = Check(With(Exploration("c-orbit", 9000, "Kerbin:ORBIT")));
+            var snapshot = With(Aiming(Exploration("c-alt", 5000, "Kerbin:ALTITUDERECORD"), "altitude", "100000"), Exploration("c-orbit", 9000, "Kerbin:ORBIT"));
+
+            var check = Check(snapshot);
+
+            Assert.Equal(2, check.Fitting.Count);
+            Assert.Equal(orbitOnly.RouteDeltaV, check.RouteDeltaV, 3);
+        }
+
+        [Fact]
+        public void TheFirstLaunchAddsNothingToAnyRoutesPrice()
+        {
+            var orbitOnly = Check(With(Exploration("c-orbit", 9000, "Kerbin:ORBIT")));
+            var withFirst = Check(With(Exploration("c-first", 1000, "Kerbin:FIRSTLAUNCH"), Exploration("c-orbit", 9000, "Kerbin:ORBIT")));
+            var munOnly = Check(With(Exploration("c-mun", 9000, "Mun:ORBIT")));
+            var munWithFirst = Check(With(Exploration("c-first", 1000, "Kerbin:FIRSTLAUNCH"), Exploration("c-mun", 9000, "Mun:ORBIT")));
+
+            Assert.Equal(2, withFirst.Fitting.Count);
+            Assert.Equal(orbitOnly.RouteDeltaV, withFirst.RouteDeltaV, 3);
+            Assert.Equal(munOnly.RouteDeltaV, munWithFirst.RouteDeltaV, 3);
+        }
+
+        [Fact]
+        public void ASpeedRecordIsAHopThroughItsSpeed()
+        {
+            var check = Check(With(Aiming(Exploration("c-speed", 5000, "Kerbin:SPEEDRECORD"), "speed", "300")));
+
+            Assert.Equal("Kerbin hop", Assert.Single(check.Fitting).Phase);
+        }
+
+        [Fact]
+        public void ASpeedRecordAndADistanceRecordAreMetOnTheWayToOrbitAtNoExtraCost()
+        {
+            var orbitOnly = Check(With(Exploration("c-orbit", 9000, "Kerbin:ORBIT")));
+            var snapshot = With(Aiming(Exploration("c-speed", 5000, "Kerbin:SPEEDRECORD"), "speed", "300"),
+                Exploration("c-distance", 4000, "Kerbin:DISTANCERECORD"), Exploration("c-orbit", 9000, "Kerbin:ORBIT"));
+
+            var check = Check(snapshot);
+
+            Assert.Equal(3, check.Fitting.Count);
+            Assert.Equal(orbitOnly.RouteDeltaV, check.RouteDeltaV, 3);
+        }
+
+        [Fact]
+        public void ADepthRecordIsNotYetWithItsReasonAndAnOptionalOneIsSkipped()
+        {
+            var required = Exploration("c-deep", 5000, "Kerbin:DEPTHRECORD");
+            var optional = Exploration("c-mun", 5000, "Mun:ORBIT", "?Kerbin:DEPTHRECORD");
 
             var check = Check(With(required, optional));
 
-            Assert.Equal(ContractKinds.RecordNotYet, check.NotThisFlight.Single(l => l.Guid == "c-high").Reason);
+            Assert.Equal(ContractKinds.DepthNotYet, check.NotThisFlight.Single(l => l.Guid == "c-deep").Reason);
             var mun = check.Fitting.Single(r => r.Guid == "c-mun");
-            Assert.Contains(ContractKinds.RecordNotYet.Substring("not yet: ".Length), mun.Note);
+            Assert.Contains(ContractKinds.DepthNotYet.Substring("not yet: ".Length), mun.Note);
+        }
+
+        [Fact]
+        public void ARecordOverAnotherBodyIsNotYet()
+        {
+            var check = Check(With(Exploration("c-away", 5000, "Mun:ALTITUDERECORD")));
+
+            Assert.Equal(ContractKinds.RecordAwayNotYet, Assert.Single(check.NotThisFlight).Reason);
         }
 
         [Fact]
@@ -371,6 +450,23 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void TheSuggestedSetCarriesNoEstimateMarkAndAnyEditMarksTheRouteTotalAnEstimate()
+        {
+            var check = Check(With(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("minmus", 20000, "Minmus:ORBIT")));
+            Assert.False(check.RouteIsEstimate);
+            Assert.DoesNotContain("estimate", check.Headline(2));
+
+            check.Tick("mun", false);
+            Assert.True(check.RouteIsEstimate);
+            Assert.Contains("route ≈ ", check.Headline(1));
+            Assert.Contains(" m/s (estimate) of ", check.Headline(1));
+
+            check.Tick("mun", true);
+            Assert.True(check.RouteIsEstimate);
+            Assert.Equal(1, check.Searches);
+        }
+
+        [Fact]
         public void TickingAnUntickedContractAddsItsDeltaVBack()
         {
             var snapshot = With(Exploration("mun", 10000, "Mun:ORBIT"), Exploration("minmus", 20000, "Minmus:ORBIT"));
@@ -410,8 +506,10 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(new[] { "minmus" }, swap.Drop);
             Assert.Contains("Mun", swap.Label);
 
+            Assert.False(check.RouteIsEstimate);
             check.SwapIn("mun");
 
+            Assert.True(check.RouteIsEstimate);
             Assert.True(check.SetFits);
             Assert.False(check.Fitting.Single().Ticked);
             Assert.True(check.NotThisFlight.Single().Ticked);

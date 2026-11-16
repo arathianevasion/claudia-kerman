@@ -9,14 +9,16 @@ namespace ClaudiaKerman.Core.Contracts
     /// <summary>What the leg serving a Contract Requirement must achieve at its body, in the order a visit reaches them.</summary>
     public enum ContractReach
     {
-        /// <summary>#1048: fly through a band below orbit over the launch body, on a hop (<see cref="ReadRequirement.Band"/>).</summary>
-        Hop = 0,
+        /// <summary>No reach set: not a hop, not a visit.</summary>
+        None = 0,
+        /// <summary>#1048: fly through a band below orbit over the launch body, on a hop (<see cref="ReadRequirement.Band"/>). Sorts below Flyby, so any launch to orbit meets it.</summary>
+        Hop = 1,
         /// <summary>Pass the body: a trip there, no capture.</summary>
-        Flyby = 1,
+        Flyby = 2,
         /// <summary>Be in orbit round it: the trip and its capture.</summary>
-        Orbit = 2,
+        Orbit = 3,
         /// <summary>Land on it.</summary>
-        Land = 3,
+        Land = 4,
     }
 
     /// <summary>One Contract Requirement as the kind table reads it: what its serving leg must achieve, or why it is "not yet".</summary>
@@ -40,6 +42,34 @@ namespace ClaudiaKerman.Core.Contracts
         public PartTestSpec Test;
         /// <summary>#1029: "this craft can't: …" when the craft can't meet it (the part isn't aboard, the band isn't passed); "" otherwise.</summary>
         public string CraftCant = "";
+        /// <summary>#1030: the experiment the science block runs to meet it, "" for any; null when it isn't collect science or a survey.</summary>
+        public string Experiment;
+        /// <summary>#1030: the survey waypoint it is met at; null for every other kind.</summary>
+        public SurveyWaypoint Waypoint;
+        /// <summary>#1031: the orbit a satellite is put into; null for every other kind.</summary>
+        public ContractOrbit Orbit;
+        /// <summary>#1031: what a satellite, station or base needs of its vessel, checked against the craft; null for every other kind.</summary>
+        public VesselNeeds Vessel;
+        /// <summary>#1031: a Child Vessel the craft releases may serve it: every Requirement of a satellite.</summary>
+        public bool ChildMay;
+        /// <summary>#1032: the hands-on work the player does in a Manual stretch at the leg serving it, "plant a flag on EVA"; "" when Claudia flies it all.</summary>
+        public string Manual = "";
+        /// <summary>#1032: the Manual stretch scans a surface feature with the robotic arm, so the arm must be aboard.</summary>
+        public bool ArmScan;
+        /// <summary>#1034: the tourist a tour brings home, who must be aboard ("" for any tourist); null for every other kind.</summary>
+        public string Tourist;
+        /// <summary>#1035: it completes after the Mission, once placed, after this wait; null when the game marks it met in flight.</summary>
+        public MissionWait AfterMission;
+        /// <summary>#1035: a Sentinel telescope it places in solar orbit; null for every other kind.</summary>
+        public SolarPlacement Placement;
+        /// <summary>#1033: the Target Vessel Contract's vessel it is met at; null for every other kind.</summary>
+        public ContractTarget Target;
+        /// <summary>#1033: its leg flies the rendezvous with <see cref="Target"/> (the one Requirement of its Contract that does).</summary>
+        public bool Rendezvous;
+        /// <summary>#1033: the orbit the rendezvous matches, priced from the low orbit round its body; null when landed or not a rendezvous.</summary>
+        public ContractOrbit RendezvousOrbit;
+        /// <summary>#1033: the crew trait that must be aboard (a repair's or a construction's Engineer); "" for none.</summary>
+        public string Trait = "";
 
         public bool Plannable
         {
@@ -52,13 +82,15 @@ namespace ClaudiaKerman.Core.Contracts
     /// exploration (world-first) ones: a ProgressTrackingParameter of an ExplorationContract, by its <c>targetType</c> and
     /// <c>targetBody</c>; and (#1048) the Requirements met on a hop below orbit over the launch body: reaching space, and a part test
     /// FLYING or SUB_ORBITAL in an altitude band, read whole from its PartTest node's conditions. Every other Contract type is "not
-    /// yet" as a whole, and so are records and the first launch, whose saved settings give no band to price a hop to.
+    /// yet" as a whole, and so are depth records (#1091); collect science and surveys are read by <see cref="ScienceKinds"/> (#1030), satellites, stations and bases by <see cref="StructureKinds"/> (#1031), tourism and Grand Tours by <see cref="TourKinds"/> (#1034), Sentinel, comet detection and deployed science by <see cref="PlacementKinds"/> (#1035). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
+    /// meets on the way up; a distance record rides the launch to orbit (#1091).
     /// </summary>
     public static class ContractKinds
     {
         public const string Exploration = "ExplorationContract";
         public const string PartTest = "PartTest";
-        public const string RecordNotYet = "not yet: records and the first launch aren't planned yet";
+        public const string DepthNotYet = "not yet: depth records (underwater) aren't planned yet";
+        public const string RecordAwayNotYet = "not yet: records over other bodies aren't planned yet";
         public const string AwayHopNotYet = "not yet: hops over other bodies aren't planned yet";
         /// <summary>The launch body's index in the game's body list, as a part test's <c>body</c> setting names it: Kerbin, in the stock system.</summary>
         public const string HomeIndex = "1";
@@ -69,16 +101,18 @@ namespace ClaudiaKerman.Core.Contracts
             { "RETURNFROMFLYBY", ContractReach.Flyby }, { "RETURNFROMORBIT", ContractReach.Orbit }, { "RETURNFROMSURFACE", ContractReach.Land },
         };
 
-        private static readonly HashSet<string> BelowOrbit = new HashSet<string>
+        /// <summary>#1091: m; the height at which a craft has left the pad, for the first launch.</summary>
+        private const double FirstLaunchAltitude = 1000;
+
+        private static readonly HashSet<string> Records = new HashSet<string>
         {
-            "FIRSTLAUNCH", "ALTITUDERECORD", "SPEEDRECORD", "DISTANCERECORD", "DEPTHRECORD",
+            "FIRSTLAUNCH", "ALTITUDERECORD", "SPEEDRECORD", "DISTANCERECORD",
         };
 
         private static readonly Dictionary<string, string> OtherReasons = new Dictionary<string, string>
         {
             { "SPACEWALK", "needs an EVA in a Manual stretch, not planned yet" },
             { "SURFACEEVA", "needs an EVA in a Manual stretch, not planned yet" },
-            { "FLAGPLANT", "needs a flag planted in a Manual stretch, not planned yet" },
             { "SPLASHDOWN", "splashdowns away from home aren't planned yet" },
             { "SCIENCE", "collecting science isn't planned yet" },
             { "CREWRECOVERY", "recovering crew isn't planned yet" },
@@ -131,6 +165,11 @@ namespace ClaudiaKerman.Core.Contracts
                 }
                 // A haul's conditions sit beside its PartTest Requirement: read with it.
                 if (contract.Kind == PartTest && TestConditions.Contains(requirement.Kind) && requirements.Any(r => r.Kind == PartTest)) continue;
+                if (TourKinds.ReadsWhole(contract, requirement))
+                {
+                    read.AddRange(TourKinds.ReadWhole(contract, requirement, home));
+                    continue;
+                }
                 if (requirement.Requirements.Count > 0)
                 {
                     Walk(contract, requirement.Requirements, home, read);
@@ -143,6 +182,12 @@ namespace ClaudiaKerman.Core.Contracts
         private static ReadRequirement ReadOne(SnapshotContract contract, ContractRequirement requirement, string home)
         {
             var one = new ReadRequirement { Requirement = requirement };
+            if (contract.Kind == ScienceKinds.CollectScience || contract.Kind == ScienceKinds.Survey) return ScienceKinds.Read(one, contract, requirement, home);
+            if (StructureKinds.Plans(contract.Kind)) return StructureKinds.Read(one, contract, requirement, home);
+            if (ManualKinds.Plans(contract.Kind)) return ManualKinds.Read(one, contract, requirement, home);
+            if (TourKinds.Plans(contract.Kind)) return TourKinds.Read(one, contract, requirement, home);
+            if (PlacementKinds.Plans(contract.Kind)) return PlacementKinds.Read(one, contract, requirement, home);
+            if (TargetKinds.Plans(contract.Kind)) return TargetKinds.Read(one, contract, requirement, home);
             if (contract.Kind != Exploration || requirement.Kind != "ProgressTrackingParameter")
             {
                 one.NotYet = contract.Kind != Exploration ? TypeNotYet(contract.Kind) : "not yet: " + requirement.Kind + " isn't a Contract Requirement Claudia can plan yet";
@@ -153,7 +198,9 @@ namespace ClaudiaKerman.Core.Contracts
             ContractReach reach;
             string reason;
             if (type == "REACHSPACE") return body != home ? NotYet(one, AwayHopNotYet) : Hop(one, home, new HopBand { AboveAir = true });
-            if (BelowOrbit.Contains(type)) one.NotYet = RecordNotYet;
+            if (type == "FLAGPLANT") return ManualKinds.Flag(one, body.Length == 0 ? null : body, home);
+            if (type == "DEPTHRECORD") one.NotYet = DepthNotYet;
+            else if (Records.Contains(type)) return ReadRecord(one, type, body, home);
             else if (OtherReasons.TryGetValue(type, out reason)) one.NotYet = "not yet: " + reason;
             else if (!Reaches.TryGetValue(type, out reach)) one.NotYet = "not yet: " + (type.Length > 0 ? type : "an unnamed milestone") + " isn't a Contract Requirement Claudia can plan yet";
             else if (body.Length == 0) one.NotYet = "not yet: the Contract names no body";
@@ -170,6 +217,46 @@ namespace ClaudiaKerman.Core.Contracts
             return one;
         }
 
+        /// <summary>
+        /// #1091: a record over the launch body. The saved settings name no record, so the band comes from the record's target when the
+        /// Requirement gives one (<c>altitude</c> m, <c>speed</c> m/s) and from the body otherwise: an altitude record is met above the
+        /// atmosphere. Altitude and speed records are a hop through that band, met on the way up on any launch to orbit; a distance record
+        /// and the first launch are met by the launch itself, so they add nothing to any route that launches.
+        /// </summary>
+        private static ReadRequirement ReadRecord(ReadRequirement one, string type, string body, string home)
+        {
+            if (type != "FIRSTLAUNCH" && body.Length > 0 && body != home) return NotYet(one, RecordAwayNotYet);
+            if (type == "FIRSTLAUNCH")
+            {
+                // Any launch meets it: a hop that just leaves the pad, which every route that launches passes on the way up.
+                Hop(one, home, new HopBand { MinAltitude = FirstLaunchAltitude });
+                one.Words = "launch";
+                return one;
+            }
+            if (type == "DISTANCERECORD")
+            {
+                // A hop straight up covers no distance; a launch to orbit covers any a Kerbin record asks, so it rides that trip.
+                one.Body = home;
+                one.Reach = ContractReach.Orbit;
+                one.Phase = home + " orbit";
+                one.Words = "set a distance record over " + home;
+                return one;
+            }
+            var altitude = Number(one.Requirement, "altitude");
+            var speed = Number(one.Requirement, "speed");
+            if (type == "ALTITUDERECORD")
+            {
+                var band = altitude.HasValue ? new HopBand { MinAltitude = altitude } : new HopBand { AboveAir = true };
+                Hop(one, home, band);
+                one.Words = altitude.HasValue ? "set an altitude record over " + home + " at " + band.Through() : "set an altitude record over " + home + " above the air";
+                return one;
+            }
+            if (!speed.HasValue) return NotYet(one, "not yet: the speed record names no speed to fly");
+            Hop(one, home, new HopBand { MinAltitude = 0, MinSpeed = speed });
+            one.Words = "set a speed record over " + home + " at " + System.Math.Round(speed.Value) + " m/s";
+            return one;
+        }
+
         /// <summary>The stock system's bodies by their index in the game's body list, as a part test's <c>body</c> setting names them.</summary>
         private static readonly string[] StockBodies =
             { "Sun", "Kerbin", "Mun", "Minmus", "Moho", "Eve", "Duna", "Ike", "Jool", "Laythe", "Vall", "Bop", "Tylo", "Gilly", "Pol", "Dres", "Eeloo" };
@@ -178,8 +265,8 @@ namespace ClaudiaKerman.Core.Contracts
         private static readonly HashSet<string> TestConditions = new HashSet<string>
             { "ReachDestination", "ReachSituation", "ReachAltitudeEnvelope", "ReachSpeedEnvelope" };
 
-        /// <summary>#1029: a part test needing level flight in the air, or a run along the ground.</summary>
-        public const string AircraftNotYet = "not yet: needs sustained flight in the atmosphere (aircraft)";
+        /// <summary>#1029, #1162: a part test needing a run along the ground at speed.</summary>
+        public const string AircraftNotYet = "not yet: aircraft or rover";
         public const string TestAwayNotYet = "not yet: tests in orbit or away from Kerbin aren't planned yet (launch and reentry run them)";
 
         /// <summary>
@@ -214,7 +301,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (!band.MinAltitude.HasValue) return NotYet(one, TypeNotYet(PartTest));
                 one.Test.Band = band;
                 Hop(one, home, band);
-                one.Words = (haul ? "carry " : "test ") + part + " " + band.Words(home).Substring("hop ".Length);
+                one.Words = (haul ? "carry " : "test ") + part + " " + band.Through(home);
                 return one;
             }
             if (situation == "LANDED" || situation == "SPLASHED")
@@ -236,7 +323,7 @@ namespace ClaudiaKerman.Core.Contracts
             return NotYet(one, situation == "ORBITING" ? TestAwayNotYet : TypeNotYet(PartTest));
         }
 
-        private static ReadRequirement Visit(ReadRequirement one, string body, ContractReach reach, string words, string home)
+        internal static ReadRequirement Visit(ReadRequirement one, string body, ContractReach reach, string words, string home)
         {
             one.Body = body;
             one.Reach = reach;
@@ -246,13 +333,19 @@ namespace ClaudiaKerman.Core.Contracts
         }
 
         /// <summary>The body a part test's <c>body</c> index names in the stock system; null when unknown.</summary>
-        private static string BodyAt(string index)
+        internal static string BodyAt(string index)
         {
             int at;
             return int.TryParse(index, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out at) && at >= 0 && at < StockBodies.Length ? StockBodies[at] : null;
         }
 
-        private static ReadRequirement Hop(ReadRequirement one, string home, HopBand band)
+        /// <summary>#1035: the stock body named <paramref name="name"/>, as the save may name one; null when it isn't one.</summary>
+        internal static string StockBody(string name)
+        {
+            return StockBodies.FirstOrDefault(b => string.Equals(b, name, System.StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static ReadRequirement Hop(ReadRequirement one, string home, HopBand band)
         {
             one.Body = home;
             one.Reach = ContractReach.Hop;
@@ -262,19 +355,19 @@ namespace ClaudiaKerman.Core.Contracts
             return one;
         }
 
-        private static ReadRequirement NotYet(ReadRequirement one, string why)
+        internal static ReadRequirement NotYet(ReadRequirement one, string why)
         {
             one.NotYet = why;
             return one;
         }
 
-        private static double? Number(ContractRequirement requirement, string name)
+        internal static double? Number(ContractRequirement requirement, string name)
         {
             double value;
             return double.TryParse(Setting(requirement, name), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value) ? value : (double?)null;
         }
 
-        private static string Verb(ContractReach reach)
+        internal static string Verb(ContractReach reach)
         {
             return reach == ContractReach.Flyby ? "fly by" : reach == ContractReach.Orbit ? "orbit" : "land on";
         }
@@ -285,7 +378,7 @@ namespace ClaudiaKerman.Core.Contracts
             return body == "Mun" ? "the Mun" : body;
         }
 
-        private static string Setting(ContractRequirement requirement, string name)
+        internal static string Setting(ContractRequirement requirement, string name)
         {
             var setting = requirement.Settings.FirstOrDefault(s => s.Name == name);
             return setting == null ? "" : setting.Value.Trim();

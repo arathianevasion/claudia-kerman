@@ -124,7 +124,7 @@ namespace ClaudiaKerman.Core.Missions
         /// The card is posted for this start and it waits for the player's answer: there are accepted Contracts, the craft's delta-v is known
         /// and the typed words alone fit. A start already answered from the card goes on. Pressed again, Start Mission posts a new card in
         /// place of the old (new words, a changed craft). Why the start can't go on at all, or "": the craft's delta-v isn't known, so the
-        /// Contracts can't be priced (never dropped silently), or nothing typed and the craft can't reach orbit.
+        /// Contracts can't be priced (never dropped silently), or the craft can't reach orbit: with nothing typed, no Contract fits; with words typed, the refusal names the hop Contracts it could fly without them (#1090).
         /// </summary>
         private bool HeldForContracts(StartMission start, out string refusal)
         {
@@ -134,7 +134,8 @@ namespace ClaudiaKerman.Core.Missions
             _contractCheck = null;
             var snapshot = _snapshot;
             if (snapshot == null || snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0) return false;
-            var check = ContractCheck.Work(snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent);
+            // #1033: a target the goal or the player's pick gives wins over a Target Vessel Contract's vessel (ADR 0013's amendment).
+            var check = ContractCheck.Work(snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent, GivenTarget(start.Goal, start.Target));
             if (!check.Priceable)
             {
                 refusal = "The craft's delta-v isn't known (turn on the stock delta-v readout), so your Contracts can't be priced. Turn it on, then start again.";
@@ -143,6 +144,12 @@ namespace ClaudiaKerman.Core.Missions
             if (!check.WordsFit)
             {
                 if (check.Words.Length == 0) refusal = "This craft can't reach orbit with the Craft Check's reserve, so no Contract fits.";
+                else
+                {
+                    // #1090: words are priced with a launch to orbit; the hop Contracts the craft could fly without them are named.
+                    var hops = check.HopsWithoutWords();
+                    if (hops.Length > 0) refusal = "Your words don't fit this craft with the Craft Check's reserve. Without your words this craft could fly: " + hops + ".";
+                }
                 return false;
             }
             _contractCheck = check;
@@ -161,6 +168,8 @@ namespace ClaudiaKerman.Core.Missions
             var ticked = Ticked();
             // A set that doesn't fit is never sent: "Plan these" is greyed for it.
             if (_contractCheck == null || ticked.Count == 0 || !_contractCheck.SetFits) return;
+            // #1033: a Target Vessel Contract ticked again after Clear, or against another target picked, goes out rather than fly without its vessel.
+            if (_form != null && TargetWins(_form)) return;
             var choice = _contractCheck.Choose(ticked);
             var start = _contractStart.Answered(choice.Goal, choice);
             _contractCheck = null;
@@ -207,9 +216,9 @@ namespace ClaudiaKerman.Core.Missions
                 Accepted = check.Accepted, Words = check.Words,
                 Rows = check.Fitting.ToList(),
                 Headline = check.Headline(ticked.Count),
-                SearchNote = check.SearchNote,
+                SearchNote = check.SearchNote, OrderNote = check.OrderNote,
                 NotThisFlight = check.NotThisFlight.ToList(),
-                CraftDeltaV = check.CraftDeltaV, RouteDeltaV = check.RouteDeltaV, ReservePercent = check.ReservePercent, Reserve = check.Reserve, Spare = check.Spare,
+                CraftDeltaV = check.CraftDeltaV, RouteDeltaV = check.RouteDeltaV, RouteIsEstimate = check.RouteIsEstimate, ReservePercent = check.ReservePercent, Reserve = check.Reserve, Spare = check.Spare,
                 PlanLabel = ticked.Count > 0 ? "Plan these " + ticked.Count : "Pick a Contract",
                 CanPlan = ticked.Count > 0 && check.SetFits,
                 Shortfall = check.Problem,

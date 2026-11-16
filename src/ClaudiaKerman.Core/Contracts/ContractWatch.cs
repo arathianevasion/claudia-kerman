@@ -194,7 +194,9 @@ namespace ClaudiaKerman.Core.Contracts
                 else
                 {
                     var found = Find(contract.Requirements, requirement.Key);
-                    reading.State = found == null ? "not found" : found.State == "Complete" ? "met" : found.State == "Failed" ? "failed" : "not met";
+                    reading.State = found == null ? "not found" : found.State == "Complete" ? "met" : found.State == "Failed" ? "failed"
+                        // #1035: placed, it is the game's to complete after the Mission: no hold waits for it and it is no miss.
+                        : requirement.AfterMission != null ? CompletesAfter : "not met";
                 }
                 string gap;
                 if (reading.State == "not met" && gaps != null && gaps.TryGetValue(requirement.Key, out gap)) reading.Gap = gap;
@@ -206,6 +208,36 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The readings as one line of JSON data for the Debrief request.</summary>
         public static string Line(IList<RequirementReading> readings)
         {
+            return "Contract Requirements this sequence served (the mod's reading of the game, JSON data): " + Json(readings) + "\n"
+                + AfterMissionWords(readings)
+                + (readings.Any(r => r.State == "not met") ? "For a Requirement not met, propose a trim burn or a retry leg (priced at the plan proposal), or dropping its Contract, with the reason.\n" : "");
+        }
+
+        /// <summary>#1035: the reading of a Requirement the game completes after the Mission, still open.</summary>
+        public const string CompletesAfter = ContractCheck.CompletesAfter;
+
+        /// <summary>A Gap given a hands-on Requirement still not met when the player hands the craft back.</summary>
+        public const string NotMetAtHandBack = "the game hasn't marked it met after the Manual stretch";
+
+        /// <summary>
+        /// #1032: the readings of the Requirements a Manual stretch served, for the short Debrief at Hand back: one met is said so; one not met
+        /// is offered again as a new planned Manual stretch, or dropped.
+        /// </summary>
+        public static string HandBackLine(IList<RequirementReading> readings)
+        {
+            return "Contract Requirements this Manual stretch served (the mod's reading of the game, JSON data): " + Json(readings) + "\n"
+                + (readings.Any(r => r.State == "met" || r.State == "completed") ? "For a Requirement met, say in the Debrief that it is met.\n" : "")
+                + AfterMissionWords(readings)
+                + (readings.Any(r => r.State == "not met") ? "For a Requirement not met, offer the player a retry (a new planned Manual stretch, in the revised Mission Plan) or dropping its Contract, with the reason.\n" : "");
+        }
+
+        private static string AfterMissionWords(IEnumerable<RequirementReading> readings)
+        {
+            return readings.Any(r => r.State == CompletesAfter) ? "For a Requirement that " + CompletesAfter + ", say in the Debrief that the game completes it after the Mission once its placement is made (the telescope in solar orbit, the station set up); the game doesn't mark the placement itself.\n" : "";
+        }
+
+        private static string Json(IEnumerable<RequirementReading> readings)
+        {
             var json = new JsonWriter().BeginArray();
             foreach (var r in readings)
             {
@@ -213,8 +245,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (r.Gap.Length > 0) json.Field("gap", r.Gap);
                 json.EndObject();
             }
-            return "Contract Requirements this sequence served (the mod's reading of the game, JSON data): " + json.EndArray() + "\n"
-                + (readings.Any(r => r.State == "not met") ? "For a Requirement not met, propose a trim burn or a retry leg (priced at the plan proposal), or dropping its Contract, with the reason.\n" : "");
+            return json.EndArray().ToString();
         }
 
         /// <summary>The craft meets what <paramref name="requirement"/> asks, by the snapshot: the game should mark it met.</summary>
@@ -227,7 +258,7 @@ namespace ClaudiaKerman.Core.Contracts
             switch (requirement.Reach)
             {
                 case ContractReach.Land: return down;
-                case ContractReach.Orbit: return snapshot.Situation == "ORBITING";
+                case ContractReach.Orbit: return snapshot.Situation == "ORBITING" && OrbitMiss(snapshot, requirement) == null;
                 default: return true;
             }
         }
@@ -236,7 +267,16 @@ namespace ClaudiaKerman.Core.Contracts
         public static string Gap(GameSnapshot snapshot, ChosenRequirement requirement)
         {
             if (snapshot == null) return "the mod has no reading of the craft";
+            var miss = snapshot.Situation == "ORBITING" && snapshot.Body == requirement.Body ? OrbitMiss(snapshot, requirement) : null;
+            if (miss != null) return miss;
             return "the craft is " + snapshot.Situation + " at " + ContractKinds.Named(snapshot.Body) + ", and the Requirement asks it to " + requirement.Words;
+        }
+
+        /// <summary>#1031: a satellite's orbit against the Contract's window, "inclination 3.4° outside the 5% window"; null when inside, or not a satellite.</summary>
+        private static string OrbitMiss(GameSnapshot snapshot, ChosenRequirement requirement)
+        {
+            var body = requirement.Orbit == null || snapshot.Orbit == null ? null : snapshot.Bodies.FirstOrDefault(b => b.Name == requirement.Orbit.Body);
+            return body == null ? null : requirement.Orbit.Miss(body, snapshot.Orbit.Apoapsis, snapshot.Orbit.Periapsis, snapshot.Orbit.Inclination);
         }
 
         public static string GuidOf(string key)

@@ -793,7 +793,7 @@ namespace ClaudiaKerman.Core.Missions
         public static string DeltaVMapLine(GameSnapshot snapshot, string goal)
         {
             if (snapshot == null) return "";
-            var map = DeltaVMap.Compute(snapshot.Bodies, CraftCheckFlow.HomeBody).CompactLine(GoalBodies(snapshot, goal));
+            var map = DeltaVMap.Compute(snapshot.Bodies, CraftCheckFlow.HomeBody).CompactLine(GoalBodies(snapshot, goal), snapshot);
             return map.Length == 0 ? "" : "\nDelta-v Map, m/s, no margin; budget each leg at least this: " + map + "\n";
         }
 

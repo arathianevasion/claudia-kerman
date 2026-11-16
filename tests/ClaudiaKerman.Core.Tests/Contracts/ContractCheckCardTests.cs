@@ -144,6 +144,96 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(0, Requests);
         }
 
+        /// <summary>#1033: the pad craft with an empty seat and an orbital rescue whose pod the game spawned in Kerbin orbit.</summary>
+        private static GameSnapshot ARescue()
+        {
+            var rescue = ContractCheckTests.Fixture("RecoverAsset.json");
+            rescue.Guid = "c-rescue";
+            var snapshot = ContractCheckTests.With(rescue);
+            snapshot.Craft.Seats = 2;
+            snapshot.ContractVessels.Add(new SnapshotVessel
+            {
+                Id = 4401, Name = "Gusdun's Capsule", Body = "Kerbin", Situation = "ORBITING", PeriapsisM = 120000, ApoapsisM = 120000, Inclination = 0, ContractGuid = "c-rescue",
+            });
+            return snapshot;
+        }
+
+        [Fact]
+        public void WithARescueTickedTheStartFormsTargetLineNamesItsVesselFromTheContractAndClearUnticksIt()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            Settle();
+            Assert.True(mission.View.ContractCheck.Rows.Single().Ticked);
+
+            var line = TargetVessel.Choose("", TargetPick.Auto, mission.View.StartForm.Targets).Line;
+            mission.Send(new StartFormChanged("", TargetPick.Cleared));
+
+            Assert.Equal("Target Vessel: Gusdun's Capsule · Kerbin · orbiting · from the Contract", line);
+            Assert.False(mission.View.ContractCheck.Rows.Single().Ticked);
+            Assert.Null(mission.View.StartForm.Targets.Contract);
+        }
+
+        [Fact]
+        public void KspsTargetNeverPushesARescueOutOnlyTheGoalOrThePickDoes()
+        {
+            var snapshot = ARescue();
+            var station = new SnapshotVessel { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            snapshot.Vessels.Add(station);
+            snapshot.KspTarget = new SnapshotTarget { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            var mission = Control(snapshot);
+
+            mission.Send(Start("Rendezvous and bring the kerbal home."));
+            Settle();
+
+            Assert.True(mission.View.ContractCheck.Rows.Single().Ticked);
+        }
+
+        [Fact]
+        public void PickingAnotherVesselWithTheCardUpUnticksTheRescue()
+        {
+            var snapshot = ARescue();
+            var station = new SnapshotVessel { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            snapshot.Vessels.Add(station);
+            var mission = Control(snapshot);
+            mission.Send(Start(""));
+            Settle();
+
+            mission.Send(new StartFormChanged("", TargetPick.Of(station)));
+
+            Assert.False(mission.View.ContractCheck.Rows.Single().Ticked);
+        }
+
+        [Fact]
+        public void ARescueTickedAgainAfterClearIsUntickedAtPlanTheseNotFlownWithoutItsVessel()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            Settle();
+            mission.Send(new StartFormChanged("", TargetPick.Cleared));
+            mission.Send(new TickContract("c-rescue", true));
+
+            mission.Send(new PlanContracts());
+            Settle();
+
+            Assert.Equal(MissionStage.None, mission.View.Stage);
+            Assert.False(mission.View.ContractCheck.Rows.Single().Ticked);
+        }
+
+        [Fact]
+        public void PlanTheseTakesTheRescuesVesselAsTheMissionsTargetVessel()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            Settle();
+
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.Contains(mission.View.Log, e => e.Text == "Target Vessel: Gusdun's Capsule (from the Contract).");
+            Assert.Contains("Target Vessel: \"Gusdun's Capsule\"", Text(Assert.Single(_transport.Requests)));
+        }
+
         [Fact]
         public void PlanTheseSendsOneStartMissionRequestWithTheContractRouteAndThePlayersWords()
         {
@@ -161,7 +251,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("Also run a crew report in Mun orbit.", text);
             Assert.Contains("land on the Mun", text);
             Assert.Contains("(phase: Mun)", text);
-            Assert.Contains("not yet: surveys aren't planned yet", text);
+            Assert.Contains("not yet: low-flying surveys need an aircraft over the waypoint", text);
             // The card folds to its one line, which stays in the Mission's transcript.
             Assert.Null(mission.View.ContractCheck);
             Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal));
@@ -269,6 +359,54 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(MissionStage.None, mission.View.Stage);
         }
 
+        // ---- #1090: typed words that don't fit a craft that can't reach orbit ----
+
+        private const string WordsNeedingOrbit = "Fly to Minmus and capture into orbit.";
+
+        private static GameSnapshot ReachesTheBandButNotOrbit(params SnapshotContract[] contracts)
+        {
+            var snapshot = ContractCheckTests.With(contracts);
+            ContractCheckTests.BoosterOnly(snapshot);
+            return snapshot;
+        }
+
+        [Fact]
+        public void TypedWordsThatDontFitAreRefusedAndTheRefusalNamesThePartTestTheCraftCouldFly()
+        {
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.BoosterTest("c-test")));
+
+            mission.Send(Start(WordsNeedingOrbit));
+            Settle();
+
+            Assert.Null(mission.View.ContractCheck);
+            Assert.Equal("Your words don't fit this craft with the Craft Check's reserve. Without your words this craft could fly: Test liquidEngine.v2 at 51–56 km.", mission.View.StartForm.Refusal);
+            Assert.Equal(0, Requests);
+        }
+
+        [Fact]
+        public void TypedWordsThatDontFitWithNoHopContractAcceptedStartAsBefore()
+        {
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.Exploration("c-mun", 10000, "Mun:ORBIT")));
+
+            mission.Send(Start(WordsNeedingOrbit));
+            Settle();
+
+            Assert.Null(mission.View.ContractCheck);
+            Assert.Equal("", mission.View.StartForm.Refusal);
+        }
+
+        [Fact]
+        public void WithNoWordsTheSameCraftGetsTheHopContractInThisFlight()
+        {
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.BoosterTest("c-test")));
+
+            mission.Send(Start(""));
+            Settle();
+
+            Assert.Equal("c-test", Assert.Single(mission.View.ContractCheck.Rows).Guid);
+            Assert.Equal("", mission.View.StartForm.Refusal);
+        }
+
         // ---- #1023: ticking, unticking and Swap in on the card ----
 
         private static GameSnapshot MunAndMinmusTheCraftFliesOneOf()
@@ -287,6 +425,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Send(new TickContract("c-land", false));
 
             var card = mission.View.ContractCheck;
+            Assert.True(card.RouteIsEstimate);
+            Assert.Contains("(estimate)", card.Headline);
             Assert.False(card.Rows.Single(r => r.Guid == "c-land").Ticked);
             Assert.True(card.RouteDeltaV <= both);
             Assert.StartsWith("1 of 3 Contracts · route ", card.Headline);

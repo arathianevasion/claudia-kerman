@@ -63,6 +63,10 @@ namespace ClaudiaKerman.Core.Missions
         public double? ApoapsisM;
         /// <summary>Where a landed or splashed vessel is saved (#710); null when not read.</summary>
         public SnapshotPosition Position;
+        /// <summary>#1033: its orbit's inclination, degrees; null when landed or not read. Read for a Contract's vessel, whose rendezvous is priced.</summary>
+        public double? Inclination;
+        /// <summary>#1033: the Target Vessel Contract the game spawned it for, by GUID; "" for any other vessel.</summary>
+        public string ContractGuid = "";
 
         /// <summary>Whether it is landed or splashed, so its place, not its orbit, tells it apart (#710). Narrower than IsGrounded on purpose: a PRELAUNCH vessel is read by its orbit.</summary>
         public bool IsDown
@@ -115,6 +119,17 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>KSP's target as the snapshot read it; null for none.</summary>
         public SnapshotVessel KspTarget;
         public IList<SnapshotVessel> Vessels = new List<SnapshotVessel>();
+        /// <summary>
+        /// #1033: the vessel of the ticked Target Vessel Contract (its <see cref="SnapshotVessel.ContractGuid"/> names the Contract); null for
+        /// none. Taken by the game's identity, so the goal-name search's and the Choose list's skips don't apply to it (ADR 0013's amendment).
+        /// </summary>
+        public SnapshotVessel Contract;
+
+        /// <summary>These facts with <paramref name="contract"/> as the ticked Target Vessel Contract's vessel.</summary>
+        public TargetFacts WithContract(SnapshotVessel contract)
+        {
+            return new TargetFacts { CraftName = CraftName, CraftBody = CraftBody, CraftId = CraftId, KspTarget = KspTarget, Vessels = Vessels, Contract = contract };
+        }
 
         public static TargetFacts Of(GameSnapshot snapshot)
         {
@@ -149,6 +164,21 @@ namespace ClaudiaKerman.Core.Missions
         public string Note = "";
         /// <summary>Another listed vessel shares the target's name, so the line adds its distance (#709).</summary>
         internal bool SharedName;
+        /// <summary>#1033: the target is the ticked Contract's vessel, so the line ends "· from the Contract".</summary>
+        public bool FromContract;
+        /// <summary>#1033: the goal or the player's pick gives another target, so this Contract (by GUID) is not this flight; "" otherwise.</summary>
+        public string Displaces = "";
+        /// <summary>#1033: Clear with a Target Vessel Contract ticked unticks it (by GUID) rather than leaving it without its vessel; "" otherwise.</summary>
+        public string Unticks = "";
+
+        /// <summary>#1033: the target is one the goal names or the player picked, so it wins over a Target Vessel Contract's vessel; KSP's target never does.</summary>
+        public bool GivenByPlayer
+        {
+            get { return Target != null && (Reason == ByPick || Reason == ByGoal); }
+        }
+
+        internal const string ByPick = "your pick";
+        internal const string ByGoal = "named in the Mission Goal";
 
         /// <summary>The start form's line under the Mission Goal; "" when the goal needs no target.</summary>
         public string Line
@@ -157,6 +187,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 if (!Needed) return "";
                 if (Target == null) return "Target Vessel: none (" + Reason + ")";
+                if (FromContract) return "Target Vessel: " + TargetVessel.Describe(Vessel, SharedName) + " · from the Contract" + (Note.Length > 0 ? "; " + Note : "");
                 return "Target Vessel: " + TargetVessel.Describe(Vessel, SharedName) + " (" + Reason + ")" + (Note.Length > 0 ? "; " + Note : "");
             }
         }
@@ -213,20 +244,29 @@ namespace ClaudiaKerman.Core.Missions
             // The craft's own name ("fly Mun Lander to the Mun") asks for no target, so KSP's target can't slip in on it.
             var choice = new TargetChoice
             {
-                Needed = AsksForRendezvousOrDocking(goal) || ranked.Any(r => r.Exact && !Same(r.Vessel.Name, facts.CraftName)),
+                Needed = AsksForRendezvousOrDocking(goal) || ranked.Any(r => r.Exact && !Same(r.Vessel.Name, facts.CraftName)) || facts.Contract != null,
             };
             if (!choice.Needed) return choice;
+            var contract = facts.Contract;
 
-            if (pick.Kind == TargetPickKind.Cleared) return None(choice, "cleared");
+            if (pick.Kind == TargetPickKind.Cleared)
+            {
+                if (contract != null) choice.Unticks = contract.ContractGuid;
+                return None(choice, "cleared");
+            }
             if (pick.Kind == TargetPickKind.Vessel)
             {
+                if (contract != null && contract.Id == pick.Id) return FromContract(choice, contract, goal, options);
                 var picked = options.FirstOrDefault(v => v.Id == pick.Id);
-                return picked != null ? Chosen(choice, picked, "your pick", goal, options)
+                return picked != null ? Displacing(Chosen(choice, picked, TargetChoice.ByPick, goal, options), contract)
                     : None(choice, "\"" + pick.Name.Trim() + "\", your pick, is no longer in the list");
             }
 
             var named = ranked.Where(r => r.Rank == RankNamed).ToList();
-            if (named.Count == 1) return Chosen(choice, named[0].Vessel, "named in the Mission Goal", goal, options);
+            if (named.Count == 1 && contract != null && named[0].Vessel.Id == contract.Id) return FromContract(choice, contract, goal, options);
+            if (named.Count == 1) return Displacing(Chosen(choice, named[0].Vessel, TargetChoice.ByGoal, goal, options), contract);
+            // #1033: with no one vessel the goal gives, the ticked Contract's vessel is the target, before KSP's.
+            if (contract != null) return FromContract(choice, contract, goal, options);
             if (named.Count > 1) return None(choice, "several vessels are named \"" + named[0].Vessel.Name.Trim() + "\": Choose one");
             var near = ranked.FirstOrDefault(r => r.Rank == RankNear);
             if (near != null)
@@ -425,6 +465,21 @@ namespace ClaudiaKerman.Core.Missions
             choice.Reason = how;
             var grounded = GameSnapshot.IsGroundedSituation(vessel.Situation);
             if (grounded && AsksForRendezvousOrDocking(goal)) choice.Note = "landed: rendezvous and docking need it in orbit";
+            return choice;
+        }
+
+        /// <summary>#1033: the ticked Contract's vessel as the target.</summary>
+        private static TargetChoice FromContract(TargetChoice choice, SnapshotVessel contract, string goal, IList<SnapshotVessel> listed)
+        {
+            Chosen(choice, contract, "from the Contract", goal, listed);
+            choice.FromContract = true;
+            return choice;
+        }
+
+        /// <summary>#1033: a target the goal or the pick gives displaces a ticked Contract's other vessel.</summary>
+        private static TargetChoice Displacing(TargetChoice choice, SnapshotVessel contract)
+        {
+            if (contract != null && choice.Target != null && choice.Target.Id != contract.Id) choice.Displaces = contract.ContractGuid;
             return choice;
         }
 

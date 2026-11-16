@@ -92,7 +92,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; WarpSeen(((UtAdvanced)input).Warping); ContinueRunEnd(); }
             else if (input is StartMission) Start((StartMission)input);
             else if (input is RunCraftCheck) RunCraftCheck((RunCraftCheck)input);
-            else if (input is StartFormChanged) _form = (StartFormChanged)input;
+            else if (input is StartFormChanged) FormChanged((StartFormChanged)input);
             else if (input is AcknowledgeWarning) _craftCheck.Acknowledge(((AcknowledgeWarning)input).Code);
             else if (input is ChooseProcessor) _craftCheck.Choose(((ChooseProcessor)input).PartId, _snapshot);
             else if (input is EndMission) EndRequested();
@@ -439,7 +439,7 @@ namespace ClaudiaKerman.Core.Missions
             }
 
             // No Mission starts on a craft that hasn't been checked for this goal, Target Vessel and window, or whose check has a Blocker or an open Warning.
-            var target = ChooseTarget(goal, start.Target);
+            var target = ChooseTarget(goal, start.Target, start.Contracts == null ? null : start.Contracts.Target);
             if (!_craftCheck.IsCurrent(goal, _snapshot, start.Remote, target.Target, window.Key))
             {
                 _pendingStart = start;

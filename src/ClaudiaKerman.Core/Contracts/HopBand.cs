@@ -45,7 +45,13 @@ namespace ClaudiaKerman.Core.Contracts
         public string Words(string home)
         {
             if (AboveAir) return "reach space over " + home;
-            return "hop through " + Range(MinAltitude, MaxAltitude) + " m" + AtSpeed() + " over " + home;
+            return "hop " + Through(home);
+        }
+
+        /// <summary>The band in words, without the hop: "through 51,000–56,000 m at 100–260 m/s over Kerbin".</summary>
+        public string Through(string home)
+        {
+            return "through " + Range(MinAltitude, MaxAltitude) + " m" + AtSpeed() + " over " + home;
         }
 
         /// <summary>The speed band in words, " at 100–260 m/s"; "" with none.</summary>
@@ -60,6 +66,12 @@ namespace ClaudiaKerman.Core.Contracts
             var min = MinAltitude ?? 0;
             if (!MaxAltitude.HasValue) return "over " + Km(min) + " km";
             return Km(min) + "–" + Km(MaxAltitude.Value) + " km";
+        }
+
+        /// <summary>#1162: the band as the card writes it, "51–56 km, 100–260 m/s"; the altitude alone with no speed band.</summary>
+        public string Card()
+        {
+            return Through() + (MinSpeed.HasValue || MaxSpeed.HasValue ? ", " + Range(MinSpeed, MaxSpeed) + " m/s" : "");
         }
 
         /// <summary>#1029: whether <paramref name="altitude"/> m is in the altitude band (never for <see cref="AboveAir"/>, whose band is the body's).</summary>

@@ -137,7 +137,7 @@ namespace ClaudiaKerman.Core.Tests
             report.SimFailure = flight.Failure;
             report.SimCoastAp = flight.CoastAp;
             report.SimMaxQ = flight.MaxQ;
-            report.SimDvToOrbit = flight.DeltaVToOrbit;
+            report.SimDvToOrbit = flight.DeltaVToOrbitOrHop;
 
             var lines = logLines.Select(TraceLine.Parse).Where(l => l != null).ToList();
             var climb = lines.Where(l => l.Block == "launch" && l.Text("phase") != "end" && l.Text("phase") != "drop_scan" && !double.IsNaN(l.Num("alt"))).ToList();

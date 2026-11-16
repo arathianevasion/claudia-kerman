@@ -48,15 +48,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (unmet.Count > 0) open.Add(new KeyValuePair<SnapshotContract, List<ChosenRequirement>>(contract, unmet));
             }
             if (open.Count == 0) return late;
-            var needs = new Dictionary<string, ContractReach>();
-            foreach (var requirement in open.SelectMany(o => o.Value))
-            {
-                ContractReach had;
-                if (!needs.TryGetValue(requirement.Body, out had) || requirement.Reach > had) needs[requirement.Body] = requirement.Reach;
-            }
-            // Like the Contract check, the order that keeps every deadline is preferred over the cheapest one.
-            var route = new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return),
-                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)));
+            var route = RouteOf(snapshot, open, words, home);
             foreach (var one in open)
             {
                 var done = DoneOf(route, one.Value, snapshot, home);
@@ -72,9 +64,50 @@ namespace ClaudiaKerman.Core.Contracts
             return late;
         }
 
+        /// <summary>
+        /// #1092: the route the recheck times: the Contract check's own (<see cref="ContractRoutes.Best"/> with the hop bands of the unmet
+        /// Requirements, read from the snapshot's Contracts as the check reads them), so a hop is timed as a hop. A hop the sim can't price
+        /// falls back to the launch to orbit, as in the Contract check. #1030: survey waypoints are timed with their wait for the pass.
+        /// </summary>
+        internal static PricedRoute RouteOf(GameSnapshot snapshot, IList<KeyValuePair<SnapshotContract, List<ChosenRequirement>>> open, string words, string home)
+        {
+            var needs = new Dictionary<string, ContractReach>();
+            foreach (var requirement in open.SelectMany(o => o.Value))
+            {
+                ContractReach had;
+                if (!needs.TryGetValue(requirement.Body, out had) || requirement.Reach > had) needs[requirement.Body] = requirement.Reach;
+            }
+            var bands = new List<HopBand>();
+            var waypoints = new List<SurveyWaypoint>();
+            var orbits = new List<ContractOrbit>();
+            var telescopes = new List<SolarPlacement>();
+            foreach (var one in open)
+            {
+                var keys = new HashSet<string>(one.Value.Select(r => r.Key));
+                var read = ContractKinds.Read(one.Key, home).Where(r => r.Plannable && keys.Contains(r.Requirement.Key)).ToList();
+                bands.AddRange(read.Where(r => r.Band != null && r.Reach == ContractReach.Hop).Select(r => r.Band));
+                // #1030: a survey waypoint is timed with its wait for the pass, as at the Contract check.
+                waypoints.AddRange(read.Where(r => r.Waypoint != null).Select(r => r.Waypoint));
+                // #1031: a satellite is timed with its climb to the Contract's orbit.
+                orbits.AddRange(read.Where(r => r.Orbit != null).Select(r => r.Orbit));
+                // #1035: a Sentinel telescope is timed with its burn into solar orbit.
+                telescopes.AddRange(read.Where(r => r.Placement != null).Select(r => r.Placement));
+            }
+            // #1033: a Target Vessel Contract is timed with its rendezvous, from the orbit the Contract check read.
+            var meets = open.SelectMany(o => o.Value).Where(r => r.RendezvousOrbit != null).Select(r => r.RendezvousOrbit).ToList();
+            // Like the Contract check, the order that keeps every deadline is preferred over the cheapest one.
+            return new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return),
+                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands, waypoints, orbits, telescopes, meets);
+        }
+
         private static double DoneOf(PricedRoute route, IEnumerable<ChosenRequirement> requirements, GameSnapshot snapshot, string home)
         {
-            return requirements.Select(r => route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return }, home))
+            // #1035: one that completes after the Mission is done its wait after the placement.
+            return requirements.Select(r =>
+                {
+                    var done = route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return, Waypoint = route.WaypointUt.ContainsKey(r.Key) ? new SurveyWaypoint { Key = r.Key } : null, Orbit = r.Orbit, Placement = r.Placement, RendezvousOrbit = r.RendezvousOrbit }, home);
+                    return r.AfterMission == null ? done : (done ?? snapshot.Ut) + r.AfterMission.Seconds;
+                })
                 .Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(snapshot.Ut).Max();
         }
     }

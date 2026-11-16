@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ClaudiaKerman.Core.Contracts;
 using ClaudiaKerman.Core.Missions;
 using KSP.UI.Screens;
 
@@ -114,6 +115,7 @@ namespace ClaudiaKerman.Adapter
             }
             ReadTargets(snapshot, vessel);
             snapshot.Contracts = ContractReader.Read();
+            ReadContractVessels(snapshot);
             return snapshot;
         }
 
@@ -165,6 +167,32 @@ namespace ClaudiaKerman.Adapter
                         // From the craft, so same-named vessels can be told apart and the list puts the nearest first (#709).
                         Distance = Vector3d.Distance(other.GetWorldPos3D(), here),
                     });
+        }
+
+        /// <summary>
+        /// #1033: the vessels the game spawned for accepted Target Vessel Contracts, whatever their type (a Kerbal on EVA, a comet), tagged
+        /// with the Contract's GUID by the Core's match (<see cref="ContractVessels.ContractFor"/>); the saved vessels, so the editor reads them too.
+        /// </summary>
+        private static void ReadContractVessels(GameSnapshot snapshot)
+        {
+            var game = HighLogic.CurrentGame;
+            if (snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0 || game == null || game.flightState == null) return;
+            var bodies = FlightGlobals.Bodies;
+            foreach (var saved in game.flightState.protoVessels)
+            {
+                if (saved == null || saved.persistentId == snapshot.CraftPersistentId) continue;
+                var crew = saved.GetVesselCrew().Select(c => c.name);
+                var guid = ContractVessels.ContractFor(snapshot.Contracts, saved.vesselName, crew);
+                if (guid.Length == 0) continue;
+                var entry = new SnapshotVessel { Id = saved.persistentId, Name = saved.vesselName ?? "", Body = SavedBody(saved), Situation = saved.situation.ToString(), ContractGuid = guid };
+                if (entry.IsDown) entry.Position = new SnapshotPosition { Latitude = saved.latitude, Longitude = saved.longitude, Altitude = saved.altitude };
+                else
+                {
+                    ReadSavedOrbit(entry, saved);
+                    if (saved.orbitSnapShot != null) entry.Inclination = saved.orbitSnapShot.inclination;
+                }
+                snapshot.ContractVessels.Add(entry);
+            }
         }
 
         private static SnapshotTarget LiveTarget(GameSnapshot snapshot, uint id)
@@ -381,6 +409,7 @@ namespace ClaudiaKerman.Adapter
             ReadAboard(snapshot);
             ReadSavedVessels(snapshot);
             snapshot.Contracts = ContractReader.Read();
+            ReadContractVessels(snapshot);
             return snapshot;
         }
 
@@ -481,6 +510,11 @@ namespace ClaudiaKerman.Adapter
                 {
                     Classify(snapshot, part, info, module);
                     if (ShipSystemsKeeper.CannotRetract(module)) info.CannotRetract = true;
+                    // #1033: what its inventory holds (an EVA repair kit, a part to attach), by part name.
+                    var inventory = module as ModuleInventoryPart;
+                    if (inventory != null && inventory.storedParts != null)
+                        foreach (var stored in inventory.storedParts.Values)
+                            if (stored != null && !string.IsNullOrEmpty(stored.partName)) info.Stowed.Add(stored.partName);
                     ReadReleases(info, part, module as ModuleDecouplerBase);
                     var engine = module as ModuleEngines;
                     if (engine != null && engine.EngineIgnited) info.EngineLit = true;
@@ -679,6 +713,8 @@ namespace ClaudiaKerman.Adapter
             {
                 var wheel = module as ModuleWheelBase;
                 if (wheel != null && wheel.wheelType == WheelType.LEG) Tag(info, "landing_leg");
+                // #1031: a mobile base's wheels.
+                else if (wheel != null) Tag(info, "wheel");
             }
             else if (Is(module, "ModuleAblator")) Tag(info, "heat_shield");
             else if (Is(module, "ModuleDataTransmitter"))
@@ -731,6 +767,8 @@ namespace ClaudiaKerman.Adapter
                 var experiment = module as ModuleScienceExperiment;
                 if (experiment != null) snapshot.Experiments.Add(ReadExperiment(part, experiment));
             }
+            // #1032: Breaking Ground's robotic scanner arm, for a surface-feature scan Contract; by class name, so the game without the expansion reads as ever.
+            if (Is(module, "ModuleRobotArmScanner")) Tag(info, "arm_scanner");
         }
 
         private static void Tag(SnapshotPart info, string tag)
