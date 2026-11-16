@@ -46,6 +46,10 @@ namespace ClaudiaKerman.Core.Contracts
         public string Experiment;
         /// <summary>#1030: the survey waypoint it is met at; null for every other kind.</summary>
         public SurveyWaypoint Waypoint;
+        /// <summary>#1031: the orbit a satellite is put into; null for every other kind.</summary>
+        public ContractOrbit Orbit;
+        /// <summary>#1031: what a satellite, station or base needs of its vessel, checked against the craft; null for every other kind.</summary>
+        public VesselNeeds Vessel;
 
         public bool Plannable
         {
@@ -58,7 +62,7 @@ namespace ClaudiaKerman.Core.Contracts
     /// exploration (world-first) ones: a ProgressTrackingParameter of an ExplorationContract, by its <c>targetType</c> and
     /// <c>targetBody</c>; and (#1048) the Requirements met on a hop below orbit over the launch body: reaching space, and a part test
     /// FLYING or SUB_ORBITAL in an altitude band, read whole from its PartTest node's conditions. Every other Contract type is "not
-    /// yet" as a whole, and so are depth records (#1091); collect science and surveys are read by <see cref="ScienceKinds"/> (#1030). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
+    /// yet" as a whole, and so are depth records (#1091); collect science and surveys are read by <see cref="ScienceKinds"/> (#1030), satellites, stations and bases by <see cref="StructureKinds"/> (#1031). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
     /// meets on the way up; a distance record rides the launch to orbit (#1091).
     /// </summary>
     public static class ContractKinds
@@ -155,6 +159,7 @@ namespace ClaudiaKerman.Core.Contracts
         {
             var one = new ReadRequirement { Requirement = requirement };
             if (contract.Kind == ScienceKinds.CollectScience || contract.Kind == ScienceKinds.Survey) return ScienceKinds.Read(one, contract, requirement, home);
+            if (StructureKinds.Plans(contract.Kind)) return StructureKinds.Read(one, contract, requirement, home);
             if (contract.Kind != Exploration || requirement.Kind != "ProgressTrackingParameter")
             {
                 one.NotYet = contract.Kind != Exploration ? TypeNotYet(contract.Kind) : "not yet: " + requirement.Kind + " isn't a Contract Requirement Claudia can plan yet";

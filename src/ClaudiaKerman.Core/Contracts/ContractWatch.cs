@@ -227,7 +227,7 @@ namespace ClaudiaKerman.Core.Contracts
             switch (requirement.Reach)
             {
                 case ContractReach.Land: return down;
-                case ContractReach.Orbit: return snapshot.Situation == "ORBITING";
+                case ContractReach.Orbit: return snapshot.Situation == "ORBITING" && OrbitMiss(snapshot, requirement) == null;
                 default: return true;
             }
         }
@@ -236,7 +236,16 @@ namespace ClaudiaKerman.Core.Contracts
         public static string Gap(GameSnapshot snapshot, ChosenRequirement requirement)
         {
             if (snapshot == null) return "the mod has no reading of the craft";
+            var miss = snapshot.Situation == "ORBITING" && snapshot.Body == requirement.Body ? OrbitMiss(snapshot, requirement) : null;
+            if (miss != null) return miss;
             return "the craft is " + snapshot.Situation + " at " + ContractKinds.Named(snapshot.Body) + ", and the Requirement asks it to " + requirement.Words;
+        }
+
+        /// <summary>#1031: a satellite's orbit against the Contract's window, "inclination 3.4° outside the 5% window"; null when inside, or not a satellite.</summary>
+        private static string OrbitMiss(GameSnapshot snapshot, ChosenRequirement requirement)
+        {
+            var body = requirement.Orbit == null || snapshot.Orbit == null ? null : snapshot.Bodies.FirstOrDefault(b => b.Name == requirement.Orbit.Body);
+            return body == null ? null : requirement.Orbit.Miss(body, snapshot.Orbit.Apoapsis, snapshot.Orbit.Periapsis, snapshot.Orbit.Inclination);
         }
 
         public static string GuidOf(string key)

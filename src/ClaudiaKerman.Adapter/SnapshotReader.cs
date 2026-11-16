@@ -679,6 +679,8 @@ namespace ClaudiaKerman.Adapter
             {
                 var wheel = module as ModuleWheelBase;
                 if (wheel != null && wheel.wheelType == WheelType.LEG) Tag(info, "landing_leg");
+                // #1031: a mobile base's wheels.
+                else if (wheel != null) Tag(info, "wheel");
             }
             else if (Is(module, "ModuleAblator")) Tag(info, "heat_shield");
             else if (Is(module, "ModuleDataTransmitter"))

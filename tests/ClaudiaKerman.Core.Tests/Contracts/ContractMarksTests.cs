@@ -26,10 +26,10 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void AStockTypeClaudiaDoesNotPlanYetGetsTheHollowMarkWithTheKindTablesReason()
         {
-            var mark = ContractMarks.Of(Fixture("SatelliteContract.json"), false);
+            var mark = ContractMarks.Of(Fixture("TourismContract.json"), false);
 
             Assert.False(mark.Plannable);
-            Assert.Equal("not yet: satellites aren't planned yet", mark.Hover);
+            Assert.Equal("not yet: tourism aren't planned yet", mark.Hover);
         }
 
         /// <summary>#1048, #1029: a part test met on a hop below orbit over Kerbin is planned, and so is a haul into the Mun's orbit.</summary>

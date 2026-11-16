@@ -244,6 +244,7 @@ namespace ClaudiaKerman.Core.Contracts
                 var title = Title(contract, read);
                 foreach (var test in read.Where(r => r.Plannable && r.Test != null)) JudgeTest(test);
                 foreach (var science in read.Where(r => r.Plannable && r.Experiment != null)) JudgeScience(science);
+                foreach (var vessel in read.Where(r => r.Plannable && (r.Vessel != null || r.Orbit != null))) JudgeVessel(vessel);
                 var cant = read.FirstOrDefault(r => r.Plannable && r.CraftCant.Length > 0 && !r.Requirement.Optional);
                 if (cant != null && read.All(r => r.Plannable || r.Requirement.Optional))
                 {
@@ -324,6 +325,19 @@ namespace ClaudiaKerman.Core.Contracts
         }
 
         /// <summary>
+        /// #1031: a satellite, station or base against this craft: what it needs aboard (<see cref="StructureKinds.Lacks"/>) is "this craft
+        /// can't: …", never a Craft Check Blocker; a satellite orbit dipping under the lowest orbit priced round the body is "not yet".
+        /// </summary>
+        private void JudgeVessel(ReadRequirement read)
+        {
+            if (read.Vessel != null) read.CraftCant = StructureKinds.Lacks(_snapshot, read.Vessel);
+            var orbit = read.Orbit;
+            var body = orbit == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == orbit.Body);
+            if (body != null && orbit.PeR < DeltaVMap.LowOrbit(body))
+                read.NotYet = "not yet: the satellite's orbit, periapsis " + ContractOrbit.Km(orbit.PeR - body.Radius) + ", is under the lowest orbit priced round " + ContractKinds.Named(body.Name);
+        }
+
+        /// <summary>
         /// #1029: why <paramref name="route"/> doesn't meet a part test of <paramref name="set"/> ("this craft can't: on the ascent: speed
         /// 1,450 m/s, above the band, through 51–56 km"), with each test's window; null when it meets them all.
         /// </summary>
@@ -379,7 +393,8 @@ namespace ClaudiaKerman.Core.Contracts
             var needs = ContractNeeds(set);
             var home = set.SelectMany(p => p.Requirements).Any(r => r.Return) || (set.Count > 0 && !Remote);
             var requirements = set.SelectMany(p => p.Requirements).ToList();
-            return _routes.Best(needs, home, r => Late(set, r) == null, requirements.Where(r => r.Band != null).Select(r => r.Band), requirements.Where(r => r.Waypoint != null).Select(r => r.Waypoint));
+            return _routes.Best(needs, home, r => Late(set, r) == null, requirements.Where(r => r.Band != null).Select(r => r.Band), requirements.Where(r => r.Waypoint != null).Select(r => r.Waypoint),
+                requirements.Where(r => r.Orbit != null).Select(r => r.Orbit));
         }
 
         private static Dictionary<string, ContractReach> ContractNeeds(IEnumerable<Planned> set)
@@ -776,7 +791,7 @@ namespace ClaudiaKerman.Core.Contracts
             var windows = new Dictionary<string, TestWindow>();
             TestProblem(set, route, windows);
             choice.Requirements = set.SelectMany(p => p.Requirements.Select(r => new ChosenRequirement
-                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment })).ToList();
+                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.Vessel != null && r.Vessel.ChildMay })).ToList();
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
@@ -812,6 +827,10 @@ namespace ClaudiaKerman.Core.Contracts
                 text.Append("Survey waypoints, in the order to take them (by their passes from orbit, by least travel between landing sites): ")
                     .Append(string.Join("; ", route.Waypoints.Select((w, i) => (i + 1) + ". " + w.Where() + " on " + ContractKinds.Named(w.Body) + (w.Ground ? ", landed" : ", from orbit")).ToArray()))
                     .Append(". Run the science block with the survey's experiment at each: as the ground track passes over it, or landed at it.\n");
+            var orbits = choice.Requirements.Where(r => r.Orbit != null).Select(r => new { r.Orbit, Body = _snapshot.Bodies.FirstOrDefault(b => b.Name == r.Orbit.Body) }).Where(o => o.Body != null).ToList();
+            if (orbits.Count > 0)
+                text.Append("Satellite orbits: ").Append(string.Join("; ", orbits.Select(o => ContractKinds.Named(o.Body.Name) + ": " + o.Orbit.Words(o.Body) + ", within the " + o.Orbit.Window.ToString("0.##", CultureInfo.InvariantCulture) + "% window").ToArray()))
+                    .Append(". Write these figures in the leg that reaches the orbit, flown by the craft or the one Child Vessel that is the satellite; the plan check reads them.\n");
             if (choice.Requirements.Any(r => r.Experiment == ""))
                 text.Append("Collect science: run the science block in the phase given.\n");
             if (route.HopAp.HasValue)

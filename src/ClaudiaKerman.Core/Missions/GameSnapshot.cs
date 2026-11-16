@@ -31,7 +31,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The stage the part is in (its inverse stage number): 0 is the last to go.</summary>
         public int Stage;
         /// <summary>What the part can do, as the adapter reads it: command, crew_seat, probe_core, parachute, landing_leg,
-        /// heat_shield, antenna, electric_generator, reaction_wheel, rcs, aero_stabiliser, gimbal, engine, experiment, kos_processor, decoupler, docking_port.</summary>
+        /// heat_shield, antenna, electric_generator, reaction_wheel, rcs, aero_stabiliser, gimbal, engine, experiment, kos_processor, decoupler, docking_port, wheel (#1031: a wheel that isn't a landing leg).</summary>
         public List<string> Tags = new List<string>();
         public int CrewCapacity;
         /// <summary>The kerbals aboard this part (#927); -1: not read (an older snapshot), when <see cref="PartTree.CommandPart"/> goes by seats. Written only to the capture, never to Claudia's facts.</summary>
