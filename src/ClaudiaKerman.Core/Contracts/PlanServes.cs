@@ -31,6 +31,10 @@ namespace ClaudiaKerman.Core.Contracts
         public bool ChildMay;
         /// <summary>#1032: the hands-on work the player does in a Manual stretch after the leg that lands there, "plant a flag on EVA"; "" when none.</summary>
         public string Manual = "";
+        /// <summary>#1035: the wait after the Mission before the game marks it met, once placed; null when it is met in flight.</summary>
+        public MissionWait AfterMission;
+        /// <summary>#1035: the Sentinel telescope's solar orbit it places; null for every other kind.</summary>
+        public SolarPlacement Placement;
     }
 
     /// <summary>The Contract Route's record of one chosen Requirement: the leg of the Mission Plan that serves it, -1 when none does.</summary>

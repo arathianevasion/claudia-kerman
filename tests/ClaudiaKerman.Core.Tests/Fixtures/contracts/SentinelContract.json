@@ -1,0 +1,48 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000017",
+        "kind": "SentinelContract",
+        "state": "Active",
+        "deadline_ut": 46029900.0,
+        "rewards": {
+          "funds": 30600.0,
+          "science": 3.0,
+          "reputation": 6.0
+        },
+        "settings": {
+          "type": "SentinelContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000017",
+          "state": "Active",
+          "prestige": "1"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000017/0",
+            "kind": "SentinelParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "SentinelParameter",
+              "state": "Incomplete",
+              "FocusBody": "1",
+              "ScanType": "0",
+              "TargetSize": "A",
+              "MinEccentricity": "0",
+              "MinInclination": "0",
+              "TotalDiscoveries": "8",
+              "RemainingDiscoveries": "8"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

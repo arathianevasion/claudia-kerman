@@ -1,0 +1,43 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000018",
+        "kind": "CometDetectionContract",
+        "state": "Active",
+        "deadline_ut": 46029900.0,
+        "rewards": {
+          "funds": 52000.0,
+          "science": 9.0,
+          "reputation": 15.0
+        },
+        "settings": {
+          "type": "CometDetectionContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000018",
+          "state": "Active",
+          "prestige": "1"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000018/0",
+            "kind": "CometDetectionParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "CometDetectionParameter",
+              "state": "Incomplete",
+              "count": "2",
+              "partName": "InfraredTelescope"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
