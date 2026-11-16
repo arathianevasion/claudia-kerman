@@ -153,6 +153,50 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("only orbits the Mun", problem);
         }
 
+        // ---- A retry after Hand back ----
+
+        /// <summary>The exploration Contract "Explore the Mun", landing met, its flag not met at Hand back: droppable, with the revised plan's say.</summary>
+        private static ContractReplan Retry(MissionPlan plan, int firstUnflown)
+        {
+            var contract = ContractCheckTests.Exploration("c-explore", 10000, "Mun:LANDING", "Mun:FLAGPLANT");
+            var check = Check(ContractCheckTests.With(contract));
+            var chosen = check.Choose(check.TickedGuids).Requirements;
+            contract.Requirements[0].State = "Complete";
+            var snapshot = ContractCheckTests.With(contract);
+            snapshot.Body = "Mun";
+            snapshot.Situation = "LANDED";
+            var droppable = new Dictionary<string, string> { { "c-explore", "\"plant a flag on the Mun\" isn't met: " + ContractWatch.NotMetAtHandBack } };
+            return ContractReplan.Check(snapshot, plan, chosen, "", "Kerbin", droppable, new HashSet<string>(), new List<string>(), new HashSet<string>(), firstUnflown);
+        }
+
+        [Fact]
+        public void ARetryStretchKeepsAContractWhoseOtherRequirementsWereMetOnLegsAlreadyFlown()
+        {
+            var replan = Retry(Plan("Transfer to the Mun and land", "*Plant the flag", "Return to Kerbin"), 1);
+
+            Assert.Empty(replan.Drops);
+            Assert.Empty(replan.Problems);
+        }
+
+        [Fact]
+        public void ARetryStretchAfterTheFlownOneCarriesTheServesTagNotTheFlownOne()
+        {
+            var replan = Retry(Plan("Transfer to the Mun and land", "*Plant the flag", "*Plant the flag again", "Return to Kerbin"), 2);
+
+            Assert.Empty(replan.Drops);
+            Assert.Equal(2, replan.Record.Single(r => r.Words == "plant a flag on the Mun").Leg);
+            Assert.Contains("Explore the Mun", replan.Legs[2]);
+            Assert.DoesNotContain("Explore the Mun", replan.Legs[1]);
+        }
+
+        [Fact]
+        public void ARevisedPlanWithNoRetryStretchStillDropsIt()
+        {
+            var replan = Retry(Plan("Transfer to the Mun and land", "*Plant the flag", "Return to Kerbin"), 2);
+
+            Assert.Contains("c-explore", replan.Drops.Keys);
+        }
+
         // ---- What the craft needs: "this craft can't: …" ----
 
         [Fact]

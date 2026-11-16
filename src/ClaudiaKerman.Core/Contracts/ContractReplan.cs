@@ -42,7 +42,9 @@ namespace ClaudiaKerman.Core.Contracts
             var retries = new List<ServedRequirement>();
             foreach (var contract in open.Where(r => droppable.ContainsKey(ContractWatch.GuidOf(r.Key))).GroupBy(r => ContractWatch.GuidOf(r.Key)))
             {
-                var ahead = PlanServes.Check(snapshot, plan, contract.ToList(), words, home, firstUnflown).Record;
+                // #1032: only what the game hasn't marked met needs a leg still to fly: a flag retried after a landing already met.
+                var unmet = contract.Where(r => !MetInGame(snapshot, contract.Key, r.Key)).ToList();
+                var ahead = PlanServes.Check(snapshot, plan, unmet, words, home, firstUnflown).Record;
                 var stillToFly = (ended == null || !ended.Contains(contract.Key)) && ahead.All(r => r.Leg >= 0);
                 if (stillToFly) retries.AddRange(ahead);
                 else result.Drops[contract.Key] = contract.First().Title + ": " + droppable[contract.Key];
@@ -53,7 +55,28 @@ namespace ClaudiaKerman.Core.Contracts
             result.Problems.AddRange(served.Problems);
             result.Legs = served.Legs;
             result.Record = served.Record.Select(r => retries.FirstOrDefault(x => x.Key == r.Key) ?? r).ToList();
+            MoveTags(served.Record, result.Record, result.Legs);
             return result;
+        }
+
+        private static bool MetInGame(GameSnapshot snapshot, string guid, string key)
+        {
+            var contract = snapshot == null || snapshot.Contracts == null ? null : snapshot.Contracts.Accepted.FirstOrDefault(c => c.Guid == guid);
+            var found = contract == null ? null : ContractWatch.Find(contract.Requirements, key);
+            return found != null && found.State == "Complete";
+        }
+
+        /// <summary>#1032: a retry's Serves tag goes on the leg still to fly that serves it, off the flown one unless another Requirement of its Contract is served there.</summary>
+        private static void MoveTags(List<ServedRequirement> served, List<ServedRequirement> record, List<string[]> legs)
+        {
+            foreach (var was in served)
+            {
+                var now = record.First(r => r.Key == was.Key);
+                if (now.Leg == was.Leg || now.Leg < 0 || now.Leg >= legs.Count) continue;
+                if (was.Leg >= 0 && was.Leg < legs.Count && !record.Any(r => r.Title == was.Title && r.Leg == was.Leg))
+                    legs[was.Leg] = legs[was.Leg].Where(t => t != was.Title).ToArray();
+                if (!legs[now.Leg].Contains(now.Title)) legs[now.Leg] = legs[now.Leg].Concat(new[] { now.Title }).ToArray();
+            }
         }
 
         private static void AddAsked(GameSnapshot snapshot, MissionPlan plan, IList<ChosenRequirement> chosen, string home, IList<string> asked, ContractReplan result)
