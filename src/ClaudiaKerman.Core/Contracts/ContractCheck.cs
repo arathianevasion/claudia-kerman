@@ -841,6 +841,11 @@ namespace ClaudiaKerman.Core.Contracts
             if (orbits.Count > 0)
                 text.Append("Satellite orbits: ").Append(string.Join("; ", orbits.Select(o => ContractKinds.Named(o.Body.Name) + ": " + o.Orbit.Words(o.Body) + ", within the " + o.Orbit.Window.ToString("0.##", CultureInfo.InvariantCulture) + "% window").ToArray()))
                     .Append(". Write these figures in the leg that reaches the orbit, flown by the craft or the one Child Vessel that is the satellite; the plan check reads them.\n");
+            var manual = choice.Requirements.Where(r => r.Manual.Length > 0).ToList();
+            if (manual.Count > 0)
+                text.Append("Manual stretches the player flies (you fly): ")
+                    .Append(string.Join("; ", manual.Select(r => r.Manual + ", landed on " + ContractKinds.Named(r.Body)).ToArray()))
+                    .Append(". Land as near the spot as you can; plan each as its own Maneuver Sequence with manual true and an empty script, after the leg that lands there and before the craft leaves. The walk or drive from the landing is the player's.\n");
             if (choice.Requirements.Any(r => r.Experiment == ""))
                 text.Append("Collect science: run the science block in the phase given.\n");
             if (route.HopAp.HasValue)

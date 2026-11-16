@@ -733,6 +733,8 @@ namespace ClaudiaKerman.Adapter
                 var experiment = module as ModuleScienceExperiment;
                 if (experiment != null) snapshot.Experiments.Add(ReadExperiment(part, experiment));
             }
+            // #1032: Breaking Ground's robotic scanner arm, for a surface-feature scan Contract; by class name, so the game without the expansion reads as ever.
+            if (Is(module, "ModuleRobotArmScanner")) Tag(info, "arm_scanner");
         }
 
         private static void Tag(SnapshotPart info, string tag)

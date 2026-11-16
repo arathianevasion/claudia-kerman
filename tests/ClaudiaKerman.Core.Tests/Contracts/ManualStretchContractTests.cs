@@ -87,6 +87,72 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(LandingOn("Mun"), check.RouteDeltaV, 3);
         }
 
+        // ---- The request and the plan check ----
+
+        private static ContractChoice FlagChoice(out GameSnapshot snapshot)
+        {
+            snapshot = ContractCheckTests.With(Fixture("PlantFlag.json", "c-flag"));
+            var check = Check(snapshot);
+            return check.Choose(check.TickedGuids);
+        }
+
+        /// <summary>A plan whose legs are named; a name starting "*" is a Manual stretch.</summary>
+        private static MissionPlan Plan(params string[] legs)
+        {
+            var plan = new MissionPlan();
+            foreach (var leg in legs)
+                plan.Sequences.Add(new PlannedSequence { Name = leg.TrimStart('*'), Intent = "Fly it.", DeltaV = 100, Manual = leg.StartsWith("*", System.StringComparison.Ordinal) });
+            return plan;
+        }
+
+        [Fact]
+        public void TheRequestAsksClaudiaToPlanTheManualStretchAfterTheLandingThatServesIt()
+        {
+            var section = FlagChoice(out _).Section;
+
+            Assert.Contains("Manual stretches the player flies (you fly)", section);
+            Assert.Contains("plant a flag on EVA, landed on the Mun", section);
+            Assert.Contains("manual true and an empty script", section);
+        }
+
+        [Fact]
+        public void AManualStretchAfterTheLandingServesTheRequirementAndCarriesItsServesTag()
+        {
+            var choice = FlagChoice(out var snapshot);
+
+            var served = PlanServes.Check(snapshot, Plan("Launch to low Kerbin orbit", "Transfer to the Mun and land", "*Plant the flag", "Return to Kerbin"), choice.Requirements, "", "Kerbin");
+
+            Assert.Empty(served.Problems);
+            Assert.Equal(2, Assert.Single(served.Record).Leg);
+            Assert.Equal(new[] { "PlantFlag" }, served.Legs[2]);
+            Assert.Empty(served.Legs[1]);
+        }
+
+        [Fact]
+        public void APlanThatLandsButPlansNoManualStretchThereGoesBackToClaudiaAsAFinding()
+        {
+            var choice = FlagChoice(out var snapshot);
+
+            var served = PlanServes.Check(snapshot, Plan("Launch to low Kerbin orbit", "Transfer to the Mun and land", "Return to Kerbin", "*Plant the flag"), choice.Requirements, "", "Kerbin");
+
+            var problem = Assert.Single(served.Problems);
+            Assert.Contains("plant a flag on the Mun", problem);
+            Assert.Contains("no Manual stretch", problem);
+            Assert.Contains("after leg 2 \"Transfer to the Mun and land\"", problem);
+            Assert.Equal(-1, Assert.Single(served.Record).Leg);
+        }
+
+        [Fact]
+        public void APlanThatNeverLandsGetsTheLandingFindingFirst()
+        {
+            var choice = FlagChoice(out var snapshot);
+
+            var served = PlanServes.Check(snapshot, Plan("Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit", "*Plant the flag"), choice.Requirements, "", "Kerbin");
+
+            var problem = Assert.Single(served.Problems);
+            Assert.Contains("only orbits the Mun", problem);
+        }
+
         // ---- What the craft needs: "this craft can't: …" ----
 
         [Fact]
