@@ -171,6 +171,15 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>#1033: Clear with a Target Vessel Contract ticked unticks it (by GUID) rather than leaving it without its vessel; "" otherwise.</summary>
         public string Unticks = "";
 
+        /// <summary>#1033: the target is one the goal names or the player picked, so it wins over a Target Vessel Contract's vessel; KSP's target never does.</summary>
+        public bool GivenByPlayer
+        {
+            get { return Target != null && (Reason == ByPick || Reason == ByGoal); }
+        }
+
+        internal const string ByPick = "your pick";
+        internal const string ByGoal = "named in the Mission Goal";
+
         /// <summary>The start form's line under the Mission Goal; "" when the goal needs no target.</summary>
         public string Line
         {
@@ -249,13 +258,13 @@ namespace ClaudiaKerman.Core.Missions
             {
                 if (contract != null && contract.Id == pick.Id) return FromContract(choice, contract, goal, options);
                 var picked = options.FirstOrDefault(v => v.Id == pick.Id);
-                return picked != null ? Displacing(Chosen(choice, picked, "your pick", goal, options), contract)
+                return picked != null ? Displacing(Chosen(choice, picked, TargetChoice.ByPick, goal, options), contract)
                     : None(choice, "\"" + pick.Name.Trim() + "\", your pick, is no longer in the list");
             }
 
             var named = ranked.Where(r => r.Rank == RankNamed).ToList();
             if (named.Count == 1 && contract != null && named[0].Vessel.Id == contract.Id) return FromContract(choice, contract, goal, options);
-            if (named.Count == 1) return Displacing(Chosen(choice, named[0].Vessel, "named in the Mission Goal", goal, options), contract);
+            if (named.Count == 1) return Displacing(Chosen(choice, named[0].Vessel, TargetChoice.ByGoal, goal, options), contract);
             // #1033: with no one vessel the goal gives, the ticked Contract's vessel is the target, before KSP's.
             if (contract != null) return FromContract(choice, contract, goal, options);
             if (named.Count > 1) return None(choice, "several vessels are named \"" + named[0].Vessel.Name.Trim() + "\": Choose one");

@@ -135,7 +135,7 @@ namespace ClaudiaKerman.Core.Missions
             var snapshot = _snapshot;
             if (snapshot == null || snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0) return false;
             // #1033: a target the goal or the player's pick gives wins over a Target Vessel Contract's vessel (ADR 0013's amendment).
-            var check = ContractCheck.Work(snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent, ChooseTarget(start.Goal, start.Target).Target);
+            var check = ContractCheck.Work(snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent, GivenTarget(start.Goal, start.Target));
             if (!check.Priceable)
             {
                 refusal = "The craft's delta-v isn't known (turn on the stock delta-v readout), so your Contracts can't be priced. Turn it on, then start again.";
@@ -168,6 +168,8 @@ namespace ClaudiaKerman.Core.Missions
             var ticked = Ticked();
             // A set that doesn't fit is never sent: "Plan these" is greyed for it.
             if (_contractCheck == null || ticked.Count == 0 || !_contractCheck.SetFits) return;
+            // #1033: a Target Vessel Contract ticked again after Clear, or against another target picked, goes out rather than fly without its vessel.
+            if (_form != null && TargetWins(_form)) return;
             var choice = _contractCheck.Choose(ticked);
             var start = _contractStart.Answered(choice.Goal, choice);
             _contractCheck = null;

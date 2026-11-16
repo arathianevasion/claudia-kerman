@@ -250,5 +250,27 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("c-repair", ContractVessels.ContractFor(contracts, "relay sat q-7", new string[0]));
             Assert.Equal("", ContractVessels.ContractFor(contracts, "Kerbin Station", new[] { "Bill Kerman" }));
         }
+
+        [Fact]
+        public void ACometTheGameHasntSpawnedIsNotFoundRatherThanUnpriced()
+        {
+            var snapshot = CometAt("Kerbin", 900);
+            snapshot.ContractVessels.Clear();
+
+            Assert.Equal("not yet: the Contract's vessel isn't in the game", Assert.Single(Check(snapshot).NotThisFlight).Reason);
+        }
+
+        [Fact]
+        public void TheCrewCheckIsForTheTraitTheContractNames()
+        {
+            var repair = Fixture("VesselRepairContract.json", "c-repair");
+            var trait = repair.Requirements[0];
+            trait.Settings = trait.Settings.Select(s => s.Name == "targetTrait" ? new ContractSetting("targetTrait", "Scientist") : s).ToList();
+            var snapshot = WithEngineer(repair);
+            snapshot.Craft.Parts[0].Stowed.Add("evaRepairKit");
+            snapshot.ContractVessels.Add(Spawned(repair, 4410, "Relay Sat Q-7", 250));
+
+            Assert.Equal("this craft can't: no Scientist aboard", Assert.Single(Check(snapshot).NotThisFlight).Reason);
+        }
     }
 }

@@ -68,8 +68,8 @@ namespace ClaudiaKerman.Core.Contracts
         public bool Rendezvous;
         /// <summary>#1033: the orbit the rendezvous matches, priced from the low orbit round its body; null when landed or not a rendezvous.</summary>
         public ContractOrbit RendezvousOrbit;
-        /// <summary>#1033: an Engineer must be aboard (a repair or a construction).</summary>
-        public bool Engineer;
+        /// <summary>#1033: the crew trait that must be aboard (a repair's or a construction's Engineer); "" for none.</summary>
+        public string Trait = "";
 
         public bool Plannable
         {

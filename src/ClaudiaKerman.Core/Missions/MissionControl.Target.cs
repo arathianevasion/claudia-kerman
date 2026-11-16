@@ -62,11 +62,29 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private void FormChanged(StartFormChanged form)
         {
-            var wasCleared = _form != null && _form.Target.Kind == TargetPickKind.Cleared;
             _form = form;
-            if (wasCleared || form.Target.Kind != TargetPickKind.Cleared || _contractCheck == null || !MissionOver) return;
-            var unticks = ChooseTarget(form.Goal, form.Target).Unticks;
-            if (unticks.Length > 0) _contractCheck.Tick(unticks, false);
+            TargetWins(form);
+        }
+
+        /// <summary>
+        /// #1033: with the card up, the form's Clear unticks the ticked Target Vessel Contract, and a target the form's goal or pick gives
+        /// in place of its vessel unticks it too (ADR 0013's amendment: the Contract's vessel never replaces it). True when one was unticked.
+        /// </summary>
+        private bool TargetWins(StartFormChanged form)
+        {
+            if (_contractCheck == null || !MissionOver) return false;
+            var choice = ChooseTarget(form.Goal, form.Target);
+            var gone = choice.Unticks.Length > 0 ? choice.Unticks : choice.Displaces;
+            if (gone.Length == 0) return false;
+            _contractCheck.Tick(gone, false);
+            return true;
+        }
+
+        /// <summary>#1033: the Target Vessel the goal or the player's pick gives, which a Target Vessel Contract's vessel never replaces; null for none (KSP's target included).</summary>
+        private TargetVessel GivenTarget(string goal, TargetPick pick)
+        {
+            var choice = ChooseTarget(goal, pick);
+            return choice.GivenByPlayer ? choice.Target : null;
         }
 
         /// <summary>The Mission takes the target the Craft Check judged, and the log says how it was found or why there is none.</summary>

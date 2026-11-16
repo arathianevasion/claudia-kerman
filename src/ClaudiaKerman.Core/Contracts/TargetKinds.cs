@@ -80,7 +80,6 @@ namespace ClaudiaKerman.Core.Contracts
         public const string NotFoundNotYet = "not yet: the Contract's vessel isn't in the game";
         public const string HomeLandedNotYet = "not yet: a vessel landed on Kerbin isn't planned yet";
         public const string OneTarget = "not this flight: one Target Vessel per Mission";
-        public const string NoEngineer = "this craft can't: no Engineer aboard";
         public const string NoRepairKit = "this craft can't: no EVA repair kit aboard";
         public const string NoKerbalForSample = "this craft can't: a comet sample needs a kerbal aboard to go on EVA";
 
@@ -135,8 +134,9 @@ namespace ClaudiaKerman.Core.Contracts
                     one.Words = "bring " + Kerbal(one.Target) + " home";
                     return one;
                 case "CrewTraitParameter":
-                    one.Engineer = true;
-                    one.Words = "carry an Engineer to " + name;
+                    one.Trait = ContractKinds.Setting(one.Requirement, "targetTrait");
+                    if (one.Trait.Length == 0) one.Trait = "Engineer";
+                    one.Words = "carry " + (one.Trait.StartsWith("E", StringComparison.Ordinal) ? "an " : "a ") + one.Trait + " to " + name;
                     return one;
                 case "ConstructionParameter":
                     one.Rendezvous = true;
@@ -170,7 +170,7 @@ namespace ClaudiaKerman.Core.Contracts
             var vessel = target.Vessel = snapshot.ContractVessels.FirstOrDefault(v => v.ContractGuid == target.Guid);
             if (vessel == null)
             {
-                one.NotYet = target.Kind == Comet ? CometNotYet : NotFoundNotYet;
+                one.NotYet = NotFoundNotYet;
                 return;
             }
             Rename(one);
@@ -220,7 +220,7 @@ namespace ClaudiaKerman.Core.Contracts
             var parts = snapshot.Craft.Parts;
             var target = one.Target;
             if (target.Kind == Rescue && one.Rendezvous && snapshot.FreeSeats == 0) return "this craft can't: no empty seat for " + Kerbal(target);
-            if (one.Engineer && !snapshot.Crew.Any(c => string.Equals(c.Trait, "Engineer", StringComparison.OrdinalIgnoreCase))) return NoEngineer;
+            if (one.Trait.Length > 0 && !snapshot.Crew.Any(c => string.Equals(c.Trait, one.Trait, StringComparison.OrdinalIgnoreCase))) return "this craft can't: no " + one.Trait + " aboard";
             if (!one.Rendezvous) return "";
             if (target.Kind == Repair && !Has(parts, RepairKitPart)) return NoRepairKit;
             if ((target.Kind == OrbitalConstruction || target.Kind == RoverConstruction) && target.Part.Length > 0 && !Has(parts, target.Part))

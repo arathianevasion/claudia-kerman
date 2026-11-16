@@ -175,6 +175,52 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void KspsTargetNeverPushesARescueOutOnlyTheGoalOrThePickDoes()
+        {
+            var snapshot = ARescue();
+            var station = new SnapshotVessel { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            snapshot.Vessels.Add(station);
+            snapshot.KspTarget = new SnapshotTarget { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            var mission = Control(snapshot);
+
+            mission.Send(Start("Rendezvous and bring the kerbal home."));
+            Settle();
+
+            Assert.True(mission.View.ContractCheck.Rows.Single().Ticked);
+        }
+
+        [Fact]
+        public void PickingAnotherVesselWithTheCardUpUnticksTheRescue()
+        {
+            var snapshot = ARescue();
+            var station = new SnapshotVessel { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            snapshot.Vessels.Add(station);
+            var mission = Control(snapshot);
+            mission.Send(Start(""));
+            Settle();
+
+            mission.Send(new StartFormChanged("", TargetPick.Of(station)));
+
+            Assert.False(mission.View.ContractCheck.Rows.Single().Ticked);
+        }
+
+        [Fact]
+        public void ARescueTickedAgainAfterClearIsUntickedAtPlanTheseNotFlownWithoutItsVessel()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            Settle();
+            mission.Send(new StartFormChanged("", TargetPick.Cleared));
+            mission.Send(new TickContract("c-rescue", true));
+
+            mission.Send(new PlanContracts());
+            Settle();
+
+            Assert.Equal(MissionStage.None, mission.View.Stage);
+            Assert.False(mission.View.ContractCheck.Rows.Single().Ticked);
+        }
+
+        [Fact]
         public void PlanTheseTakesTheRescuesVesselAsTheMissionsTargetVessel()
         {
             var mission = Control(ARescue());
