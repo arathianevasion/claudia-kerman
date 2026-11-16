@@ -129,6 +129,22 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AHighGeeRequirementWithItsOwnConditionsUnderItIsNotYetToo()
+        {
+            var gee = Tourism("c-gee");
+            gee.Requirements.Add(new ContractRequirement
+            {
+                Key = "c-gee/1", Kind = "KerbalGeeAdventureParameter", State = "Incomplete",
+                Requirements = { new ContractRequirement { Key = "c-gee/1.0", Kind = "KerbalDestinationParameter", State = "Incomplete",
+                    Settings = { new ContractSetting("targetBody", "1"), new ContractSetting("targetType", "Suborbit") } } },
+            });
+
+            var left = Assert.Single(Check(Aboard(gee)).NotThisFlight);
+
+            Assert.Equal(TourKinds.GeeNotYet, left.Reason);
+        }
+
+        [Fact]
         public void MissionControlMarksATourismContractPlannable()
         {
             var mark = ContractMarks.Of(Tourism(), false);

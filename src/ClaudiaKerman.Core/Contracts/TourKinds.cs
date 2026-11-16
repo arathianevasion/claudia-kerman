@@ -31,10 +31,20 @@ namespace ClaudiaKerman.Core.Contracts
             return kind == Tourism || kind == GrandTour;
         }
 
-        /// <summary>A tourist's tour: read whole, its destinations and the trip home, by <see cref="ReadTour"/>.</summary>
-        public static bool IsTour(SnapshotContract contract, ContractRequirement requirement)
+        /// <summary>
+        /// A tourist's tour, or the high-gee variant's Requirement: read whole by <see cref="ReadWhole"/>, never through what is under it, so
+        /// a high-gee Requirement is "not yet" wherever it sits in the tree.
+        /// </summary>
+        public static bool ReadsWhole(SnapshotContract contract, ContractRequirement requirement)
         {
-            return contract.Kind == Tourism && requirement.Kind == TourKind;
+            return contract.Kind == Tourism && (requirement.Kind == TourKind || requirement.Kind == GeeKind);
+        }
+
+        /// <summary>A Requirement <see cref="ReadsWhole"/> picks: a tour (<see cref="ReadTour"/>), or the high-gee variant's, "not yet".</summary>
+        public static List<ReadRequirement> ReadWhole(SnapshotContract contract, ContractRequirement requirement, string home)
+        {
+            if (requirement.Kind == GeeKind) return new List<ReadRequirement> { ContractKinds.NotYet(new ReadRequirement { Requirement = requirement }, GeeNotYet) };
+            return ReadTour(contract, requirement, home);
         }
 
         /// <summary>One leaf of a tourism or Grand Tour Contract: a destination, or why it is "not yet".</summary>
@@ -50,7 +60,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// A tourist's tour: each destination still to visit, then the tour itself, met when the tourist is home again: a return from the
         /// furthest destination (an away body before home, the deepest reach), or from the launch when every destination is met already.
         /// </summary>
-        public static List<ReadRequirement> ReadTour(SnapshotContract contract, ContractRequirement tour, string home)
+        private static List<ReadRequirement> ReadTour(SnapshotContract contract, ContractRequirement tour, string home)
         {
             var read = tour.Requirements.Where(r => r.State != "Complete").Select(r => Read(new ReadRequirement { Requirement = r }, contract, r, home)).ToList();
             var name = ContractKinds.Setting(tour, "kerbalName");

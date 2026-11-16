@@ -314,7 +314,7 @@ namespace ClaudiaKerman.Core.Contracts
                     add(home, ContractReach.Land, true);
                     continue;
                 }
-                if (goesHome && landing &&SequenceWords.Landing.Match(words).Index < SequenceWords.Trip.Match(words).Index)
+                if (goesHome && landing && SequenceWords.Landing.Match(words).Index < SequenceWords.Trip.Match(words).Index)
                 {
                     // "Land on the Mun and return to Kerbin": down there first, then home.
                     var named = SequenceWords.NamedBody(snapshot, words);

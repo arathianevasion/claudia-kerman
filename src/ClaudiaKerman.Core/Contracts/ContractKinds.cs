@@ -153,9 +153,9 @@ namespace ClaudiaKerman.Core.Contracts
                 }
                 // A haul's conditions sit beside its PartTest Requirement: read with it.
                 if (contract.Kind == PartTest && TestConditions.Contains(requirement.Kind) && requirements.Any(r => r.Kind == PartTest)) continue;
-                if (TourKinds.IsTour(contract, requirement))
+                if (TourKinds.ReadsWhole(contract, requirement))
                 {
-                    read.AddRange(TourKinds.ReadTour(contract, requirement, home));
+                    read.AddRange(TourKinds.ReadWhole(contract, requirement, home));
                     continue;
                 }
                 if (requirement.Requirements.Count > 0)
