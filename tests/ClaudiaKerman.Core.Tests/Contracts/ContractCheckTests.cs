@@ -137,7 +137,10 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         public void EveryContractTypeNotPlannedYetIsNotYetWithItsReason()
         {
             var files = new[] { "SurveyContract.json", "TourismContract.json", "RecoverAsset.json" };
-            var snapshot = With(files.Select(Fixture).ToArray());
+            var contracts = files.Select(Fixture).ToArray();
+            // #1034: tourism is planned now; ISRU stays "not yet", read from the tourism fixture's tree.
+            contracts[1].Kind = "ISRUContract";
+            var snapshot = With(contracts);
 
             var check = Check(snapshot);
 

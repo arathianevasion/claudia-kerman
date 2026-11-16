@@ -308,6 +308,12 @@ namespace ClaudiaKerman.Core.Contracts
                     touches.Add(new Touch { Leg = i, Order = touches.Count, Body = home, Reach = ContractReach.Hop, Hop = true, Launch = written });
                     continue;
                 }
+                if (homeNow && touches.Any(t => t.Body == home && !t.Home) && (SequenceWords.KerbinDown.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(sequence.Name + " " + words)))
+                {
+                    // #1034: down home again from orbit round it ("Deorbit and land at KSC"): a tourist in Kerbin orbit is brought home here.
+                    add(home, ContractReach.Land, true);
+                    continue;
+                }
                 if (goesHome && landing && SequenceWords.Landing.Match(words).Index < SequenceWords.Trip.Match(words).Index)
                 {
                     // "Land on the Mun and return to Kerbin": down there first, then home.

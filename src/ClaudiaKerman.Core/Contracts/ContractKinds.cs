@@ -56,6 +56,8 @@ namespace ClaudiaKerman.Core.Contracts
         public string Manual = "";
         /// <summary>#1032: the Manual stretch scans a surface feature with the robotic arm, so the arm must be aboard.</summary>
         public bool ArmScan;
+        /// <summary>#1034: the tourist a tour brings home, who must be aboard ("" for any tourist); null for every other kind.</summary>
+        public string Tourist;
 
         public bool Plannable
         {
@@ -68,7 +70,7 @@ namespace ClaudiaKerman.Core.Contracts
     /// exploration (world-first) ones: a ProgressTrackingParameter of an ExplorationContract, by its <c>targetType</c> and
     /// <c>targetBody</c>; and (#1048) the Requirements met on a hop below orbit over the launch body: reaching space, and a part test
     /// FLYING or SUB_ORBITAL in an altitude band, read whole from its PartTest node's conditions. Every other Contract type is "not
-    /// yet" as a whole, and so are depth records (#1091); collect science and surveys are read by <see cref="ScienceKinds"/> (#1030), satellites, stations and bases by <see cref="StructureKinds"/> (#1031). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
+    /// yet" as a whole, and so are depth records (#1091); collect science and surveys are read by <see cref="ScienceKinds"/> (#1030), satellites, stations and bases by <see cref="StructureKinds"/> (#1031), tourism and Grand Tours by <see cref="TourKinds"/> (#1034). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
     /// meets on the way up; a distance record rides the launch to orbit (#1091).
     /// </summary>
     public static class ContractKinds
@@ -151,6 +153,11 @@ namespace ClaudiaKerman.Core.Contracts
                 }
                 // A haul's conditions sit beside its PartTest Requirement: read with it.
                 if (contract.Kind == PartTest && TestConditions.Contains(requirement.Kind) && requirements.Any(r => r.Kind == PartTest)) continue;
+                if (TourKinds.ReadsWhole(contract, requirement))
+                {
+                    read.AddRange(TourKinds.ReadWhole(contract, requirement, home));
+                    continue;
+                }
                 if (requirement.Requirements.Count > 0)
                 {
                     Walk(contract, requirement.Requirements, home, read);
@@ -166,6 +173,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (contract.Kind == ScienceKinds.CollectScience || contract.Kind == ScienceKinds.Survey) return ScienceKinds.Read(one, contract, requirement, home);
             if (StructureKinds.Plans(contract.Kind)) return StructureKinds.Read(one, contract, requirement, home);
             if (ManualKinds.Plans(contract.Kind)) return ManualKinds.Read(one, contract, requirement, home);
+            if (TourKinds.Plans(contract.Kind)) return TourKinds.Read(one, contract, requirement, home);
             if (contract.Kind != Exploration || requirement.Kind != "ProgressTrackingParameter")
             {
                 one.NotYet = contract.Kind != Exploration ? TypeNotYet(contract.Kind) : "not yet: " + requirement.Kind + " isn't a Contract Requirement Claudia can plan yet";
@@ -317,7 +325,7 @@ namespace ClaudiaKerman.Core.Contracts
             return int.TryParse(index, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out at) && at >= 0 && at < StockBodies.Length ? StockBodies[at] : null;
         }
 
-        private static ReadRequirement Hop(ReadRequirement one, string home, HopBand band)
+        internal static ReadRequirement Hop(ReadRequirement one, string home, HopBand band)
         {
             one.Body = home;
             one.Reach = ContractReach.Hop;
@@ -339,7 +347,7 @@ namespace ClaudiaKerman.Core.Contracts
             return double.TryParse(Setting(requirement, name), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value) ? value : (double?)null;
         }
 
-        private static string Verb(ContractReach reach)
+        internal static string Verb(ContractReach reach)
         {
             return reach == ContractReach.Flyby ? "fly by" : reach == ContractReach.Orbit ? "orbit" : "land on";
         }

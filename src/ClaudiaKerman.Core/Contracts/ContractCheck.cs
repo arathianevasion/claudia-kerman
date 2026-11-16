@@ -248,6 +248,7 @@ namespace ClaudiaKerman.Core.Contracts
                 foreach (var science in read.Where(r => r.Plannable && r.Experiment != null)) JudgeScience(science);
                 foreach (var vessel in read.Where(r => r.Plannable && (r.Vessel != null || r.Orbit != null))) JudgeVessel(vessel);
                 foreach (var manual in read.Where(r => r.Plannable && r.Manual.Length > 0)) manual.CraftCant = ManualKinds.Lacks(_snapshot, manual);
+                foreach (var tour in read.Where(r => r.Plannable && r.Tourist != null)) tour.CraftCant = TourKinds.Lacks(_snapshot, tour);
                 var cant = read.FirstOrDefault(r => r.Plannable && r.CraftCant.Length > 0 && !r.Requirement.Optional);
                 if (cant != null && read.All(r => r.Plannable || r.Requirement.Optional))
                 {
