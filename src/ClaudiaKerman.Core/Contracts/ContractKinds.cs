@@ -62,6 +62,14 @@ namespace ClaudiaKerman.Core.Contracts
         public MissionWait AfterMission;
         /// <summary>#1035: a Sentinel telescope it places in solar orbit; null for every other kind.</summary>
         public SolarPlacement Placement;
+        /// <summary>#1033: the Target Vessel Contract's vessel it is met at; null for every other kind.</summary>
+        public ContractTarget Target;
+        /// <summary>#1033: its leg flies the rendezvous with <see cref="Target"/> (the one Requirement of its Contract that does).</summary>
+        public bool Rendezvous;
+        /// <summary>#1033: the orbit the rendezvous matches, priced from the low orbit round its body; null when landed or not a rendezvous.</summary>
+        public ContractOrbit RendezvousOrbit;
+        /// <summary>#1033: an Engineer must be aboard (a repair or a construction).</summary>
+        public bool Engineer;
 
         public bool Plannable
         {
@@ -179,6 +187,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (ManualKinds.Plans(contract.Kind)) return ManualKinds.Read(one, contract, requirement, home);
             if (TourKinds.Plans(contract.Kind)) return TourKinds.Read(one, contract, requirement, home);
             if (PlacementKinds.Plans(contract.Kind)) return PlacementKinds.Read(one, contract, requirement, home);
+            if (TargetKinds.Plans(contract.Kind)) return TargetKinds.Read(one, contract, requirement, home);
             if (contract.Kind != Exploration || requirement.Kind != "ProgressTrackingParameter")
             {
                 one.NotYet = contract.Kind != Exploration ? TypeNotYet(contract.Kind) : "not yet: " + requirement.Kind + " isn't a Contract Requirement Claudia can plan yet";

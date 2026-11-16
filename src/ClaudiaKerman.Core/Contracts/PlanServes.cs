@@ -35,6 +35,10 @@ namespace ClaudiaKerman.Core.Contracts
         public MissionWait AfterMission;
         /// <summary>#1035: the Sentinel telescope's solar orbit it places; null for every other kind.</summary>
         public SolarPlacement Placement;
+        /// <summary>#1033: the Target Vessel Contract's vessel it is met at, by name; "" for every other kind.</summary>
+        public string Vessel = "";
+        /// <summary>#1033: the orbit the rendezvous with that vessel matches; null when none.</summary>
+        public ContractOrbit RendezvousOrbit;
     }
 
     /// <summary>The Contract Route's record of one chosen Requirement: the leg of the Mission Plan that serves it, -1 when none does.</summary>

@@ -63,6 +63,10 @@ namespace ClaudiaKerman.Core.Missions
         public double? ApoapsisM;
         /// <summary>Where a landed or splashed vessel is saved (#710); null when not read.</summary>
         public SnapshotPosition Position;
+        /// <summary>#1033: its orbit's inclination, degrees; null when landed or not read. Read for a Contract's vessel, whose rendezvous is priced.</summary>
+        public double? Inclination;
+        /// <summary>#1033: the Target Vessel Contract the game spawned it for, by GUID; "" for any other vessel.</summary>
+        public string ContractGuid = "";
 
         /// <summary>Whether it is landed or splashed, so its place, not its orbit, tells it apart (#710). Narrower than IsGrounded on purpose: a PRELAUNCH vessel is read by its orbit.</summary>
         public bool IsDown
