@@ -24,8 +24,11 @@ One Game Snapshot per accepted Contract, in the form the capture button writes t
 | `ROCScienceArmContract.json` | ROCScienceArmContract (Breaking Ground) | the research's type table (no save keys) | every key: `targetBody`, `subject` and `rocType` are guesses at `CollectROCScienceArm`'s body, subject and surface-feature type |
 | `ROCScienceRetrievalContract.json` | ROCScienceRetrievalContract (Breaking Ground) | the research's type table (no save keys) | every key, as for the arm scan; whether the sample must be recovered or transmitting it is enough |
 | `GrandTour.json` | GrandTour | the research's type table (no save shows its tree) | every key: `VesselDestinationParameter` with `targetBody` (body index) and `targetType` (flight-log entry: Flyby, Orbit, Land) is the research's guess; whether the destinations sit under one parent |
+| `SentinelContract.json` | SentinelContract | the research's type table (no save keys); the solar-orbit rule from the 1.12 localization data | every key of `SentinelParameter` (`FocusBody` as a body index, `TotalDiscoveries` and `RemainingDiscoveries` as the API's public fields name them); whether a `SpecificOrbitParameter` comes with it |
+| `CometDetectionContract.json` | CometDetectionContract (1.10) | the research's type table (no save keys) | every key of `CometDetectionParameter` (`count`, `partName` are guesses) |
+| `DeployedScienceContract.json` | DeployedScienceContract (Breaking Ground) | the research's type table (no save keys) | every key of `CollectDeployedScience` (`targetBody`, `subject`, `percentage` are guesses) |
 
-No fixture yet for the types whose tree no public save shows: ISRUContract, ARMContract, RoverConstructionContract, SentinelContract, CometDetectionContract, CometSampleContract, and Breaking Ground's DeployedScienceContract. The in-game recording adds them.
+No fixture yet for the types whose tree no public save shows: ISRUContract, ARMContract, RoverConstructionContract and CometSampleContract. The in-game recording adds them.
 
 ## Recorded in game
 

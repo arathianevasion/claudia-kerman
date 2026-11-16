@@ -80,6 +80,7 @@ namespace ClaudiaKerman.Core.Contracts
             var bands = new List<HopBand>();
             var waypoints = new List<SurveyWaypoint>();
             var orbits = new List<ContractOrbit>();
+            var telescopes = new List<SolarPlacement>();
             foreach (var one in open)
             {
                 var keys = new HashSet<string>(one.Value.Select(r => r.Key));
@@ -89,15 +90,22 @@ namespace ClaudiaKerman.Core.Contracts
                 waypoints.AddRange(read.Where(r => r.Waypoint != null).Select(r => r.Waypoint));
                 // #1031: a satellite is timed with its climb to the Contract's orbit.
                 orbits.AddRange(read.Where(r => r.Orbit != null).Select(r => r.Orbit));
+                // #1035: a Sentinel telescope is timed with its burn into solar orbit.
+                telescopes.AddRange(read.Where(r => r.Placement != null).Select(r => r.Placement));
             }
             // Like the Contract check, the order that keeps every deadline is preferred over the cheapest one.
             return new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return),
-                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands, waypoints, orbits);
+                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands, waypoints, orbits, telescopes);
         }
 
         private static double DoneOf(PricedRoute route, IEnumerable<ChosenRequirement> requirements, GameSnapshot snapshot, string home)
         {
-            return requirements.Select(r => route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return, Waypoint = route.WaypointUt.ContainsKey(r.Key) ? new SurveyWaypoint { Key = r.Key } : null, Orbit = r.Orbit }, home))
+            // #1035: one that completes after the Mission is done its wait after the placement.
+            return requirements.Select(r =>
+                {
+                    var done = route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return, Waypoint = route.WaypointUt.ContainsKey(r.Key) ? new SurveyWaypoint { Key = r.Key } : null, Orbit = r.Orbit, Placement = r.Placement }, home);
+                    return r.AfterMission == null ? done : (done ?? snapshot.Ut) + r.AfterMission.Seconds;
+                })
                 .Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(snapshot.Ut).Max();
         }
     }

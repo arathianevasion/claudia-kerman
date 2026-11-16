@@ -51,5 +51,191 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("Solar orbit near Kerbin", row.Phase);
             Assert.Contains("completes after the Mission", row.Detail(0));
         }
+
+        [Fact]
+        public void TheTelescopesPlacementIsPricedAsTheEscapeFromLowKerbinOrbitOnTopOfTheLaunch()
+        {
+            var orbit = ContractCheck.Work(ContractCheckTests.With(ContractCheckTests.Exploration("c-orbit", 10000, "Kerbin:ORBIT")), "", true, ContractCheckTests.Margin).RouteDeltaV;
+
+            var check = Remote(WithTelescope(Fixture("SentinelContract.json", "c-sentinel")));
+
+            // Low Kerbin orbit at 80 km is 2,279 m/s; escaping from it is (√2 − 1) of that, 944 m/s.
+            Assert.InRange(check.RouteDeltaV - orbit, 935, 955);
+        }
+
+        private static SnapshotContract Sentinel(string id, GameSnapshot pad, double deadlineDays)
+        {
+            var contract = Fixture("SentinelContract.json", id);
+            contract.DeadlineUt = pad.Ut + deadlineDays * 21600;
+            return contract;
+        }
+
+        [Fact]
+        public void ASentinelContractCountsWhenTheEstimatedWaitFitsItsDeadlineWithTheSpare()
+        {
+            // 8 asteroids at 10 days each is an 80-day wait after a placement about 21 days out: done by day 102, inside 200 days less 20.
+            var snapshot = WithTelescope();
+            snapshot.Contracts.Accepted.Add(Sentinel("c-sentinel", snapshot, 200));
+
+            var check = Remote(snapshot);
+
+            Assert.True(Assert.Single(check.Fitting).Ticked);
+        }
+
+        [Fact]
+        public void ASentinelContractWhoseWaitRunsPastItsDeadlineLessTheSpareCompletesLater()
+        {
+            // Done about day 102, past 110 days less the spare of 11.
+            var snapshot = WithTelescope();
+            snapshot.Contracts.Accepted.Add(Sentinel("c-sentinel", snapshot, 110));
+
+            var check = Remote(snapshot);
+
+            Assert.Empty(check.Fitting);
+            var left = Assert.Single(check.NotThisFlight);
+            Assert.Equal(LeftOutKind.CompletesLater, left.Kind);
+            Assert.StartsWith("completes later", left.Reason);
+        }
+
+        [Fact]
+        public void ASentinelContractNamingNoCountOfAsteroidsIsNotYetForWantOfAWaitEstimate()
+        {
+            var contract = Fixture("SentinelContract.json", "c-sentinel");
+            contract.Requirements[0].Settings.RemoveAll(s => s.Name.EndsWith("Discoveries", System.StringComparison.Ordinal));
+
+            var check = Remote(WithTelescope(contract));
+
+            var left = Assert.Single(check.NotThisFlight);
+            Assert.Equal(LeftOutKind.NotYet, left.Kind);
+            Assert.Equal("not yet: the Sentinel Contract names no count of asteroids, so the wait after the Mission can't be estimated", left.Reason);
+        }
+
+        [Fact]
+        public void ACraftWithoutTheTelescopeCantServeASentinelContract()
+        {
+            var snapshot = ContractCheckTests.With(Fixture("SentinelContract.json", "c-sentinel"));
+            snapshot.Craft.Parts[0].Tags.Add("antenna");
+            snapshot.Craft.Parts[0].Tags.Add("electric_generator");
+
+            var check = Remote(snapshot);
+
+            var left = Assert.Single(check.NotThisFlight);
+            Assert.Equal(LeftOutKind.CraftCant, left.Kind);
+            Assert.Equal("this craft can't: no InfraredTelescope on the Sentinel telescope", left.Reason);
+        }
+
+        [Fact]
+        public void ACometDetectionContractIsPlannedUpToPlacingTheTelescopeAndShownCompletesAfterTheMission()
+        {
+            var check = Remote(WithTelescope(Fixture("CometDetectionContract.json", "c-comets")));
+
+            var row = Assert.Single(check.Fitting);
+            Assert.True(row.AfterMission);
+            Assert.Equal("Solar orbit near Kerbin", row.Phase);
+            var chosen = Assert.Single(check.Choose(check.TickedGuids).Requirements);
+            Assert.Equal("the telescope detects 2 comets, about 60 days", chosen.AfterMission.Words);
+        }
+
+        [Fact]
+        public void ACometDetectionContractNamingNoCountIsNotYet()
+        {
+            var contract = Fixture("CometDetectionContract.json", "c-comets");
+            contract.Requirements[0].Settings.RemoveAll(s => s.Name == "count");
+
+            var left = Assert.Single(Remote(WithTelescope(contract)).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.NotYet, left.Kind);
+            Assert.Contains("names no count of comets", left.Reason);
+        }
+
+        [Fact]
+        public void ADeployedScienceContractIsPlannedAsALandingAndAManualStretchToSetUpTheStationThatCompletesAfterTheMission()
+        {
+            var check = ContractCheck.Work(ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station")), "", false, ContractCheckTests.Margin);
+
+            var row = Assert.Single(check.Fitting);
+            Assert.Equal("Mun", row.Phase);
+            Assert.True(row.YouFly);
+            Assert.True(row.AfterMission);
+            var chosen = Assert.Single(check.Choose(check.TickedGuids).Requirements);
+            Assert.Equal("set up the deployed science station on EVA", chosen.Manual);
+            Assert.Equal("the station collects 50% of its subject's science, about 50 days", chosen.AfterMission.Words);
+        }
+
+        [Fact]
+        public void ADeployedScienceContractNamingNoShareOfScienceIsNotYet()
+        {
+            var contract = Fixture("DeployedScienceContract.json", "c-station");
+            contract.Requirements[0].Settings.RemoveAll(s => s.Name == "percentage");
+
+            var left = Assert.Single(ContractCheck.Work(ContractCheckTests.With(contract), "", false, ContractCheckTests.Margin).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.NotYet, left.Kind);
+            Assert.Contains("names no share of science to collect", left.Reason);
+        }
+
+        [Fact]
+        public void TheRequestPlansThePlacementOnlyAndSaysWhatCompletesAfterTheMission()
+        {
+            var check = Remote(WithTelescope(Fixture("SentinelContract.json", "c-sentinel")));
+
+            var section = check.Choose(check.TickedGuids).Section;
+
+            Assert.Contains("place a Sentinel telescope in solar orbit near Kerbin's orbit (phase: Solar orbit near Kerbin; completes after the Mission: the telescope maps 8 asteroids near Kerbin, about 80 days)", section);
+            Assert.Contains("Plan the placement only; no leg waits for them.", section);
+        }
+
+        // ---- In flight ----
+
+        private static ChosenRequirement StationChosen(out GameSnapshot snapshot)
+        {
+            snapshot = ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station"));
+            var check = ContractCheck.Work(snapshot, "", false, ContractCheckTests.Margin);
+            return Assert.Single(check.Choose(check.TickedGuids).Requirements);
+        }
+
+        [Fact]
+        public void APlacedRequirementTheGameHasntMarkedMetReadsCompletesAfterTheMissionNotUnmet()
+        {
+            // "not met" is what holds a leg, or counts a miss at Hand back; this one is left open for the game.
+            var chosen = StationChosen(out var snapshot);
+
+            var reading = Assert.Single(new ContractWatch().Read(snapshot.Contracts, new[] { chosen }, null));
+
+            Assert.Equal("completes after the Mission", reading.State);
+        }
+
+        [Fact]
+        public void APlacedRequirementTheGameHasMarkedMetReadsMet()
+        {
+            var chosen = StationChosen(out var snapshot);
+            snapshot.Contracts.Accepted[0].Requirements[0].State = "Complete";
+
+            Assert.Equal("met", Assert.Single(new ContractWatch().Read(snapshot.Contracts, new[] { chosen }, null)).State);
+        }
+
+        [Fact]
+        public void AtHandBackAPlacedStationIsSaidToBeSetUpAndToCompleteAfterTheMissionWithNoRetryOffered()
+        {
+            var chosen = StationChosen(out var snapshot);
+
+            var line = ContractWatch.HandBackLine(new ContractWatch().Read(snapshot.Contracts, new[] { chosen }, null));
+
+            Assert.Contains("\"state\":\"completes after the Mission\"", line);
+            Assert.Contains("say in the Debrief that it is placed and the game completes it after the Mission", line);
+            Assert.DoesNotContain("retry", line);
+        }
+
+        [Fact]
+        public void TheDeadlineRecheckTimesAPlacementWithItsWaitAfterTheMission()
+        {
+            // From the pad: the Mun landing is a few days out; with the 50-day wait it can't finish inside 40 days less the spare.
+            var chosen = StationChosen(out var snapshot);
+            snapshot.Contracts.Accepted[0].DeadlineUt = snapshot.Ut + 40 * 21600;
+
+            var late = ContractRecheck.Check(snapshot, new[] { chosen }, "", "Kerbin", new System.Collections.Generic.HashSet<string>(), out _);
+
+            Assert.Equal("c-station", Assert.Single(late).Guid);
+        }
     }
 }

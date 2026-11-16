@@ -194,7 +194,9 @@ namespace ClaudiaKerman.Core.Contracts
                 else
                 {
                     var found = Find(contract.Requirements, requirement.Key);
-                    reading.State = found == null ? "not found" : found.State == "Complete" ? "met" : found.State == "Failed" ? "failed" : "not met";
+                    reading.State = found == null ? "not found" : found.State == "Complete" ? "met" : found.State == "Failed" ? "failed"
+                        // #1035: placed, it is the game's to complete after the Mission: no hold waits for it and it is no miss.
+                        : requirement.AfterMission != null ? CompletesAfter : "not met";
                 }
                 string gap;
                 if (reading.State == "not met" && gaps != null && gaps.TryGetValue(requirement.Key, out gap)) reading.Gap = gap;
@@ -207,8 +209,12 @@ namespace ClaudiaKerman.Core.Contracts
         public static string Line(IList<RequirementReading> readings)
         {
             return "Contract Requirements this sequence served (the mod's reading of the game, JSON data): " + Json(readings) + "\n"
+                + AfterMissionWords(readings)
                 + (readings.Any(r => r.State == "not met") ? "For a Requirement not met, propose a trim burn or a retry leg (priced at the plan proposal), or dropping its Contract, with the reason.\n" : "");
         }
+
+        /// <summary>#1035: the reading of a Requirement the game completes after the Mission, still open.</summary>
+        public const string CompletesAfter = ContractCheck.CompletesAfter;
 
         /// <summary>A Gap given a hands-on Requirement still not met when the player hands the craft back.</summary>
         public const string NotMetAtHandBack = "the game hasn't marked it met after the Manual stretch";
@@ -221,7 +227,13 @@ namespace ClaudiaKerman.Core.Contracts
         {
             return "Contract Requirements this Manual stretch served (the mod's reading of the game, JSON data): " + Json(readings) + "\n"
                 + (readings.Any(r => r.State == "met" || r.State == "completed") ? "For a Requirement met, say in the Debrief that it is met.\n" : "")
+                + AfterMissionWords(readings)
                 + (readings.Any(r => r.State == "not met") ? "For a Requirement not met, offer the player a retry (a new planned Manual stretch, in the revised Mission Plan) or dropping its Contract, with the reason.\n" : "");
+        }
+
+        private static string AfterMissionWords(IEnumerable<RequirementReading> readings)
+        {
+            return readings.Any(r => r.State == CompletesAfter) ? "For a Requirement that " + CompletesAfter + ", say in the Debrief that it is placed and the game completes it after the Mission, with nothing to fly again.\n" : "";
         }
 
         private static string Json(IEnumerable<RequirementReading> readings)
