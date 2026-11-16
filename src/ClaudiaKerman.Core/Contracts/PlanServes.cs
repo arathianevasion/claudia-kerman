@@ -29,6 +29,8 @@ namespace ClaudiaKerman.Core.Contracts
         public ContractOrbit Orbit;
         /// <summary>#1031: a Child Vessel the craft releases may serve it (a satellite).</summary>
         public bool ChildMay;
+        /// <summary>#1032: the hands-on work the player does in a Manual stretch after the leg that lands there, "plant a flag on EVA"; "" when none.</summary>
+        public string Manual = "";
     }
 
     /// <summary>The Contract Route's record of one chosen Requirement: the leg of the Mission Plan that serves it, -1 when none does.</summary>
@@ -93,7 +95,8 @@ namespace ClaudiaKerman.Core.Contracts
         public static PlanServes Check(GameSnapshot snapshot, MissionPlan plan, IList<ChosenRequirement> chosen, string words, string home, int from = 0)
         {
             var result = new PlanServes();
-            var all = Read(snapshot, plan, home).Where(t => t.Leg >= from).ToList();
+            var whole = Read(snapshot, plan, home);
+            var all = whole.Where(t => t.Leg >= from).ToList();
             var touches = all.Where(t => !t.Child).ToList();
             var orbitLegs = new Dictionary<string, Touch>();
             var tags = plan.Sequences.Select(_ => new List<string>()).ToList();
@@ -114,7 +117,8 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 var served = new ServedRequirement { Key = requirement.Key, Title = requirement.Title, Words = requirement.Words };
                 result.Record.Add(served);
-                var by = requirement.Test != null && requirement.Test.Band != null && requirement.Test.Window != TestWindow.None
+                var by = requirement.Manual.Length > 0 ? ManualTouch(snapshot, whole.Where(t => !t.Child).ToList(), requirement, result.Problems, plan, from)
+                    : requirement.Test != null && requirement.Test.Band != null && requirement.Test.Window != TestWindow.None
                     ? TestTouch(snapshot, touches, requirement, result.Problems, plan, judge, home)
                     : requirement.Orbit != null ? OrbitTouch(snapshot, all, requirement, result.Problems, plan)
                     : ServingTouch(requirement.ChildMay ? all : touches, requirement, result.Problems, plan);
@@ -173,6 +177,25 @@ namespace ClaudiaKerman.Core.Contracts
             var back = touches.FirstOrDefault(t => t.Home && t.Order >= visit.Order);
             if (back == null) problems.Add(what + ", and no leg of the plan brings the craft home after it: add the return to Kerbin");
             return back;
+        }
+
+        /// <summary>
+        /// #1032: the Manual stretch that serves a hands-on Requirement: the craft's first manual leg after the landing that meets it, before
+        /// the craft goes elsewhere. The landing may be flown already (a retry after Hand back), so it is looked for in the whole plan; the
+        /// Manual stretch is one still to fly (from <paramref name="from"/>). A plan with none there is a finding.
+        /// </summary>
+        private static Touch ManualTouch(GameSnapshot snapshot, IList<Touch> touches, ChosenRequirement requirement, List<string> problems, MissionPlan plan, int from)
+        {
+            var landing = ServingTouch(touches, requirement, problems, plan);
+            if (landing == null) return null;
+            var next = touches.FirstOrDefault(t => t.Order > landing.Order && (t.Body != landing.Body || t.Home));
+            var end = next == null ? plan.Sequences.Count : next.Leg;
+            for (var leg = Math.Max(landing.Leg + 1, from); leg < end; leg++)
+                if (plan.Sequences[leg].Manual && MissionCards.FliesCraft(snapshot.Craft.Name, plan.Sequences[leg].Vessel))
+                    return new Touch { Leg = leg, Order = landing.Order, Body = landing.Body, Reach = landing.Reach };
+            problems.Add("\"" + requirement.Title + "\" needs \"" + requirement.Words + "\", by hand: no Manual stretch for the player to " + requirement.Manual
+                + " after leg " + (landing.Leg + 1) + " \"" + plan.Sequences[landing.Leg].Name + "\" lands there: add one (manual true and an empty script) after that leg, before the craft leaves");
+            return null;
         }
 
         /// <summary>

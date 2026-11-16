@@ -16,7 +16,15 @@ namespace ClaudiaKerman.Core.Missions
     {
         private static bool ManualHasGrounds(Mission mission, SequencePlan plan)
         {
-            return mission.ManualAsk || ManualGrounds.ServesEva(plan, mission.EvaScience);
+            return mission.ManualAsk || ManualGrounds.ServesEva(plan, mission.EvaScience) || ServesContract(mission, plan);
+        }
+
+        /// <summary>#1032: a Manual stretch the plan check found serving a chosen Contract's hands-on Requirement counts as asked.</summary>
+        private static bool ServesContract(Mission mission, SequencePlan plan)
+        {
+            if (!plan.PlanStep.HasValue) return false;
+            var keys = mission.ServedBy.Where(s => s.Leg == plan.PlanStep.Value - 1).Select(s => s.Key).ToList();
+            return mission.ChosenRequirements.Any(r => r.Manual.Length > 0 && keys.Contains(r.Key));
         }
 
         private void ManualRefused(Mission mission, Turn turn, SequencePlan plan)
