@@ -79,6 +79,7 @@ namespace ClaudiaKerman.Core.Contracts
             }
             var bands = new List<HopBand>();
             var waypoints = new List<SurveyWaypoint>();
+            var orbits = new List<ContractOrbit>();
             foreach (var one in open)
             {
                 var keys = new HashSet<string>(one.Value.Select(r => r.Key));
@@ -86,15 +87,17 @@ namespace ClaudiaKerman.Core.Contracts
                 bands.AddRange(read.Where(r => r.Band != null && r.Reach == ContractReach.Hop).Select(r => r.Band));
                 // #1030: a survey waypoint is timed with its wait for the pass, as at the Contract check.
                 waypoints.AddRange(read.Where(r => r.Waypoint != null).Select(r => r.Waypoint));
+                // #1031: a satellite is timed with its climb to the Contract's orbit.
+                orbits.AddRange(read.Where(r => r.Orbit != null).Select(r => r.Orbit));
             }
             // Like the Contract check, the order that keeps every deadline is preferred over the cheapest one.
             return new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return),
-                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands, waypoints);
+                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands, waypoints, orbits);
         }
 
         private static double DoneOf(PricedRoute route, IEnumerable<ChosenRequirement> requirements, GameSnapshot snapshot, string home)
         {
-            return requirements.Select(r => route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return, Waypoint = route.WaypointUt.ContainsKey(r.Key) ? new SurveyWaypoint { Key = r.Key } : null }, home))
+            return requirements.Select(r => route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return, Waypoint = route.WaypointUt.ContainsKey(r.Key) ? new SurveyWaypoint { Key = r.Key } : null, Orbit = r.Orbit }, home))
                 .Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(snapshot.Ut).Max();
         }
     }

@@ -25,6 +25,10 @@ namespace ClaudiaKerman.Core.Contracts
         public PartTestSpec Test;
         /// <summary>#1030: the experiment the science block runs for it, "" for any; null when it isn't collect science or a survey.</summary>
         public string Experiment;
+        /// <summary>#1031: the satellite orbit it asks for; null for every other kind.</summary>
+        public ContractOrbit Orbit;
+        /// <summary>#1031: a Child Vessel the craft releases may serve it (a satellite).</summary>
+        public bool ChildMay;
     }
 
     /// <summary>The Contract Route's record of one chosen Requirement: the leg of the Mission Plan that serves it, -1 when none does.</summary>
@@ -72,13 +76,26 @@ namespace ClaudiaKerman.Core.Contracts
             public bool Hop;
             /// <summary>#1160: the launch options the leg's words write; null when it writes none (then plan_ascent's default shape is judged).</summary>
             public WrittenLaunch Launch;
+            /// <summary>#1031: the leg is flown by a Child Vessel the craft released, not the craft: it serves only a satellite.</summary>
+            public bool Child;
+        }
+
+        /// <summary>#1031: an orbit's figures as a leg writes them: "apoapsis 563.8 km", "periapsis 536 km", "inclination 88.4°".</summary>
+        private static double? Figure(string words, string name, bool distance)
+        {
+            var m = Regex.Match(words, @"\b" + name + @"\b\s*(?:=|:|of|to|at)?\s*(\d[\d,]*(?:\.\d+)?)\s*(km\b|m\b|°|deg)?", RegexOptions.IgnoreCase);
+            double value;
+            if (!m.Success || !double.TryParse(m.Groups[1].Value.Replace(",", ""), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value)) return null;
+            return distance && m.Groups[2].Value.ToLowerInvariant() != "m" ? value * 1000 : value;
         }
 
         /// <param name="from">#1025: the first leg that may serve a Requirement; the legs before it are walked only for where the craft is.</param>
         public static PlanServes Check(GameSnapshot snapshot, MissionPlan plan, IList<ChosenRequirement> chosen, string words, string home, int from = 0)
         {
             var result = new PlanServes();
-            var touches = Read(snapshot, plan, home).Where(t => t.Leg >= from).ToList();
+            var all = Read(snapshot, plan, home).Where(t => t.Leg >= from).ToList();
+            var touches = all.Where(t => !t.Child).ToList();
+            var orbitLegs = new Dictionary<string, Touch>();
             var tags = plan.Sequences.Select(_ => new List<string>()).ToList();
             var reading = WordsReading.Read(snapshot, words, home);
             var judge = new PartTestJudge(snapshot, home);
@@ -92,14 +109,20 @@ namespace ClaudiaKerman.Core.Contracts
                 var back = touches.FirstOrDefault(t => t.Home);
                 if (back != null) Tag(tags[back.Leg], ContractCheck.WordsTag);
             }
-            foreach (var requirement in chosen)
+            // #1031: a satellite's orbit first, so its other Requirements are served where it is reached.
+            foreach (var requirement in chosen.OrderBy(r => r.Orbit == null ? 1 : 0))
             {
                 var served = new ServedRequirement { Key = requirement.Key, Title = requirement.Title, Words = requirement.Words };
                 result.Record.Add(served);
                 var by = requirement.Test != null && requirement.Test.Band != null && requirement.Test.Window != TestWindow.None
                     ? TestTouch(snapshot, touches, requirement, result.Problems, plan, judge, home)
-                    : ServingTouch(touches, requirement, result.Problems, plan);
+                    : requirement.Orbit != null ? OrbitTouch(snapshot, all, requirement, result.Problems, plan)
+                    : ServingTouch(requirement.ChildMay ? all : touches, requirement, result.Problems, plan);
                 if (by == null) continue;
+                Touch orbitLeg;
+                var guid = ContractWatch.GuidOf(requirement.Key);
+                if (requirement.Orbit != null) orbitLegs[guid] = by;
+                else if (orbitLegs.TryGetValue(guid, out orbitLeg)) by = orbitLeg;
                 if (requirement.Experiment != null && !RunsScience(touches, by, plan, requirement.Experiment))
                     result.Problems.Add("\"" + requirement.Title + "\" needs \"" + requirement.Words + "\", but no leg runs the science block there: add a science step to leg "
                         + (by.Leg + 1) + " \"" + plan.Sequences[by.Leg].Name + "\", or a leg after it before the craft leaves");
@@ -181,6 +204,43 @@ namespace ClaudiaKerman.Core.Contracts
             return by;
         }
 
+        /// <summary>
+        /// #1031: the leg that puts the satellite (the craft or one Child Vessel) into the Contract's orbit: from the first leg that reaches
+        /// orbit round the body, the first until the craft goes elsewhere that writes the orbit's figures. Figures outside the deviation
+        /// window, or none written, are a finding; with none written the first leg in orbit is the one that serves it.
+        /// </summary>
+        private static Touch OrbitTouch(GameSnapshot snapshot, IList<Touch> touches, ChosenRequirement requirement, List<string> problems, MissionPlan plan)
+        {
+            var visit = ServingTouch(touches, requirement, problems, plan);
+            if (visit == null) return null;
+            var body = snapshot.Bodies.FirstOrDefault(b => b.Name == requirement.Orbit.Body);
+            var next = touches.FirstOrDefault(t => t.Order > visit.Order && !t.Child && (t.Body != visit.Body || t.Home));
+            var end = next == null ? plan.Sequences.Count : next.Leg;
+            var what = "\"" + requirement.Title + "\" needs \"" + requirement.Words + "\"";
+            // A parking orbit's figures on the way may come first: the leg inside the window serves it, else the last that writes any.
+            int? written = null;
+            string missed = null;
+            for (var leg = visit.Leg; leg < end && body != null; leg++)
+            {
+                var words = plan.Sequences[leg].Name + " " + plan.Sequences[leg].Intent;
+                var ap = Figure(words, "apoapsis", true);
+                var pe = Figure(words, "periapsis", true);
+                var inc = Figure(words, "inclination", false);
+                if (!ap.HasValue && !pe.HasValue && !inc.HasValue) continue;
+                written = leg;
+                missed = requirement.Orbit.Miss(body, ap, pe, inc);
+                if (missed == null) break;
+            }
+            if (written.HasValue)
+            {
+                var leg = written.Value;
+                if (missed != null) problems.Add(what + ", but leg " + (leg + 1) + " \"" + plan.Sequences[leg].Name + "\" misses the orbit: " + missed + ": fly " + requirement.Orbit.Words(body));
+                return touches.FirstOrDefault(t => t.Leg == leg) ?? new Touch { Leg = leg, Order = visit.Order, Body = visit.Body, Reach = visit.Reach, Child = visit.Child };
+            }
+            if (body != null) problems.Add(what + ", and no leg of the plan writes the orbit it flies to: write " + requirement.Orbit.Words(body) + " in the leg that reaches it");
+            return visit;
+        }
+
         private static string Does(ContractReach reach)
         {
             return reach == ContractReach.Flyby ? "flies by" : reach == ContractReach.Orbit ? "orbits" : "lands on";
@@ -201,8 +261,15 @@ namespace ClaudiaKerman.Core.Contracts
             for (var i = 0; i < plan.Sequences.Count; i++)
             {
                 var sequence = plan.Sequences[i];
-                if (!MissionCards.FliesCraft(snapshot.Craft.Name, sequence.Vessel)) continue;
                 var words = SequenceWords.ActionWords(sequence);
+                if (!MissionCards.FliesCraft(snapshot.Craft.Name, sequence.Vessel))
+                {
+                    // #1031: a Child Vessel's leg starts where the craft is; it may put a satellite in orbit there.
+                    var there = (SequenceWords.Trip.IsMatch(words) ? SequenceWords.TripTarget(snapshot, words, at, home) : null) ?? SequenceWords.LegBody(snapshot, words, at) ?? at;
+                    if (there != null && (SequenceWords.Capture.IsMatch(words) || Orbit.IsMatch(words)))
+                        touches.Add(new Touch { Leg = i, Order = touches.Count, Body = there.Name, Reach = ContractReach.Orbit, Child = true });
+                    continue;
+                }
                 var written = WrittenLaunch.Read(sequence.Name + " " + sequence.Intent);
                 var landing = SequenceWords.Landing.IsMatch(words);
                 var captures = SequenceWords.Capture.IsMatch(words) || Orbit.IsMatch(words);

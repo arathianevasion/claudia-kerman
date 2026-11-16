@@ -36,6 +36,10 @@ namespace ClaudiaKerman.Core.Contracts
         public readonly Dictionary<string, double> WaypointUt = new Dictionary<string, double>();
         /// <summary>#1030: the survey waypoints in the order flown: by their passes in a space band, by least travel on the ground.</summary>
         public readonly List<SurveyWaypoint> Waypoints = new List<SurveyWaypoint>();
+        /// <summary>#1031: what the satellite orbits add over the low orbit (raises and plane turns), m/s; in <see cref="DeltaV"/>.</summary>
+        public double Orbits;
+        /// <summary>#1031: when each satellite orbit is reached (UT, s), by its Requirement's key.</summary>
+        public readonly Dictionary<string, double> OrbitReachedUt = new Dictionary<string, double>();
 
         /// <summary>When the leg serving <paramref name="requirement"/> finishes; null when the route doesn't serve it.</summary>
         public double? DoneUt(ReadRequirement requirement, string home)
@@ -43,6 +47,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (requirement.Return) return HomeUt;
             double taken;
             if (requirement.Waypoint != null && WaypointUt.TryGetValue(requirement.Waypoint.Key, out taken)) return taken;
+            if (requirement.Orbit != null && OrbitReachedUt.TryGetValue(requirement.Orbit.Key, out taken)) return taken;
             if (requirement.Body == home) return LaunchUt;
             var times = requirement.Reach == ContractReach.Land ? LandUt : requirement.Reach == ContractReach.Orbit ? OrbitUt : FlybyUt;
             double ut;
@@ -105,9 +110,10 @@ namespace ClaudiaKerman.Core.Contracts
         /// <paramref name="home"/>; among the orders that keep every deadline in <paramref name="keeps"/> when any does.
         /// </summary>
         /// <param name="waypoints">#1030: the survey waypoints the route takes at the bodies it reaches; none when null.</param>
-        public PricedRoute Best(IDictionary<string, ContractReach> contractNeeds, bool home, Func<PricedRoute, bool> keeps, IEnumerable<HopBand> hops = null, IEnumerable<SurveyWaypoint> waypoints = null)
+        public PricedRoute Best(IDictionary<string, ContractReach> contractNeeds, bool home, Func<PricedRoute, bool> keeps, IEnumerable<HopBand> hops = null, IEnumerable<SurveyWaypoint> waypoints = null, IEnumerable<ContractOrbit> orbits = null)
         {
             var surveys = (waypoints ?? new SurveyWaypoint[0]).ToList();
+            var satellites = (orbits ?? new ContractOrbit[0]).ToList();
             var needs = Needs(contractNeeds);
             var hop = Hop(needs, hops);
             if (hop != null) return hop;
@@ -119,7 +125,7 @@ namespace ClaudiaKerman.Core.Contracts
             PricedRoute best = null, bestKept = null;
             foreach (var order in orders)
             {
-                var route = Price(order, needs, home, surveys);
+                var route = Price(order, needs, home, surveys, satellites);
                 if (best == null || route.DeltaV < best.DeltaV) best = route;
                 if (keeps(route) && (bestKept == null || route.DeltaV < bestKept.DeltaV)) bestKept = route;
             }
@@ -132,7 +138,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// </summary>
         public double Planned(PricedRoute route)
         {
-            return route.Legs == null ? route.DeltaV : PlanLegs.Need(PlanLegs.Judge(_snapshot, route.Legs, "", true)) + route.Surveys;
+            return route.Legs == null ? route.DeltaV : PlanLegs.Need(PlanLegs.Judge(_snapshot, route.Legs, "", true)) + route.Surveys + route.Orbits;
         }
 
         /// <summary>What the Contracts need with what the words need: where both reach a body, the further reach serves both.</summary>
@@ -184,9 +190,9 @@ namespace ClaudiaKerman.Core.Contracts
             return route;
         }
 
-        private PricedRoute Price(IList<string> order, IDictionary<string, ContractReach> needs, bool home, List<SurveyWaypoint> surveys)
+        private PricedRoute Price(IList<string> order, IDictionary<string, ContractReach> needs, bool home, List<SurveyWaypoint> surveys, List<ContractOrbit> satellites)
         {
-            var key = string.Join(",", order.Select(b => b + ":" + (int)needs[b]).ToArray()) + "|" + home + "|" + string.Join(",", surveys.Select(w => w.Key).OrderBy(k => k, StringComparer.Ordinal).ToArray());
+            var key = string.Join(",", order.Select(b => b + ":" + (int)needs[b]).ToArray()) + "|" + home + "|" + string.Join(",", surveys.Concat<object>(satellites).Select(w => w is SurveyWaypoint ? ((SurveyWaypoint)w).Key : ((ContractOrbit)w).Key).OrderBy(k => k, StringComparer.Ordinal).ToArray());
             PricedRoute cached;
             if (_priced.TryGetValue(key, out cached)) return cached;
             var legs = new List<PlannedSequence>();
@@ -200,6 +206,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (at == _home) route.LaunchUt = ut;
             }
             else if (at == _home) route.LaunchUt = ut;
+            if (route.LaunchUt.HasValue) Satellites(route, _home, satellites.Where(o => o.Body == _home).ToList(), _snapshot.IsGrounded, route.LaunchUt.Value);
             for (var i = 0; i < order.Count; i++)
             {
                 var body = order[i];
@@ -215,6 +222,7 @@ namespace ClaudiaKerman.Core.Contracts
                 else if (reach == ContractReach.Orbit) legs.Add(Sequence("Transfer to " + named + " and capture into low orbit"));
                 else legs.Add(Sequence("Transfer to " + named + ", capture into low orbit and land"));
                 if (reach >= ContractReach.Orbit) route.OrbitUt[body] = ut;
+                Satellites(route, body, satellites.Where(o => o.Body == body).ToList(), false, ut);
                 ut = Survey(route, body, surveys.Where(w => !w.Ground && w.Body == body).ToList(), false, ut);
                 if (reach == ContractReach.Land)
                 {
@@ -241,7 +249,7 @@ namespace ClaudiaKerman.Core.Contracts
                 route.HomeUt = ut;
             }
             route.Legs = legs;
-            route.DeltaV = PlanLegs.Need(PlanLegs.Judge(_snapshot, legs, "")) + route.Surveys;
+            route.DeltaV = PlanLegs.Need(PlanLegs.Judge(_snapshot, legs, "")) + route.Surveys + route.Orbits;
             _priced[key] = route;
             return route;
         }
@@ -257,6 +265,23 @@ namespace ClaudiaKerman.Core.Contracts
             route.Waypoints.AddRange(leg.Order);
             foreach (var taken in leg.After) route.WaypointUt[taken.Key] = ut + taken.Value;
             return ut + leg.Seconds;
+        }
+
+        /// <summary>
+        /// #1031: the satellite orbits round <paramref name="body"/> added to <paramref name="route"/>, each from the low orbit reached at
+        /// <paramref name="ut"/> (<see cref="SatelliteOrbits"/>); the climb is the satellite's, so the route goes on from the low orbit.
+        /// </summary>
+        private void Satellites(PricedRoute route, string body, List<ContractOrbit> orbits, bool launched, double ut)
+        {
+            SnapshotBody at;
+            if (orbits.Count == 0 || !_bodies.TryGetValue(body, out at)) return;
+            var map = _map ?? (_map = DeltaVMap.Compute(_snapshot.Bodies, _home));
+            foreach (var orbit in orbits)
+            {
+                double seconds;
+                route.Orbits += SatelliteOrbits.Price(orbit, at, map, launched && body == _home, out seconds);
+                route.OrbitReachedUt[orbit.Key] = ut + seconds;
+            }
         }
 
         private static PlannedSequence Sequence(string name)
