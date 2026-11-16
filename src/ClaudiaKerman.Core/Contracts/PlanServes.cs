@@ -217,6 +217,9 @@ namespace ClaudiaKerman.Core.Contracts
             var next = touches.FirstOrDefault(t => t.Order > visit.Order && !t.Child && (t.Body != visit.Body || t.Home));
             var end = next == null ? plan.Sequences.Count : next.Leg;
             var what = "\"" + requirement.Title + "\" needs \"" + requirement.Words + "\"";
+            // A parking orbit's figures on the way may come first: the leg inside the window serves it, else the last that writes any.
+            int? written = null;
+            string missed = null;
             for (var leg = visit.Leg; leg < end && body != null; leg++)
             {
                 var words = plan.Sequences[leg].Name + " " + plan.Sequences[leg].Intent;
@@ -224,8 +227,14 @@ namespace ClaudiaKerman.Core.Contracts
                 var pe = Figure(words, "periapsis", true);
                 var inc = Figure(words, "inclination", false);
                 if (!ap.HasValue && !pe.HasValue && !inc.HasValue) continue;
-                var miss = requirement.Orbit.Miss(body, ap, pe, inc);
-                if (miss != null) problems.Add(what + ", but leg " + (leg + 1) + " \"" + plan.Sequences[leg].Name + "\" misses the orbit: " + miss + ": fly " + requirement.Orbit.Words(body));
+                written = leg;
+                missed = requirement.Orbit.Miss(body, ap, pe, inc);
+                if (missed == null) break;
+            }
+            if (written.HasValue)
+            {
+                var leg = written.Value;
+                if (missed != null) problems.Add(what + ", but leg " + (leg + 1) + " \"" + plan.Sequences[leg].Name + "\" misses the orbit: " + missed + ": fly " + requirement.Orbit.Words(body));
                 return touches.FirstOrDefault(t => t.Leg == leg) ?? new Touch { Leg = leg, Order = visit.Order, Body = visit.Body, Reach = visit.Reach, Child = visit.Child };
             }
             if (body != null) problems.Add(what + ", and no leg of the plan writes the orbit it flies to: write " + requirement.Orbit.Words(body) + " in the leg that reaches it");
@@ -256,7 +265,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (!MissionCards.FliesCraft(snapshot.Craft.Name, sequence.Vessel))
                 {
                     // #1031: a Child Vessel's leg starts where the craft is; it may put a satellite in orbit there.
-                    var there = SequenceWords.LegBody(snapshot, words, at) ?? at;
+                    var there = (SequenceWords.Trip.IsMatch(words) ? SequenceWords.TripTarget(snapshot, words, at, home) : null) ?? SequenceWords.LegBody(snapshot, words, at) ?? at;
                     if (there != null && (SequenceWords.Capture.IsMatch(words) || Orbit.IsMatch(words)))
                         touches.Add(new Touch { Leg = i, Order = touches.Count, Body = there.Name, Reach = ContractReach.Orbit, Child = true });
                     continue;

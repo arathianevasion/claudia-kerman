@@ -330,7 +330,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// </summary>
         private void JudgeVessel(ReadRequirement read)
         {
-            if (read.Vessel != null) read.CraftCant = StructureKinds.Lacks(_snapshot, read.Vessel);
+            if (read.Vessel != null) read.CraftCant = StructureKinds.Lacks(_snapshot, read.Vessel, Remote);
             var orbit = read.Orbit;
             var body = orbit == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == orbit.Body);
             if (body != null && orbit.PeR < DeltaVMap.LowOrbit(body))
@@ -791,7 +791,7 @@ namespace ClaudiaKerman.Core.Contracts
             var windows = new Dictionary<string, TestWindow>();
             TestProblem(set, route, windows);
             choice.Requirements = set.SelectMany(p => p.Requirements.Select(r => new ChosenRequirement
-                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.Vessel != null && r.Vessel.ChildMay })).ToList();
+                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.ChildMay })).ToList();
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);

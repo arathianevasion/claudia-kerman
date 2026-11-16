@@ -73,7 +73,7 @@ namespace ClaudiaKerman.Core.Contracts
                         + "so take it out (the player can ask for it)");
                     continue;
                 }
-                result.Added.AddRange(plannable.Select(r => new ChosenRequirement { Key = r.Requirement.Key, Title = title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = r.Test == null ? null : r.Test.Copy(), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.Vessel != null && r.Vessel.ChildMay }));
+                result.Added.AddRange(plannable.Select(r => new ChosenRequirement { Key = r.Requirement.Key, Title = title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = r.Test == null ? null : r.Test.Copy(), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.ChildMay }));
             }
         }
 

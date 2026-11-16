@@ -50,6 +50,8 @@ namespace ClaudiaKerman.Core.Contracts
         public ContractOrbit Orbit;
         /// <summary>#1031: what a satellite, station or base needs of its vessel, checked against the craft; null for every other kind.</summary>
         public VesselNeeds Vessel;
+        /// <summary>#1031: a Child Vessel the craft releases may serve it: every Requirement of a satellite.</summary>
+        public bool ChildMay;
 
         public bool Plannable
         {

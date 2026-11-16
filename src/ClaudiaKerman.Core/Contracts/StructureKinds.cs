@@ -68,6 +68,7 @@ namespace ClaudiaKerman.Core.Contracts
             var all = Leaves(contract.Requirements).ToList();
             var whole = Whole(contract, all, home);
             if (whole.Length > 0) return ContractKinds.NotYet(one, whole);
+            one.ChildMay = contract.Kind == Satellite;
             var noun = contract.Kind == Satellite ? "satellite" : contract.Kind == Station ? "station" : "base";
             var location = all.First(r => r.Kind == "SpecificOrbitParameter" || r.Kind == "LocationAndSituationParameter");
             var body = BodyOf(location);
@@ -185,15 +186,16 @@ namespace ClaudiaKerman.Core.Contracts
 
         /// <summary>
         /// "this craft can't: …" for what <paramref name="needs"/> asks that the craft lacks; "" when it has it all. A satellite may be the
-        /// craft itself or one Child Vessel it releases: one of them must have everything (a command part, and no crew when uncrewed).
+        /// craft itself or one Child Vessel it releases: one of them must have everything (a command part, and no crew when uncrewed). The
+        /// craft itself only when it may stay there (<paramref name="craftMayStay"/>): with Claudia aboard it comes home.
         /// </summary>
-        public static string Lacks(GameSnapshot snapshot, VesselNeeds needs)
+        public static string Lacks(GameSnapshot snapshot, VesselNeeds needs, bool craftMayStay)
         {
             var parts = snapshot.Craft.Parts;
             if (needs.ChildMay)
             {
                 var units = new List<List<SnapshotPart>>();
-                if (!needs.Unmanned || snapshot.Crew.Count == 0) units.Add(parts);
+                if (craftMayStay && (!needs.Unmanned || snapshot.Crew.Count == 0)) units.Add(parts);
                 var byId = parts.ToDictionary(p => p.Id);
                 foreach (var separation in ChildVessels.Staging(snapshot, snapshot.Crew.Count == 0, snapshot.ProcessorPartId).Separations)
                 {
@@ -202,7 +204,7 @@ namespace ClaudiaKerman.Core.Contracts
                 }
                 var able = units.FirstOrDefault(u => u.Any(p => p.Tags.Contains("command")) && Missing(u, needs.Tags) == null);
                 if (able != null) return "";
-                if (units.Count == 0) return "this craft can't: the satellite must fly uncrewed, and no Child Vessel is a probe";
+                if (units.Count == 0) return "this craft can't: no Child Vessel can be the " + (needs.Unmanned ? "uncrewed " : "") + "satellite";
                 var best = units.OrderBy(u => needs.Tags.Count(t => !u.Any(p => p.Tags.Contains(t)))).First();
                 var missing = Missing(best, needs.Tags);
                 return "this craft can't: no " + (missing ?? "command part") + " on the " + (needs.Unmanned ? "uncrewed " : "") + "satellite";

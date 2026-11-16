@@ -98,6 +98,18 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void WithClaudiaAboardTheCraftComesHomeSoItIsNeverTheSatelliteEvenOneThatMayBeCrewed()
+        {
+            var crewed = Fixture("SatelliteContract.json", "c-sat");
+            Set(crewed, "VesselSystemsParameter", "mannedStatus", "ANY");
+
+            var left = Assert.Single(Check(ContractCheckTests.With(crewed)).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.CraftCant, left.Kind);
+            Assert.EndsWith(" on the satellite", left.Reason);
+        }
+
+        [Fact]
         public void ASatelliteWithNoAntennaIsThisCraftCant()
         {
             var snapshot = Uncrewed(Fixture("SatelliteContract.json", "c-sat"));
@@ -166,6 +178,38 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void TheParkingOrbitsFiguresOnTheLaunchLegAreNotJudgedAsTheSatellitesOrbit()
+        {
+            var snapshot = Uncrewed(Fixture("SatelliteContract.json", "c-sat"));
+
+            var served = PlanCheck(snapshot, true, Leg("Launch to low Kerbin orbit", "Launch to apoapsis 80 km, periapsis 80 km, inclination 88°."),
+                Leg("Raise to the satellite's orbit", "apoapsis 563 km, periapsis 537 km, inclination 88°."));
+
+            Assert.Empty(served.Problems);
+            Assert.All(served.Record, r => Assert.Equal(1, r.Leg));
+        }
+
+        [Fact]
+        public void EverySatelliteRequirementIsServedWhereOnlyTheChildVesselReachesTheMunsOrbit()
+        {
+            var contract = Fixture("SatelliteContract.json", "c-sat");
+            Set(contract, "SpecificOrbitParameter", "TargetBody", "2");
+            Set(contract, "SpecificOrbitParameter", "sma", "400000");
+            Set(contract, "SpecificOrbitParameter", "inclination", "10");
+            var snapshot = ContractCheckTests.With(contract);
+            var plan = new MissionPlan();
+            plan.Sequences.Add(Leg("Launch to low Kerbin orbit"));
+            plan.Sequences.Add(Leg("Transfer the probe to the Mun and capture into orbit", "apoapsis 204.8 km, periapsis 195.2 km, inclination 10°.", "Probe"));
+            var chosen = ContractKinds.Read(contract, "Kerbin").Select(r => new ChosenRequirement
+                { Key = r.Requirement.Key, Title = "SatelliteContract", Words = r.Words, Body = r.Body, Reach = r.Reach, Orbit = r.Orbit, ChildMay = r.ChildMay }).ToList();
+
+            var served = PlanServes.Check(snapshot, plan, chosen, "", "Kerbin");
+
+            Assert.Empty(served.Problems);
+            Assert.All(served.Record, r => Assert.Equal(1, r.Leg));
+        }
+
+        [Fact]
         public void AnOrbitLegOutsideTheDeviationWindowGoesBackAsAFindingWithTheGap()
         {
             var snapshot = Uncrewed(Fixture("SatelliteContract.json", "c-sat"));
@@ -199,7 +243,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             plan.Sequences.Add(Leg("Release the probe and raise it to its orbit", "apoapsis 564 km, periapsis 536 km, inclination 88.4°.", "Probe"));
             plan.Sequences.Add(Leg("Return to Kerbin"));
             var chosen = ContractKinds.Read(snapshot.Contracts.Accepted[0], "Kerbin").Select(r => new ChosenRequirement
-                { Key = r.Requirement.Key, Title = "SatelliteContract", Words = r.Words, Body = r.Body, Reach = r.Reach, Orbit = r.Orbit, ChildMay = true }).ToList();
+                { Key = r.Requirement.Key, Title = "SatelliteContract", Words = r.Words, Body = r.Body, Reach = r.Reach, Orbit = r.Orbit, ChildMay = r.ChildMay }).ToList();
 
             var served = PlanServes.Check(snapshot, plan, chosen, "", "Kerbin");
 
