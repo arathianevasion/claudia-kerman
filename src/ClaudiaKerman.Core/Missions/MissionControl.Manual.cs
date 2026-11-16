@@ -248,7 +248,7 @@ namespace ClaudiaKerman.Core.Missions
             return new Turn
             {
                 Purpose = Purpose.Debrief,
-                UserText = MissionPrompts.HandBackReport(plan, mission.ManualPlanned, mission.ManualOrigin, mission.HandBackMessage)
+                UserText = MissionPrompts.HandBackReport(plan, mission.ManualPlanned, mission.ManualOrigin, mission.HandBackMessage) + HandBackContractText(mission)
                     + MissionPrompts.CrossedChecks(CrossingsText(mission)) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
                 Notice = MissionPrompts.HandBackDebriefNotice(mission.ManualPlanned),
                 Waits = true,

@@ -206,6 +206,26 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The readings as one line of JSON data for the Debrief request.</summary>
         public static string Line(IList<RequirementReading> readings)
         {
+            return "Contract Requirements this sequence served (the mod's reading of the game, JSON data): " + Json(readings) + "\n"
+                + (readings.Any(r => r.State == "not met") ? "For a Requirement not met, propose a trim burn or a retry leg (priced at the plan proposal), or dropping its Contract, with the reason.\n" : "");
+        }
+
+        /// <summary>A Gap given a hands-on Requirement still not met when the player hands the craft back.</summary>
+        public const string NotMetAtHandBack = "the game hasn't marked it met after the Manual stretch";
+
+        /// <summary>
+        /// #1032: the readings of the Requirements a Manual stretch served, for the short Debrief at Hand back: one met is said so; one not met
+        /// is offered again as a new planned Manual stretch, or dropped.
+        /// </summary>
+        public static string HandBackLine(IList<RequirementReading> readings)
+        {
+            return "Contract Requirements this Manual stretch served (the mod's reading of the game, JSON data): " + Json(readings) + "\n"
+                + (readings.Any(r => r.State == "met" || r.State == "completed") ? "For a Requirement met, say in the Debrief that it is met.\n" : "")
+                + (readings.Any(r => r.State == "not met") ? "For a Requirement not met, offer the player a retry (a new planned Manual stretch, in the revised Mission Plan) or dropping its Contract, with the reason.\n" : "");
+        }
+
+        private static string Json(IEnumerable<RequirementReading> readings)
+        {
             var json = new JsonWriter().BeginArray();
             foreach (var r in readings)
             {
@@ -213,8 +233,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (r.Gap.Length > 0) json.Field("gap", r.Gap);
                 json.EndObject();
             }
-            return "Contract Requirements this sequence served (the mod's reading of the game, JSON data): " + json.EndArray() + "\n"
-                + (readings.Any(r => r.State == "not met") ? "For a Requirement not met, propose a trim burn or a retry leg (priced at the plan proposal), or dropping its Contract, with the reason.\n" : "");
+            return json.EndArray().ToString();
         }
 
         /// <summary>The craft meets what <paramref name="requirement"/> asks, by the snapshot: the game should mark it met.</summary>

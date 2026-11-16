@@ -128,6 +128,24 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
+        /// #1032: at Hand back of a planned Manual stretch, the state of each hands-on Requirement it served (the one it was tagged with),
+        /// for the short Debrief. One not met is a miss, so a revised plan may drop its Contract, or keep it with a retry stretch.
+        /// </summary>
+        private string HandBackContractText(Mission mission)
+        {
+            if (!mission.ManualPlanned || mission.ChosenRequirements.Count == 0) return "";
+            var served = ServedByFlownLeg(mission).Where(r => r.Manual.Length > 0).ToList();
+            if (served.Count == 0) return "";
+            var readings = mission.Contracts.Read(_snapshot == null ? null : _snapshot.Contracts, served, null);
+            foreach (var reading in readings.Where(r => r.State == "not met"))
+            {
+                reading.Gap = ContractWatch.NotMetAtHandBack;
+                Missed(mission, served.First(r => r.Key == reading.Key), reading.Gap);
+            }
+            return "\n" + ContractWatch.HandBackLine(readings).TrimEnd('\n');
+        }
+
+        /// <summary>
         /// #1026: each chosen Contract's planned completion against its deadline and the spare rule, from priced figures (no planner search,
         /// no request): the Contracts it finds too late may be dropped by the next revised plan.
         /// </summary>
