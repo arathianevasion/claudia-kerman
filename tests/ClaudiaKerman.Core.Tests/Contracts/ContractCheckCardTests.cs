@@ -144,6 +144,96 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal(0, Requests);
         }
 
+        /// <summary>#1033: the pad craft with an empty seat and an orbital rescue whose pod the game spawned in Kerbin orbit.</summary>
+        private static GameSnapshot ARescue()
+        {
+            var rescue = ContractCheckTests.Fixture("RecoverAsset.json");
+            rescue.Guid = "c-rescue";
+            var snapshot = ContractCheckTests.With(rescue);
+            snapshot.Craft.Seats = 2;
+            snapshot.ContractVessels.Add(new SnapshotVessel
+            {
+                Id = 4401, Name = "Gusdun's Capsule", Body = "Kerbin", Situation = "ORBITING", PeriapsisM = 120000, ApoapsisM = 120000, Inclination = 0, ContractGuid = "c-rescue",
+            });
+            return snapshot;
+        }
+
+        [Fact]
+        public void WithARescueTickedTheStartFormsTargetLineNamesItsVesselFromTheContractAndClearUnticksIt()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            Settle();
+            Assert.True(mission.View.ContractCheck.Rows.Single().Ticked);
+
+            var line = TargetVessel.Choose("", TargetPick.Auto, mission.View.StartForm.Targets).Line;
+            mission.Send(new StartFormChanged("", TargetPick.Cleared));
+
+            Assert.Equal("Target Vessel: Gusdun's Capsule · Kerbin · orbiting · from the Contract", line);
+            Assert.False(mission.View.ContractCheck.Rows.Single().Ticked);
+            Assert.Null(mission.View.StartForm.Targets.Contract);
+        }
+
+        [Fact]
+        public void KspsTargetNeverPushesARescueOutOnlyTheGoalOrThePickDoes()
+        {
+            var snapshot = ARescue();
+            var station = new SnapshotVessel { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            snapshot.Vessels.Add(station);
+            snapshot.KspTarget = new SnapshotTarget { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            var mission = Control(snapshot);
+
+            mission.Send(Start("Rendezvous and bring the kerbal home."));
+            Settle();
+
+            Assert.True(mission.View.ContractCheck.Rows.Single().Ticked);
+        }
+
+        [Fact]
+        public void PickingAnotherVesselWithTheCardUpUnticksTheRescue()
+        {
+            var snapshot = ARescue();
+            var station = new SnapshotVessel { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            snapshot.Vessels.Add(station);
+            var mission = Control(snapshot);
+            mission.Send(Start(""));
+            Settle();
+
+            mission.Send(new StartFormChanged("", TargetPick.Of(station)));
+
+            Assert.False(mission.View.ContractCheck.Rows.Single().Ticked);
+        }
+
+        [Fact]
+        public void ARescueTickedAgainAfterClearIsUntickedAtPlanTheseNotFlownWithoutItsVessel()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            Settle();
+            mission.Send(new StartFormChanged("", TargetPick.Cleared));
+            mission.Send(new TickContract("c-rescue", true));
+
+            mission.Send(new PlanContracts());
+            Settle();
+
+            Assert.Equal(MissionStage.None, mission.View.Stage);
+            Assert.False(mission.View.ContractCheck.Rows.Single().Ticked);
+        }
+
+        [Fact]
+        public void PlanTheseTakesTheRescuesVesselAsTheMissionsTargetVessel()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            Settle();
+
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.Contains(mission.View.Log, e => e.Text == "Target Vessel: Gusdun's Capsule (from the Contract).");
+            Assert.Contains("Target Vessel: \"Gusdun's Capsule\"", Text(Assert.Single(_transport.Requests)));
+        }
+
         [Fact]
         public void PlanTheseSendsOneStartMissionRequestWithTheContractRouteAndThePlayersWords()
         {

@@ -52,6 +52,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool EngineFuelled;
         /// <summary>The part hangs on its parent's surface (<c>Part.attachMode</c> SRF_ATTACH), not on a stack node: a radial part. <see cref="EntryStack"/> counts shields on the stack only. Not in the JSON: the prompt doesn't carry it.</summary>
         public bool SurfaceAttached;
+        /// <summary>#1033: the parts stowed in its inventory, by internal name (an EVA repair kit, a part to attach). Not in the JSON.</summary>
+        public List<string> Stowed = new List<string>();
         /// <summary>The part's resources as the adapter reads them (<see cref="EntryCraft"/>'s who-pays count); empty when not read. Not in the JSON: the prompt doesn't carry it.</summary>
         public List<SnapshotPartResource> Resources = new List<SnapshotPartResource>();
         /// <summary>A decoupler's neighbours its firing lets go of, by <see cref="Id"/> (#924): what is across its explosive node, or every neighbour of an omni decoupler. Empty when not read or not a decoupler. Not in the JSON: the prompt doesn't carry it.</summary>
@@ -247,6 +249,11 @@ namespace ClaudiaKerman.Core.Missions
         public SnapshotTarget FormTarget;
         /// <summary>The other vessels in the game a Mission Goal may name (ADR 0013); empty when not read. Not in the JSON.</summary>
         public List<SnapshotVessel> Vessels = new List<SnapshotVessel>();
+        /// <summary>
+        /// #1033: the vessels the game spawned for accepted Target Vessel Contracts (a rescue's pod, a vessel to repair, a comet), each tagged
+        /// with its Contract's GUID and read by the game's identity, whatever its type (ADR 0013's amendment). Not in the JSON.
+        /// </summary>
+        public List<SnapshotVessel> ContractVessels = new List<SnapshotVessel>();
         /// <summary>The craft's <c>persistentId</c>, so it is never in the Target Vessel list (#709); 0 when not read. Not in the JSON.</summary>
         public uint CraftPersistentId;
 

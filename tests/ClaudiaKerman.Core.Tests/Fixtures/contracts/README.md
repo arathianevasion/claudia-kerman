@@ -28,6 +28,8 @@ One Game Snapshot per accepted Contract, in the form the capture button writes t
 | `CometDetectionContract.json` | CometDetectionContract (1.10) | the research's type table (no save keys) | every key of `CometDetectionParameter` (`count`, `partName` are guesses) |
 | `DeployedScienceContract.json` | DeployedScienceContract (Breaking Ground) | the research's type table (no save keys) | every key of `CollectDeployedScience` (`targetBody`, `subject`, `percentage` are guesses) |
 
+#1033 reads the Target Vessel Contracts' vessel by these provisional keys: a rescue's `kerbalName` (the kerbal aboard the spawned vessel) and `recoveryType` (`1`, a kerbal: any other, or an `AcquirePart` or `RecoverPart` Requirement, is part recovery), and `vesselName` on a repair's `RepairPartParameter` or a construction's `ConstructionParameter` (or `cometName` / `targetName` for a comet sample). The recording confirms them.
+
 No fixture yet for the types whose tree no public save shows: ISRUContract, ARMContract, RoverConstructionContract and CometSampleContract. The in-game recording adds them.
 
 ## Recorded in game

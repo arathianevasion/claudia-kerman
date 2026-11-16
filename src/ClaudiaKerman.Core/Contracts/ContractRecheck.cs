@@ -93,9 +93,11 @@ namespace ClaudiaKerman.Core.Contracts
                 // #1035: a Sentinel telescope is timed with its burn into solar orbit.
                 telescopes.AddRange(read.Where(r => r.Placement != null).Select(r => r.Placement));
             }
+            // #1033: a Target Vessel Contract is timed with its rendezvous, from the orbit the Contract check read.
+            var meets = open.SelectMany(o => o.Value).Where(r => r.RendezvousOrbit != null).Select(r => r.RendezvousOrbit).ToList();
             // Like the Contract check, the order that keeps every deadline is preferred over the cheapest one.
             return new ContractRoutes(snapshot, words, home).Best(needs, open.SelectMany(o => o.Value).Any(r => r.Return),
-                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands, waypoints, orbits, telescopes);
+                r => open.All(o => !ContractCheck.BreaksSpare(DoneOf(r, o.Value, snapshot, home), o.Key.DeadlineUt.Value, snapshot.Ut)), bands, waypoints, orbits, telescopes, meets);
         }
 
         private static double DoneOf(PricedRoute route, IEnumerable<ChosenRequirement> requirements, GameSnapshot snapshot, string home)
@@ -103,7 +105,7 @@ namespace ClaudiaKerman.Core.Contracts
             // #1035: one that completes after the Mission is done its wait after the placement.
             return requirements.Select(r =>
                 {
-                    var done = route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return, Waypoint = route.WaypointUt.ContainsKey(r.Key) ? new SurveyWaypoint { Key = r.Key } : null, Orbit = r.Orbit, Placement = r.Placement }, home);
+                    var done = route.DoneUt(new ReadRequirement { Body = r.Body, Reach = r.Reach, Return = r.Return, Waypoint = route.WaypointUt.ContainsKey(r.Key) ? new SurveyWaypoint { Key = r.Key } : null, Orbit = r.Orbit, Placement = r.Placement, RendezvousOrbit = r.RendezvousOrbit }, home);
                     return r.AfterMission == null ? done : (done ?? snapshot.Ut) + r.AfterMission.Seconds;
                 })
                 .Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(snapshot.Ut).Max();

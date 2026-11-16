@@ -51,6 +51,8 @@ namespace ClaudiaKerman.Core.Contracts
         CompletesLater,
         /// <summary>#1036: the player's typed words rule out what it needs; the words win.</summary>
         CantWithWords,
+        /// <summary>#1033: a Mission has one Target Vessel: another Target Vessel Contract is in the set, or the goal or the player's pick gives the target.</summary>
+        OneTarget,
     }
 
     /// <summary>#1036: one leg of the route and who it serves: the player's words, the Contracts, or both when they share it.</summary>
@@ -99,6 +101,11 @@ namespace ClaudiaKerman.Core.Contracts
         public List<RouteLeg> Legs = new List<RouteLeg>();
         /// <summary>#1024: every Contract Requirement chosen, which the Mission's plan proposal is checked against.</summary>
         public List<ChosenRequirement> Requirements = new List<ChosenRequirement>();
+        /// <summary>#1033: the vessel of the chosen Target Vessel Contract, the Mission's Target Vessel (ADR 0013's amendment); null when none is chosen.</summary>
+        public SnapshotVessel Target;
+        /// <summary>#1033: that Contract's GUID and title; "" when none.</summary>
+        public string TargetGuid = "";
+        public string TargetTitle = "";
         /// <summary>The request's Contract Route section (<see cref="ContractCheck.Choose"/>).</summary>
         public string Section = "";
         /// <summary>The card folded to one line.</summary>
@@ -193,6 +200,8 @@ namespace ClaudiaKerman.Core.Contracts
         private readonly HashSet<string> _ticked = new HashSet<string>();
         /// <summary>#1028: the Contracts of a set the planners priced short, with the shortfall, m/s: the first such set each was in.</summary>
         private readonly Dictionary<Planned, double> _plannersShort = new Dictionary<Planned, double>();
+        /// <summary>#1033: the Target Vessel the goal or the player's pick gives, which a Contract's vessel never replaces; null when none.</summary>
+        private TargetVessel _missionTarget;
 
         /// <summary>A plannable Contract and what it needs.</summary>
         private sealed class Planned
@@ -201,14 +210,19 @@ namespace ClaudiaKerman.Core.Contracts
             public string Title = "";
             public List<ReadRequirement> Requirements = new List<ReadRequirement>();
             public string Note = "";
+            /// <summary>#1033: the vessel it sends Claudia to, for a Target Vessel Contract; null otherwise.</summary>
+            public ContractTarget Target;
         }
 
-        /// <summary>The check of <paramref name="snapshot"/>'s accepted Contracts with the player's <paramref name="words"/>.</summary>
-        public static ContractCheck Work(GameSnapshot snapshot, string words, bool remote, int marginPercent)
+        /// <summary>
+        /// The check of <paramref name="snapshot"/>'s accepted Contracts with the player's <paramref name="words"/>. #1033: <paramref name="target"/>
+        /// is the Target Vessel the goal or the player's pick gives (null for none): a Target Vessel Contract for another vessel is "not this flight".
+        /// </summary>
+        public static ContractCheck Work(GameSnapshot snapshot, string words, bool remote, int marginPercent, TargetVessel target = null)
         {
             var check = new ContractCheck
             {
-                Words = (words ?? "").Trim(), Remote = remote, ReservePercent = marginPercent, _snapshot = snapshot,
+                Words = (words ?? "").Trim(), Remote = remote, ReservePercent = marginPercent, _snapshot = snapshot, _missionTarget = target,
                 Accepted = snapshot.Contracts == null ? 0 : snapshot.Contracts.Accepted.Count,
             };
             check.Priceable = snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable;
@@ -231,7 +245,7 @@ namespace ClaudiaKerman.Core.Contracts
         public string HopsWithoutWords()
         {
             if (Words.Length == 0 || !Priceable) return "";
-            var bare = Work(_snapshot, "", Remote, ReservePercent);
+            var bare = Work(_snapshot, "", Remote, ReservePercent, _missionTarget);
             var lines = new List<string>();
             foreach (var row in bare.Fitting.Where(r => r.Ticked))
             {
@@ -253,6 +267,17 @@ namespace ClaudiaKerman.Core.Contracts
                 foreach (var vessel in read.Where(r => r.Plannable && (r.Vessel != null || r.Orbit != null))) JudgeVessel(vessel);
                 foreach (var manual in read.Where(r => r.Plannable && r.Manual.Length > 0)) manual.CraftCant = manual.AfterMission != null ? PlacementKinds.Lacks(_snapshot) : ManualKinds.Lacks(_snapshot, manual);
                 foreach (var tour in read.Where(r => r.Plannable && r.Tourist != null)) tour.CraftCant = TourKinds.Lacks(_snapshot, tour);
+                foreach (var meet in read.Where(r => r.Target != null))
+                {
+                    TargetKinds.Locate(meet, _snapshot, _home);
+                    if (meet.Plannable) meet.CraftCant = TargetKinds.Lacks(_snapshot, meet);
+                }
+                var meetsVessel = read.Select(r => r.Target).FirstOrDefault(t => t != null && t.Vessel != null);
+                if (meetsVessel != null && _missionTarget != null && meetsVessel.Vessel.Id != _missionTarget.Id && read.All(r => r.Plannable || r.Requirement.Optional))
+                {
+                    NotThisFlight.Add(new LeftOutContract { Guid = contract.Guid, Title = title, Kind = LeftOutKind.OneTarget, Reason = TargetKinds.OneTarget + " (this Mission's is " + _missionTarget.Name.Trim() + ")" });
+                    continue;
+                }
                 var cant = read.FirstOrDefault(r => r.Plannable && r.CraftCant.Length > 0 && !r.Requirement.Optional);
                 if (cant != null && read.All(r => r.Plannable || r.Requirement.Optional))
                 {
@@ -275,7 +300,7 @@ namespace ClaudiaKerman.Core.Contracts
                 var skipped = read.Where(r => !r.Plannable).Select(r => r.NotYet.Substring("not yet: ".Length)).Concat(ruledOut.Select(r => r.Why)).Distinct().ToList();
                 _planned.Add(new Planned
                 {
-                    Contract = contract, Title = title, Requirements = read.Where(r => r.Plannable && ruledOut.All(o => o.Read != r)).ToList(),
+                    Contract = contract, Title = title, Requirements = read.Where(r => r.Plannable && ruledOut.All(o => o.Read != r)).ToList(), Target = meetsVessel,
                     Note = skipped.Count == 0 ? "" : "optional Requirement skipped: " + string.Join("; ", skipped.ToArray()),
                 });
             }
@@ -403,7 +428,8 @@ namespace ClaudiaKerman.Core.Contracts
             var home = set.SelectMany(p => p.Requirements).Any(r => r.Return) || (set.Count > 0 && !Remote);
             var requirements = set.SelectMany(p => p.Requirements).ToList();
             return _routes.Best(needs, home, r => Late(set, r) == null, requirements.Where(r => r.Band != null).Select(r => r.Band), requirements.Where(r => r.Waypoint != null).Select(r => r.Waypoint),
-                requirements.Where(r => r.Orbit != null).Select(r => r.Orbit), requirements.Where(r => r.Placement != null).Select(r => r.Placement));
+                requirements.Where(r => r.Orbit != null).Select(r => r.Orbit), requirements.Where(r => r.Placement != null).Select(r => r.Placement),
+                requirements.Where(r => r.RendezvousOrbit != null).Select(r => r.RendezvousOrbit));
         }
 
         private static Dictionary<string, ContractReach> ContractNeeds(IEnumerable<Planned> set)
@@ -478,7 +504,13 @@ namespace ClaudiaKerman.Core.Contracts
 
         private bool Works(IList<Planned> set, PricedRoute route)
         {
-            return Fits(route.DeltaV) && Late(set, route) == null && TestProblem(set, route) == null;
+            return OneTargetAtMost(set) && Fits(route.DeltaV) && Late(set, route) == null && TestProblem(set, route) == null;
+        }
+
+        /// <summary>#1033: the set holds at most one Target Vessel Contract (ADR 0013: one Target Vessel per Mission).</summary>
+        private static bool OneTargetAtMost(IEnumerable<Planned> set)
+        {
+            return set.Count(p => p.Target != null) <= 1;
         }
 
         // ---- The search ----
@@ -659,6 +691,12 @@ namespace ClaudiaKerman.Core.Contracts
             get { return _planned.Where(p => _ticked.Contains(p.Contract.Guid)).Select(p => p.Contract.Guid).ToList(); }
         }
 
+        /// <summary>#1033: the vessel of the ticked Target Vessel Contract, the start form's target (ADR 0013's amendment); null when none is ticked.</summary>
+        public SnapshotVessel TickedTarget
+        {
+            get { return _planned.Where(p => p.Target != null && _ticked.Contains(p.Contract.Guid)).Select(p => p.Target.Vessel).FirstOrDefault(); }
+        }
+
         /// <summary>The route, reserve, spare, each Contract's delta-v and every swap, worked out for the ticked set alone.</summary>
         private void Reprice()
         {
@@ -670,8 +708,8 @@ namespace ClaudiaKerman.Core.Contracts
             Spare = CraftDeltaV - RouteDeltaV - Reserve;
             var late = Late(set, route);
             var testProblem = TestProblem(set, route);
-            SetFits = Fits(route.DeltaV) && late == null && testProblem == null;
-            Problem = SetFits ? "" : !Fits(route.DeltaV) ? Whole(Short(route.DeltaV)) + " m/s short"
+            SetFits = OneTargetAtMost(set) && Fits(route.DeltaV) && late == null && testProblem == null;
+            Problem = SetFits ? "" : !OneTargetAtMost(set) ? TargetKinds.OneTarget : !Fits(route.DeltaV) ? Whole(Short(route.DeltaV)) + " m/s short"
                 : late != null ? "completes later: " + late.Item1.Title + " done about " + KerbinTime.ShortDate(late.Item2) + ", too near its deadline"
                 : testProblem;
             foreach (var planned in _planned)
@@ -756,7 +794,12 @@ namespace ClaudiaKerman.Core.Contracts
             var together = Route(with);
             var lateTogether = Late(with, together);
             var testAlone = TestProblem(alone, route);
-            if (testAlone != null) left.Reason = testAlone;
+            if (planned.Target != null && best.Any(p => p != planned && p.Target != null))
+            {
+                left.Kind = LeftOutKind.OneTarget;
+                left.Reason = TargetKinds.OneTarget;
+            }
+            else if (testAlone != null) left.Reason = testAlone;
             else if (late != null)
             {
                 left.Kind = LeftOutKind.CompletesLater;
@@ -822,7 +865,14 @@ namespace ClaudiaKerman.Core.Contracts
             TestProblem(set, route, windows);
             choice.Requirements = set.SelectMany(p => p.Requirements.Select(r => new ChosenRequirement
                 { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.ChildMay, Manual = r.Manual,
-                  AfterMission = r.AfterMission, Placement = r.Placement })).ToList();
+                  AfterMission = r.AfterMission, Placement = r.Placement, Vessel = r.Target == null ? "" : r.Target.Name, RendezvousOrbit = r.RendezvousOrbit })).ToList();
+            var meet = set.FirstOrDefault(p => p.Target != null);
+            if (meet != null)
+            {
+                choice.Target = meet.Target.Vessel;
+                choice.TargetGuid = meet.Contract.Guid;
+                choice.TargetTitle = meet.Title;
+            }
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
@@ -865,8 +915,12 @@ namespace ClaudiaKerman.Core.Contracts
             var manual = choice.Requirements.Where(r => r.Manual.Length > 0).ToList();
             if (manual.Count > 0)
                 text.Append("Manual stretches the player flies (you fly): ")
-                    .Append(string.Join("; ", manual.Select(r => r.Manual + ", landed on " + ContractKinds.Named(r.Body)).ToArray()))
+                    .Append(string.Join("; ", manual.Select(r => r.Manual + (r.Vessel.Length > 0 && r.Reach != ContractReach.Land ? ", at " + r.Vessel + " in orbit round " : ", landed on ") + ContractKinds.Named(r.Body)).ToArray()))
                     .Append(". Land as near the spot as you can; plan each as its own Maneuver Sequence with manual true and an empty script, after the leg that lands there and before the craft leaves. The walk or drive from the landing is the player's.\n");
+            if (meet != null)
+                text.Append("Target Vessel: ").Append(MissionPrompts.Quoted(meet.Target.Name)).Append(", from the Contract ").Append(MissionPrompts.Quoted(meet.Title))
+                    .Append(" (the Mission's one Target Vessel; data). Fly the rendezvous with it in the leg that reaches its body; the EVA there is the player's Manual stretch")
+                    .Append(meet.Requirements.Any(r => r.Reach == ContractReach.Land) ? ", and so is the drive to it" : "").Append(".\n");
             var placements = choice.Requirements.Where(r => r.Placement != null).ToList();
             if (placements.Count > 0)
                 text.Append("Sentinel telescopes: ").Append(string.Join("; ", placements.Select(r => r.Words).Distinct().ToArray()))
