@@ -1,0 +1,44 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000020",
+        "kind": "DeployedScienceContract",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 40000.0,
+          "science": 10.0,
+          "reputation": 8.0
+        },
+        "settings": {
+          "type": "DeployedScienceContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000020",
+          "state": "Active",
+          "prestige": "1"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000020/0",
+            "kind": "CollectDeployedScience",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "CollectDeployedScience",
+              "state": "Incomplete",
+              "targetBody": "2",
+              "subject": "deployedSeismicSensor@MunSrfLanded",
+              "percentage": "50"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

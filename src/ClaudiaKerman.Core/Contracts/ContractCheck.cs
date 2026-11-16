@@ -29,11 +29,13 @@ namespace ClaudiaKerman.Core.Contracts
         public SwapOffer Swap;
         /// <summary>#1032: one of its Requirements is a Manual stretch the player flies (a flag, a scan, a sample).</summary>
         public bool YouFly;
+        /// <summary>#1035: one of its Requirements completes after the Mission (a Sentinel telescope mapping, a station collecting).</summary>
+        public bool AfterMission;
 
-        /// <summary>The line under its box: "Mun · you fly · +1,170 m/s · deadline Y1 D30 (in 12d)", or "no deadline".</summary>
+        /// <summary>The line under its box: "Mun · you fly · completes after the Mission · +1,170 m/s · deadline Y1 D30 (in 12d)", or "no deadline".</summary>
         public string Detail(double now)
         {
-            return Phase + (YouFly ? " · you fly" : "") + " · +" + Math.Round(AddedDeltaV).ToString("#,0", CultureInfo.InvariantCulture) + " m/s · "
+            return Phase + (YouFly ? " · you fly" : "") + (AfterMission ? " · " + ContractCheck.CompletesAfter : "") + " · +" + Math.Round(AddedDeltaV).ToString("#,0", CultureInfo.InvariantCulture) + " m/s · "
                 + (DeadlineUt.HasValue ? "deadline " + KerbinTime.ShortDate(DeadlineUt.Value) + " (" + KerbinTime.FromNow(DeadlineUt.Value, now) + ")" : "no deadline");
         }
     }
@@ -140,6 +142,8 @@ namespace ClaudiaKerman.Core.Contracts
         public const double DeadlineSpareFraction = 0.10;
         /// <summary>The Serves tag for what the player typed.</summary>
         public const string WordsTag = "your words";
+        /// <summary>#1035: how the card shows a Contract whose time-based Requirement the game completes after the Mission.</summary>
+        public const string CompletesAfter = "completes after the Mission";
 
         public string Words = "";
         public bool Remote;
@@ -247,7 +251,7 @@ namespace ClaudiaKerman.Core.Contracts
                 foreach (var test in read.Where(r => r.Plannable && r.Test != null)) JudgeTest(test);
                 foreach (var science in read.Where(r => r.Plannable && r.Experiment != null)) JudgeScience(science);
                 foreach (var vessel in read.Where(r => r.Plannable && (r.Vessel != null || r.Orbit != null))) JudgeVessel(vessel);
-                foreach (var manual in read.Where(r => r.Plannable && r.Manual.Length > 0)) manual.CraftCant = ManualKinds.Lacks(_snapshot, manual);
+                foreach (var manual in read.Where(r => r.Plannable && r.Manual.Length > 0)) manual.CraftCant = manual.AfterMission != null ? PlacementKinds.Lacks(_snapshot) : ManualKinds.Lacks(_snapshot, manual);
                 foreach (var tour in read.Where(r => r.Plannable && r.Tourist != null)) tour.CraftCant = TourKinds.Lacks(_snapshot, tour);
                 var cant = read.FirstOrDefault(r => r.Plannable && r.CraftCant.Length > 0 && !r.Requirement.Optional);
                 if (cant != null && read.All(r => r.Plannable || r.Requirement.Optional))
@@ -398,7 +402,7 @@ namespace ClaudiaKerman.Core.Contracts
             var home = set.SelectMany(p => p.Requirements).Any(r => r.Return) || (set.Count > 0 && !Remote);
             var requirements = set.SelectMany(p => p.Requirements).ToList();
             return _routes.Best(needs, home, r => Late(set, r) == null, requirements.Where(r => r.Band != null).Select(r => r.Band), requirements.Where(r => r.Waypoint != null).Select(r => r.Waypoint),
-                requirements.Where(r => r.Orbit != null).Select(r => r.Orbit));
+                requirements.Where(r => r.Orbit != null).Select(r => r.Orbit), requirements.Where(r => r.Placement != null).Select(r => r.Placement));
         }
 
         private static Dictionary<string, ContractReach> ContractNeeds(IEnumerable<Planned> set)
@@ -450,10 +454,18 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 if (!planned.Contract.DeadlineUt.HasValue) continue;
                 var deadline = planned.Contract.DeadlineUt.Value;
-                var done = planned.Requirements.Select(r => route.DoneUt(r, _home)).Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(_snapshot.Ut).Max();
+                var done = planned.Requirements.Select(r => Done(route, r)).Where(d => d.HasValue).Select(d => d.Value).DefaultIfEmpty(_snapshot.Ut).Max();
                 if (BreaksSpare(done, deadline, _snapshot.Ut)) return Tuple.Create(planned, done);
             }
             return null;
+        }
+
+        /// <summary>When <paramref name="route"/> finishes the Requirement: #1035, one that completes after the Mission after its wait from the placement.</summary>
+        private double? Done(PricedRoute route, ReadRequirement requirement)
+        {
+            var done = route.DoneUt(requirement, _home);
+            if (requirement.AfterMission == null) return done;
+            return (done ?? _snapshot.Ut) + requirement.AfterMission.Seconds;
         }
 
         /// <summary>The spare rule: finishing at <paramref name="done"/> leaves under 10% of the time from <paramref name="now"/> to <paramref name="deadline"/>, or under a Kerbin day.</summary>
@@ -504,7 +516,7 @@ namespace ClaudiaKerman.Core.Contracts
                     Fitting.Add(new ContractCheckRow
                     {
                         Guid = planned.Contract.Guid, Title = planned.Title, DeadlineUt = planned.Contract.DeadlineUt, Note = planned.Note, Phase = PhaseOf(planned),
-                        YouFly = YouFly(planned),
+                        YouFly = YouFly(planned), AfterMission = AfterMission(planned),
                     });
                 }
                 else NotThisFlight.Add(WhyNot(planned, best));
@@ -606,6 +618,12 @@ namespace ClaudiaKerman.Core.Contracts
             return planned.Requirements.Any(r => r.Manual.Length > 0);
         }
 
+        /// <summary>#1035: one of its Requirements completes after the Mission.</summary>
+        private static bool AfterMission(Planned planned)
+        {
+            return planned.Requirements.Any(r => r.AfterMission != null);
+        }
+
         private static string PhaseOf(Planned planned)
         {
             return string.Join(", ", planned.Requirements.Select(r => r.Phase).Distinct().ToArray());
@@ -673,7 +691,7 @@ namespace ClaudiaKerman.Core.Contracts
                 left.Tickable = true;
                 left.Ticked = ticked;
                 left.Swap = swap;
-                if (ticked) left.Reason = PhaseOf(planned) + (YouFly(planned) ? " · you fly" : "") + " · +" + Whole(delta) + " m/s";
+                if (ticked) left.Reason = PhaseOf(planned) + (YouFly(planned) ? " · you fly" : "") + (AfterMission(planned) ? " · " + CompletesAfter : "") + " · +" + Whole(delta) + " m/s";
                 else
                 {
                     var fresh = WhyNot(planned, set);
@@ -802,7 +820,8 @@ namespace ClaudiaKerman.Core.Contracts
             var windows = new Dictionary<string, TestWindow>();
             TestProblem(set, route, windows);
             choice.Requirements = set.SelectMany(p => p.Requirements.Select(r => new ChosenRequirement
-                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.ChildMay, Manual = r.Manual })).ToList();
+                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.ChildMay, Manual = r.Manual,
+                  AfterMission = r.AfterMission, Placement = r.Placement })).ToList();
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
@@ -826,7 +845,7 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 text.Append("- ").Append(MissionPrompts.Quoted(planned.Title));
                 if (planned.Contract.DeadlineUt.HasValue) text.Append(", deadline ").Append(KerbinTime.ShortDate(planned.Contract.DeadlineUt.Value));
-                text.Append(": ").Append(string.Join("; ", planned.Requirements.Select(r => r.Words + " (phase: " + r.Phase + ")").ToArray()));
+                text.Append(": ").Append(string.Join("; ", planned.Requirements.Select(r => r.Words + " (phase: " + r.Phase + (r.AfterMission != null ? "; " + CompletesAfter + ": " + r.AfterMission.Words : "") + ")").ToArray()));
                 if (planned.Note.Length > 0) text.Append(" (").Append(planned.Note).Append(")");
                 text.Append('\n');
             }
@@ -847,6 +866,14 @@ namespace ClaudiaKerman.Core.Contracts
                 text.Append("Manual stretches the player flies (you fly): ")
                     .Append(string.Join("; ", manual.Select(r => r.Manual + ", landed on " + ContractKinds.Named(r.Body)).ToArray()))
                     .Append(". Land as near the spot as you can; plan each as its own Maneuver Sequence with manual true and an empty script, after the leg that lands there and before the craft leaves. The walk or drive from the landing is the player's.\n");
+            var placements = choice.Requirements.Where(r => r.Placement != null).ToList();
+            if (placements.Count > 0)
+                text.Append("Sentinel telescopes: ").Append(string.Join("; ", placements.Select(r => r.Words).Distinct().ToArray()))
+                    .Append(". Once in low ").Append(_home).Append(" orbit, the telescope (the craft, or the one Child Vessel carrying it) burns into that solar orbit with its antenna and power on; the route goes on from the low orbit.\n");
+            if (choice.Requirements.Any(r => r.AfterMission != null))
+                text.Append("Completes after the Mission: the game marks these Requirements met once the placement has had its time (")
+                    .Append(string.Join("; ", choice.Requirements.Where(r => r.AfterMission != null).Select(r => r.AfterMission.Words).ToArray()))
+                    .Append("). Plan the placement only; no leg waits for them.\n");
             if (choice.Requirements.Any(r => r.Experiment == ""))
                 text.Append("Collect science: run the science block in the phase given.\n");
             if (route.HopAp.HasValue)

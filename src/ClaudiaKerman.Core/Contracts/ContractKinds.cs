@@ -58,6 +58,10 @@ namespace ClaudiaKerman.Core.Contracts
         public bool ArmScan;
         /// <summary>#1034: the tourist a tour brings home, who must be aboard ("" for any tourist); null for every other kind.</summary>
         public string Tourist;
+        /// <summary>#1035: it completes after the Mission, once placed, after this wait; null when the game marks it met in flight.</summary>
+        public MissionWait AfterMission;
+        /// <summary>#1035: a Sentinel telescope it places in solar orbit; null for every other kind.</summary>
+        public SolarPlacement Placement;
 
         public bool Plannable
         {
@@ -70,7 +74,7 @@ namespace ClaudiaKerman.Core.Contracts
     /// exploration (world-first) ones: a ProgressTrackingParameter of an ExplorationContract, by its <c>targetType</c> and
     /// <c>targetBody</c>; and (#1048) the Requirements met on a hop below orbit over the launch body: reaching space, and a part test
     /// FLYING or SUB_ORBITAL in an altitude band, read whole from its PartTest node's conditions. Every other Contract type is "not
-    /// yet" as a whole, and so are depth records (#1091); collect science and surveys are read by <see cref="ScienceKinds"/> (#1030), satellites, stations and bases by <see cref="StructureKinds"/> (#1031), tourism and Grand Tours by <see cref="TourKinds"/> (#1034). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
+    /// yet" as a whole, and so are depth records (#1091); collect science and surveys are read by <see cref="ScienceKinds"/> (#1030), satellites, stations and bases by <see cref="StructureKinds"/> (#1031), tourism and Grand Tours by <see cref="TourKinds"/> (#1034), Sentinel, comet detection and deployed science by <see cref="PlacementKinds"/> (#1035). Altitude and speed records over the launch body and the first launch are hops that any launch to orbit
     /// meets on the way up; a distance record rides the launch to orbit (#1091).
     /// </summary>
     public static class ContractKinds
@@ -174,6 +178,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (StructureKinds.Plans(contract.Kind)) return StructureKinds.Read(one, contract, requirement, home);
             if (ManualKinds.Plans(contract.Kind)) return ManualKinds.Read(one, contract, requirement, home);
             if (TourKinds.Plans(contract.Kind)) return TourKinds.Read(one, contract, requirement, home);
+            if (PlacementKinds.Plans(contract.Kind)) return PlacementKinds.Read(one, contract, requirement, home);
             if (contract.Kind != Exploration || requirement.Kind != "ProgressTrackingParameter")
             {
                 one.NotYet = contract.Kind != Exploration ? TypeNotYet(contract.Kind) : "not yet: " + requirement.Kind + " isn't a Contract Requirement Claudia can plan yet";
@@ -323,6 +328,12 @@ namespace ClaudiaKerman.Core.Contracts
         {
             int at;
             return int.TryParse(index, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out at) && at >= 0 && at < StockBodies.Length ? StockBodies[at] : null;
+        }
+
+        /// <summary>#1035: the stock body named <paramref name="name"/>, as the save may name one; null when it isn't one.</summary>
+        internal static string StockBody(string name)
+        {
+            return StockBodies.FirstOrDefault(b => string.Equals(b, name, System.StringComparison.OrdinalIgnoreCase));
         }
 
         internal static ReadRequirement Hop(ReadRequirement one, string home, HopBand band)

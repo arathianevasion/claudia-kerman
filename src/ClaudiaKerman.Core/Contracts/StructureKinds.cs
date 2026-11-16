@@ -202,12 +202,13 @@ namespace ClaudiaKerman.Core.Contracts
                     var child = separation.PartIds.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
                     if (!needs.Unmanned || child.All(p => p.Crew <= 0 && !p.Tags.Contains("crew_seat"))) units.Add(child);
                 }
-                var able = units.FirstOrDefault(u => u.Any(p => p.Tags.Contains("command")) && Missing(u, needs.Tags) == null);
+                var noun = (needs.Unmanned ? "uncrewed " : "") + (needs.Noun.Length > 0 ? needs.Noun : "satellite");
+                var able = units.FirstOrDefault(u => u.Any(p => p.Tags.Contains("command")) && MissingAny(u, needs) == null);
                 if (able != null) return "";
-                if (units.Count == 0) return "this craft can't: no Child Vessel can be the " + (needs.Unmanned ? "uncrewed " : "") + "satellite";
-                var best = units.OrderBy(u => needs.Tags.Count(t => !u.Any(p => p.Tags.Contains(t)))).First();
-                var missing = Missing(best, needs.Tags);
-                return "this craft can't: no " + (missing ?? "command part") + " on the " + (needs.Unmanned ? "uncrewed " : "") + "satellite";
+                if (units.Count == 0) return "this craft can't: no Child Vessel can be the " + noun;
+                var best = units.OrderBy(u => needs.Tags.Count(t => !u.Any(p => p.Tags.Contains(t))) + needs.Parts.Count(n => u.All(p => p.Name != n))).First();
+                var missing = MissingAny(best, needs);
+                return "this craft can't: no " + (missing ?? "command part") + " on the " + noun;
             }
             var lacking = Missing(parts, needs.Tags);
             if (lacking != null) return "this craft can't: no " + lacking + " aboard";
@@ -220,6 +221,12 @@ namespace ClaudiaKerman.Core.Contracts
             }
             var part = needs.Parts.FirstOrDefault(n => parts.All(p => p.Name != n));
             return part == null ? "" : "this craft can't: no " + part + " aboard";
+        }
+
+        /// <summary>#1035: the words for the first tag or named part (by internal name) none of <paramref name="parts"/> has; null when they have them all.</summary>
+        private static string MissingAny(List<SnapshotPart> parts, VesselNeeds needs)
+        {
+            return Missing(parts, needs.Tags) ?? needs.Parts.FirstOrDefault(n => parts.All(p => p.Name != n));
         }
 
         /// <summary>The words for the first tag none of <paramref name="parts"/> has; null when they have them all.</summary>

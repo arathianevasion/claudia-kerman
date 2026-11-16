@@ -40,6 +40,10 @@ namespace ClaudiaKerman.Core.Contracts
         public double Orbits;
         /// <summary>#1031: when each satellite orbit is reached (UT, s), by its Requirement's key.</summary>
         public readonly Dictionary<string, double> OrbitReachedUt = new Dictionary<string, double>();
+        /// <summary>#1035: what the Sentinel telescopes' burns into solar orbit add over the low orbit, m/s; in <see cref="DeltaV"/>.</summary>
+        public double Placements;
+        /// <summary>#1035: when each telescope is in its solar orbit (UT, s), by its Requirement's key.</summary>
+        public readonly Dictionary<string, double> PlacedUt = new Dictionary<string, double>();
 
         /// <summary>When the leg serving <paramref name="requirement"/> finishes; null when the route doesn't serve it.</summary>
         public double? DoneUt(ReadRequirement requirement, string home)
@@ -48,6 +52,7 @@ namespace ClaudiaKerman.Core.Contracts
             double taken;
             if (requirement.Waypoint != null && WaypointUt.TryGetValue(requirement.Waypoint.Key, out taken)) return taken;
             if (requirement.Orbit != null && OrbitReachedUt.TryGetValue(requirement.Orbit.Key, out taken)) return taken;
+            if (requirement.Placement != null && PlacedUt.TryGetValue(requirement.Placement.Key, out taken)) return taken;
             if (requirement.Body == home) return LaunchUt;
             var times = requirement.Reach == ContractReach.Land ? LandUt : requirement.Reach == ContractReach.Orbit ? OrbitUt : FlybyUt;
             double ut;
@@ -110,10 +115,11 @@ namespace ClaudiaKerman.Core.Contracts
         /// <paramref name="home"/>; among the orders that keep every deadline in <paramref name="keeps"/> when any does.
         /// </summary>
         /// <param name="waypoints">#1030: the survey waypoints the route takes at the bodies it reaches; none when null.</param>
-        public PricedRoute Best(IDictionary<string, ContractReach> contractNeeds, bool home, Func<PricedRoute, bool> keeps, IEnumerable<HopBand> hops = null, IEnumerable<SurveyWaypoint> waypoints = null, IEnumerable<ContractOrbit> orbits = null)
+        public PricedRoute Best(IDictionary<string, ContractReach> contractNeeds, bool home, Func<PricedRoute, bool> keeps, IEnumerable<HopBand> hops = null, IEnumerable<SurveyWaypoint> waypoints = null, IEnumerable<ContractOrbit> orbits = null, IEnumerable<SolarPlacement> placements = null)
         {
             var surveys = (waypoints ?? new SurveyWaypoint[0]).ToList();
             var satellites = (orbits ?? new ContractOrbit[0]).ToList();
+            var telescopes = (placements ?? new SolarPlacement[0]).ToList();
             var needs = Needs(contractNeeds);
             var hop = Hop(needs, hops);
             if (hop != null) return hop;
@@ -125,7 +131,7 @@ namespace ClaudiaKerman.Core.Contracts
             PricedRoute best = null, bestKept = null;
             foreach (var order in orders)
             {
-                var route = Price(order, needs, home, surveys, satellites);
+                var route = Price(order, needs, home, surveys, satellites, telescopes);
                 if (best == null || route.DeltaV < best.DeltaV) best = route;
                 if (keeps(route) && (bestKept == null || route.DeltaV < bestKept.DeltaV)) bestKept = route;
             }
@@ -138,7 +144,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// </summary>
         public double Planned(PricedRoute route)
         {
-            return route.Legs == null ? route.DeltaV : PlanLegs.Need(PlanLegs.Judge(_snapshot, route.Legs, "", true)) + route.Surveys + route.Orbits;
+            return route.Legs == null ? route.DeltaV : PlanLegs.Need(PlanLegs.Judge(_snapshot, route.Legs, "", true)) + route.Surveys + route.Orbits + route.Placements;
         }
 
         /// <summary>What the Contracts need with what the words need: where both reach a body, the further reach serves both.</summary>
@@ -190,9 +196,9 @@ namespace ClaudiaKerman.Core.Contracts
             return route;
         }
 
-        private PricedRoute Price(IList<string> order, IDictionary<string, ContractReach> needs, bool home, List<SurveyWaypoint> surveys, List<ContractOrbit> satellites)
+        private PricedRoute Price(IList<string> order, IDictionary<string, ContractReach> needs, bool home, List<SurveyWaypoint> surveys, List<ContractOrbit> satellites, List<SolarPlacement> telescopes)
         {
-            var key = string.Join(",", order.Select(b => b + ":" + (int)needs[b]).ToArray()) + "|" + home + "|" + string.Join(",", surveys.Concat<object>(satellites).Select(w => w is SurveyWaypoint ? ((SurveyWaypoint)w).Key : ((ContractOrbit)w).Key).OrderBy(k => k, StringComparer.Ordinal).ToArray());
+            var key = string.Join(",", order.Select(b => b + ":" + (int)needs[b]).ToArray()) + "|" + home + "|" + string.Join(",", surveys.Select(w => w.Key).Concat(satellites.Select(o => o.Key)).Concat(telescopes.Select(t => t.Key)).OrderBy(k => k, StringComparer.Ordinal).ToArray());
             PricedRoute cached;
             if (_priced.TryGetValue(key, out cached)) return cached;
             var legs = new List<PlannedSequence>();
@@ -207,6 +213,7 @@ namespace ClaudiaKerman.Core.Contracts
             }
             else if (at == _home) route.LaunchUt = ut;
             if (route.LaunchUt.HasValue) Satellites(route, _home, satellites.Where(o => o.Body == _home).ToList(), _snapshot.IsGrounded, route.LaunchUt.Value);
+            if (route.LaunchUt.HasValue) Telescopes(route, telescopes, route.LaunchUt.Value);
             for (var i = 0; i < order.Count; i++)
             {
                 var body = order[i];
@@ -249,7 +256,7 @@ namespace ClaudiaKerman.Core.Contracts
                 route.HomeUt = ut;
             }
             route.Legs = legs;
-            route.DeltaV = PlanLegs.Need(PlanLegs.Judge(_snapshot, legs, "")) + route.Surveys + route.Orbits;
+            route.DeltaV = PlanLegs.Need(PlanLegs.Judge(_snapshot, legs, "")) + route.Surveys + route.Orbits + route.Placements;
             _priced[key] = route;
             return route;
         }
@@ -281,6 +288,23 @@ namespace ClaudiaKerman.Core.Contracts
                 double seconds;
                 route.Orbits += SatelliteOrbits.Price(orbit, at, map, launched && body == _home, out seconds);
                 route.OrbitReachedUt[orbit.Key] = ut + seconds;
+            }
+        }
+
+        /// <summary>
+        /// #1035: each Sentinel telescope's burn from the low orbit round home reached at <paramref name="ut"/> into its solar orbit
+        /// (<see cref="PlacementKinds.Price"/>); the burn is the telescope's, so the route goes on from the low orbit.
+        /// </summary>
+        private void Telescopes(PricedRoute route, List<SolarPlacement> telescopes, double ut)
+        {
+            SnapshotBody home;
+            if (telescopes.Count == 0 || !_bodies.TryGetValue(_home, out home)) return;
+            var map = _map ?? (_map = DeltaVMap.Compute(_snapshot.Bodies, _home));
+            foreach (var telescope in telescopes)
+            {
+                double seconds;
+                route.Placements += PlacementKinds.Price(telescope, home, map, Transfer(_home, telescope.Planet), out seconds);
+                route.PlacedUt[telescope.Key] = ut + seconds;
             }
         }
 
