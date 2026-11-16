@@ -339,6 +339,7 @@ namespace ClaudiaKerman.Core.Contracts
         private void JudgeVessel(ReadRequirement read)
         {
             if (read.Vessel != null) read.CraftCant = StructureKinds.Lacks(_snapshot, read.Vessel, Remote);
+            if (read.Placement != null) read.NotYet = PlacementKinds.Unpriced(_snapshot, read.Placement, _home);
             var orbit = read.Orbit;
             var body = orbit == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == orbit.Body);
             if (body != null && orbit.PeR < DeltaVMap.LowOrbit(body))

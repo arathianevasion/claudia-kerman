@@ -233,7 +233,7 @@ namespace ClaudiaKerman.Core.Contracts
 
         private static string AfterMissionWords(IEnumerable<RequirementReading> readings)
         {
-            return readings.Any(r => r.State == CompletesAfter) ? "For a Requirement that " + CompletesAfter + ", say in the Debrief that it is placed and the game completes it after the Mission, with nothing to fly again.\n" : "";
+            return readings.Any(r => r.State == CompletesAfter) ? "For a Requirement that " + CompletesAfter + ", say in the Debrief that the game completes it after the Mission once its placement is made (the telescope in solar orbit, the station set up); the game doesn't mark the placement itself.\n" : "";
         }
 
         private static string Json(IEnumerable<RequirementReading> readings)

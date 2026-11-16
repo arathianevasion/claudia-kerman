@@ -54,6 +54,8 @@ namespace ClaudiaKerman.Core.Contracts
         public const double DeployedDaysPerPercent = 1;
 
         public const string NoKerbalForStation = "this craft can't: setting up a deployed science station needs a kerbal aboard to go on EVA";
+        /// <summary>The telescope's burn is priced from low orbit round home, so a craft elsewhere can't place one yet.</summary>
+        public const string AwayNotYet = "not yet: a Sentinel telescope is placed from Kerbin orbit only";
         public const string HomeStationNotYet = "not yet: deployed science on Kerbin isn't planned yet";
 
         /// <summary>The stock moons by the planet of the Sun they go round with.</summary>
@@ -122,13 +124,24 @@ namespace ClaudiaKerman.Core.Contracts
             one.ChildMay = true;
             one.Vessel = new VesselNeeds
             {
-                Noun = "Sentinel telescope", Tags = new List<string> { "antenna", "electric_generator" }, Parts = new List<string> { TelescopePart }, ChildMay = true,
+                Noun = "Sentinel probe", Tags = new List<string> { "antenna", "electric_generator" }, Parts = new List<string> { TelescopePart }, ChildMay = true,
             };
         }
 
         private static MissionWait Wait(double days, string what)
         {
             return new MissionWait { Seconds = days * KerbinTime.SecondsPerDay, Words = what + ", about " + Whole(days) + " days" };
+        }
+
+        /// <summary>
+        /// "not yet: …" when the telescope's placement can't be priced from where the craft is: the craft is away from home (the burn is
+        /// priced from low orbit round it), or the planet isn't in the Game Snapshot's body table; "" otherwise.
+        /// </summary>
+        internal static string Unpriced(GameSnapshot snapshot, SolarPlacement placement, string home)
+        {
+            var at = snapshot.Orbit != null && snapshot.Orbit.Body.Length > 0 ? snapshot.Orbit.Body : snapshot.Body;
+            if (at != home) return AwayNotYet;
+            return snapshot.Bodies.Any(b => b.Name == placement.Planet) ? "" : "not yet: the Contract's body isn't one Claudia knows";
         }
 
         /// <summary>

@@ -24,6 +24,14 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return contract;
         }
 
+        /// <summary>The Sentinel Contract's focus set to the body at <paramref name="index"/> in the game's body list.</summary>
+        private static void FocusOn(SnapshotContract contract, string index)
+        {
+            var settings = contract.Requirements[0].Settings;
+            var at = settings.FindIndex(s => s.Name == "FocusBody");
+            settings[at] = new ContractSetting("FocusBody", index);
+        }
+
         /// <summary>The pad craft carrying a Sentinel telescope, an antenna and a power source.</summary>
         private static GameSnapshot WithTelescope(params SnapshotContract[] contracts)
         {
@@ -121,7 +129,62 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
             var left = Assert.Single(check.NotThisFlight);
             Assert.Equal(LeftOutKind.CraftCant, left.Kind);
-            Assert.Equal("this craft can't: no InfraredTelescope on the Sentinel telescope", left.Reason);
+            Assert.Equal("this craft can't: no SENTINEL Infrared Telescope on the Sentinel probe", left.Reason);
+        }
+
+        [Fact]
+        public void ASentinelFocusedOnAPlanetTheBodyTableLacksIsNotYetRatherThanPricedFree()
+        {
+            var contract = Fixture("SentinelContract.json", "c-sentinel");
+            FocusOn(contract, "6");
+            var snapshot = WithTelescope(contract);
+            snapshot.Bodies.RemoveAll(b => b.Name == "Duna" || b.Parent == "Duna");
+
+            var left = Assert.Single(Remote(snapshot).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.NotYet, left.Kind);
+            Assert.Equal("not yet: the Contract's body isn't one Claudia knows", left.Reason);
+        }
+
+        [Fact]
+        public void ASentinelNearDunasOrbitIsPricedAsTheTransferThereWithNoCapture()
+        {
+            var contract = Fixture("SentinelContract.json", "c-sentinel");
+            FocusOn(contract, "6");
+            var kerbin = Remote(WithTelescope(Fixture("SentinelContract.json", "c-near"))).RouteDeltaV;
+
+            var check = Remote(WithTelescope(contract));
+
+            Assert.Equal("Solar orbit near Duna", Assert.Single(check.Fitting).Phase);
+            // Hohmann round the Sun: leaving low Kerbin orbit for Duna's orbit is 1,072 m/s, matching Duna's orbital speed there 827, the
+            // plane about 7: 1,906 m/s, 962 more than the bare escape's 944.
+            Assert.InRange(check.RouteDeltaV - kerbin, 950, 975);
+        }
+
+        [Fact]
+        public void APlacementFromACraftAwayFromKerbinIsNotYet()
+        {
+            var snapshot = WithTelescope(Fixture("SentinelContract.json", "c-sentinel"));
+            snapshot.Body = "Mun";
+            snapshot.Orbit = null;
+
+            var left = Assert.Single(Remote(snapshot).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.NotYet, left.Kind);
+            Assert.Equal(PlacementKinds.AwayNotYet, left.Reason);
+        }
+
+        [Fact]
+        public void ADeployedScienceContractWhoseWaitRunsPastItsDeadlineLessTheSpareCompletesLater()
+        {
+            var snapshot = ContractCheckTests.With();
+            var contract = Fixture("DeployedScienceContract.json", "c-station");
+            contract.DeadlineUt = snapshot.Ut + 40 * 21600;
+            snapshot.Contracts.Accepted.Add(contract);
+
+            var left = Assert.Single(ContractCheck.Work(snapshot, "", false, ContractCheckTests.Margin).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.CompletesLater, left.Kind);
         }
 
         [Fact]
@@ -222,7 +285,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             var line = ContractWatch.HandBackLine(new ContractWatch().Read(snapshot.Contracts, new[] { chosen }, null));
 
             Assert.Contains("\"state\":\"completes after the Mission\"", line);
-            Assert.Contains("say in the Debrief that it is placed and the game completes it after the Mission", line);
+            Assert.Contains("the game completes it after the Mission once its placement is made", line);
             Assert.DoesNotContain("retry", line);
         }
 

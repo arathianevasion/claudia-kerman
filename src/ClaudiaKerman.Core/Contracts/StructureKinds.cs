@@ -226,7 +226,14 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>#1035: the words for the first tag or named part (by internal name) none of <paramref name="parts"/> has; null when they have them all.</summary>
         private static string MissingAny(List<SnapshotPart> parts, VesselNeeds needs)
         {
-            return Missing(parts, needs.Tags) ?? needs.Parts.FirstOrDefault(n => parts.All(p => p.Name != n));
+            var part = needs.Parts.FirstOrDefault(n => parts.All(p => p.Name != n));
+            return Missing(parts, needs.Tags) ?? (part == null ? null : PartWords(part));
+        }
+
+        /// <summary>#1035: a named part as the player knows it: the Sentinel telescope by its title, any other by its internal name.</summary>
+        private static string PartWords(string name)
+        {
+            return name == PlacementKinds.TelescopePart ? "SENTINEL Infrared Telescope" : name;
         }
 
         /// <summary>The words for the first tag none of <paramref name="parts"/> has; null when they have them all.</summary>
