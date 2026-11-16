@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
 
@@ -27,6 +28,29 @@ namespace ClaudiaKerman.Core.Contracts
         public string Name
         {
             get { return Vessel != null && Vessel.Name.Trim().Length > 0 ? Vessel.Name.Trim() : VesselName.Length > 0 ? VesselName : Kind == TargetKinds.Comet ? "the comet" : "the Contract's vessel"; }
+        }
+    }
+
+    /// <summary>
+    /// #1033: which accepted Target Vessel Contract a vessel in the game was spawned for, for the Adapter's read of
+    /// <see cref="GameSnapshot.ContractVessels"/>. The game's identity for it is what the Contract's saved settings name: the vessel's name
+    /// (a repair, a construction, a comet), or the kerbal aboard (a rescue). Whatever the vessel's type: the goal-name search's skips don't apply.
+    /// </summary>
+    public static class ContractVessels
+    {
+        /// <summary>The GUID of the Contract in <paramref name="contracts"/> that names this vessel; "" when none does.</summary>
+        public static string ContractFor(SnapshotContracts contracts, string vesselName, IEnumerable<string> crew)
+        {
+            if (contracts == null) return "";
+            var aboard = new HashSet<string>(crew ?? new string[0], StringComparer.OrdinalIgnoreCase);
+            var name = (vesselName ?? "").Trim();
+            foreach (var contract in contracts.Accepted.Where(c => TargetKinds.Plans(c.Kind)))
+            {
+                var target = TargetKinds.Named(contract);
+                if (target.Kind == TargetKinds.Rescue ? target.Kerbal.Length > 0 && aboard.Contains(target.Kerbal)
+                    : target.VesselName.Length > 0 && string.Equals(target.VesselName, name, StringComparison.OrdinalIgnoreCase)) return contract.Guid;
+            }
+            return "";
         }
     }
 
@@ -63,6 +87,13 @@ namespace ClaudiaKerman.Core.Contracts
         public static bool Plans(string kind)
         {
             return kind == Rescue || kind == OrbitalConstruction || kind == RoverConstruction || kind == Repair || kind == Comet;
+        }
+
+        /// <summary>The Contract's vessel as its settings name it, from its first Requirement that names one.</summary>
+        internal static ContractTarget Named(SnapshotContract contract)
+        {
+            var named = Leaves(contract).Select(r => TargetOf(contract, r)).FirstOrDefault(t => t.VesselName.Length > 0 || t.Kerbal.Length > 0);
+            return named ?? TargetOf(contract, new ContractRequirement());
         }
 
         /// <summary>The Contract's vessel as its settings name it; the Contract check finds it in the game.</summary>

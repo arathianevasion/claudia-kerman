@@ -691,6 +691,12 @@ namespace ClaudiaKerman.Core.Contracts
             get { return _planned.Where(p => _ticked.Contains(p.Contract.Guid)).Select(p => p.Contract.Guid).ToList(); }
         }
 
+        /// <summary>#1033: the vessel of the ticked Target Vessel Contract, the start form's target (ADR 0013's amendment); null when none is ticked.</summary>
+        public SnapshotVessel TickedTarget
+        {
+            get { return _planned.Where(p => p.Target != null && _ticked.Contains(p.Contract.Guid)).Select(p => p.Target.Vessel).FirstOrDefault(); }
+        }
+
         /// <summary>The route, reserve, spare, each Contract's delta-v and every swap, worked out for the ticked set alone.</summary>
         private void Reprice()
         {

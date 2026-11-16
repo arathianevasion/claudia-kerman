@@ -134,7 +134,8 @@ namespace ClaudiaKerman.Core.Missions
             _contractCheck = null;
             var snapshot = _snapshot;
             if (snapshot == null || snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0) return false;
-            var check = ContractCheck.Work(snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent);
+            // #1033: a target the goal or the player's pick gives wins over a Target Vessel Contract's vessel (ADR 0013's amendment).
+            var check = ContractCheck.Work(snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent, ChooseTarget(start.Goal, start.Target).Target);
             if (!check.Priceable)
             {
                 refusal = "The craft's delta-v isn't known (turn on the stock delta-v readout), so your Contracts can't be priced. Turn it on, then start again.";

@@ -238,5 +238,17 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("not this flight: one Target Vessel per Mission (this Mission's is Kerbin Station)", left.Reason);
             Assert.Single(same.Fitting);
         }
+
+        [Fact]
+        public void TheAdapterTagsAVesselByWhatItsContractNamesAKerbalAboardForARescueOrTheVesselsName()
+        {
+            var contracts = new SnapshotContracts();
+            contracts.Accepted.Add(Fixture("RecoverAsset.json", "c-rescue"));
+            contracts.Accepted.Add(Fixture("VesselRepairContract.json", "c-repair"));
+
+            Assert.Equal("c-rescue", ContractVessels.ContractFor(contracts, "Gusdun's Capsule", new[] { "Gusdun Kerman" }));
+            Assert.Equal("c-repair", ContractVessels.ContractFor(contracts, "relay sat q-7", new string[0]));
+            Assert.Equal("", ContractVessels.ContractFor(contracts, "Kerbin Station", new[] { "Bill Kerman" }));
+        }
     }
 }

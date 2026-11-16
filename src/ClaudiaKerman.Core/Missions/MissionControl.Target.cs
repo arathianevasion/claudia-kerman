@@ -26,21 +26,47 @@ namespace ClaudiaKerman.Core.Missions
         private GameSnapshot _targetFactsFrom;
         private TargetFacts _targetFacts = new TargetFacts();
 
-        /// <summary>What the Target Vessel is chosen from, as of the latest snapshot: one object per snapshot, so the form can cache its choice.</summary>
+        private TargetFacts _contractFacts;
+
+        /// <summary>
+        /// What the Target Vessel is chosen from, as of the latest snapshot: one object per snapshot and ticked Target Vessel Contract, so the
+        /// form can cache its choice. #1033: while the Contract check card is up, the vessel of its ticked Target Vessel Contract is in it.
+        /// </summary>
         private TargetFacts CurrentTargetFacts()
         {
             if (!ReferenceEquals(_targetFactsFrom, _snapshot))
             {
                 _targetFactsFrom = _snapshot;
                 _targetFacts = TargetFacts.Of(_snapshot);
+                _contractFacts = null;
             }
-            return _targetFacts;
+            var ticked = _contractCheck != null && MissionOver ? _contractCheck.TickedTarget : null;
+            if (ticked == null) return _targetFacts;
+            if (_contractFacts == null || !ReferenceEquals(_contractFacts.Contract, ticked)) _contractFacts = _targetFacts.WithContract(ticked);
+            return _contractFacts;
         }
 
-        /// <summary>The Target Vessel for this goal and the form's pick (#643): the same choice the start form shows.</summary>
-        private TargetChoice ChooseTarget(string goal, TargetPick pick)
+        /// <summary>
+        /// The Target Vessel for this goal and the form's pick (#643): the same choice the start form shows. #1033: <paramref name="contract"/>
+        /// is the vessel of the Target Vessel Contract the start chose from the card, when it chose one.
+        /// </summary>
+        private TargetChoice ChooseTarget(string goal, TargetPick pick, SnapshotVessel contract = null)
         {
-            return TargetVessel.Choose((goal ?? "").Trim(), pick, CurrentTargetFacts());
+            var facts = CurrentTargetFacts();
+            return TargetVessel.Choose((goal ?? "").Trim(), pick, contract == null ? facts : facts.WithContract(contract));
+        }
+
+        /// <summary>
+        /// #1033: the start form reported a change. Clear, pressed with a Target Vessel Contract ticked on the card, unticks that Contract
+        /// rather than leaving it without its vessel (ADR 0013's amendment); only the press does, not each later report of the same pick.
+        /// </summary>
+        private void FormChanged(StartFormChanged form)
+        {
+            var wasCleared = _form != null && _form.Target.Kind == TargetPickKind.Cleared;
+            _form = form;
+            if (wasCleared || form.Target.Kind != TargetPickKind.Cleared || _contractCheck == null || !MissionOver) return;
+            var unticks = ChooseTarget(form.Goal, form.Target).Unticks;
+            if (unticks.Length > 0) _contractCheck.Tick(unticks, false);
         }
 
         /// <summary>The Mission takes the target the Craft Check judged, and the log says how it was found or why there is none.</summary>
