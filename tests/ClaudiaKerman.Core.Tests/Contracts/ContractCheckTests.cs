@@ -136,7 +136,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void EveryContractTypeNotPlannedYetIsNotYetWithItsReason()
         {
-            var files = new[] { "SurveyContract.json", "TourismContract.json", "PlantFlag.json", "RecoverAsset.json" };
+            var files = new[] { "SurveyContract.json", "TourismContract.json", "RecoverAsset.json" };
             var snapshot = With(files.Select(Fixture).ToArray());
 
             var check = Check(snapshot);

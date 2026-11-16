@@ -21,8 +21,10 @@ One Game Snapshot per accepted Contract, in the form the capture button writes t
 | `PlantFlag.json` | PlantFlag | the research's type table (no save keys) | every key: `targetBody` is a guess |
 | `OrbitalConstructionContract.json` | OrbitalConstructionContract | a 1.11+ save's tree (no save keys given) | every key of `ConstructionParameter` (`partName`, `vesselName`, `targetBody` are guesses) and `CrewTraitParameter`'s 1.12 keys |
 | `VesselRepairContract.json` | VesselRepairContract | a 1.11+ save's tree (no save keys given) | every key of `RepairPartParameter` (`partName`, `vesselName`, `targetBody` are guesses) and `CrewTraitParameter`'s 1.12 keys |
+| `ROCScienceArmContract.json` | ROCScienceArmContract (Breaking Ground) | the research's type table (no save keys) | every key: `targetBody`, `subject` and `rocType` are guesses at `CollectROCScienceArm`'s body, subject and surface-feature type |
+| `ROCScienceRetrievalContract.json` | ROCScienceRetrievalContract (Breaking Ground) | the research's type table (no save keys) | every key, as for the arm scan; whether the sample must be recovered or transmitting it is enough |
 
-No fixture yet for the types whose tree no public save shows: ISRUContract, ARMContract, GrandTour, RoverConstructionContract, SentinelContract, CometDetectionContract, CometSampleContract, and the three Breaking Ground types. The in-game recording adds them.
+No fixture yet for the types whose tree no public save shows: ISRUContract, ARMContract, GrandTour, RoverConstructionContract, SentinelContract, CometDetectionContract, CometSampleContract, and Breaking Ground's DeployedScienceContract. The in-game recording adds them.
 
 ## Recorded in game
 

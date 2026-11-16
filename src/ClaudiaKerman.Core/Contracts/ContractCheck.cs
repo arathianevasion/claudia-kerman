@@ -27,11 +27,13 @@ namespace ClaudiaKerman.Core.Contracts
         public string Note = "";
         /// <summary>Unticked and not fitting as a plain tick: the swap that brings it in (#1023); null when none.</summary>
         public SwapOffer Swap;
+        /// <summary>#1032: one of its Requirements is a Manual stretch the player flies (a flag, a scan, a sample).</summary>
+        public bool YouFly;
 
-        /// <summary>The line under its box: "Mun · +1,170 m/s · deadline Y1 D30 (in 12d)", or "no deadline".</summary>
+        /// <summary>The line under its box: "Mun · you fly · +1,170 m/s · deadline Y1 D30 (in 12d)", or "no deadline".</summary>
         public string Detail(double now)
         {
-            return Phase + " · +" + Math.Round(AddedDeltaV).ToString("#,0", CultureInfo.InvariantCulture) + " m/s · "
+            return Phase + (YouFly ? " · you fly" : "") + " · +" + Math.Round(AddedDeltaV).ToString("#,0", CultureInfo.InvariantCulture) + " m/s · "
                 + (DeadlineUt.HasValue ? "deadline " + KerbinTime.ShortDate(DeadlineUt.Value) + " (" + KerbinTime.FromNow(DeadlineUt.Value, now) + ")" : "no deadline");
         }
     }
@@ -245,6 +247,7 @@ namespace ClaudiaKerman.Core.Contracts
                 foreach (var test in read.Where(r => r.Plannable && r.Test != null)) JudgeTest(test);
                 foreach (var science in read.Where(r => r.Plannable && r.Experiment != null)) JudgeScience(science);
                 foreach (var vessel in read.Where(r => r.Plannable && (r.Vessel != null || r.Orbit != null))) JudgeVessel(vessel);
+                foreach (var manual in read.Where(r => r.Plannable && r.Manual.Length > 0)) manual.CraftCant = ManualKinds.Lacks(_snapshot, manual);
                 var cant = read.FirstOrDefault(r => r.Plannable && r.CraftCant.Length > 0 && !r.Requirement.Optional);
                 if (cant != null && read.All(r => r.Plannable || r.Requirement.Optional))
                 {
@@ -500,6 +503,7 @@ namespace ClaudiaKerman.Core.Contracts
                     Fitting.Add(new ContractCheckRow
                     {
                         Guid = planned.Contract.Guid, Title = planned.Title, DeadlineUt = planned.Contract.DeadlineUt, Note = planned.Note, Phase = PhaseOf(planned),
+                        YouFly = YouFly(planned),
                     });
                 }
                 else NotThisFlight.Add(WhyNot(planned, best));
@@ -595,6 +599,12 @@ namespace ClaudiaKerman.Core.Contracts
             return ranked;
         }
 
+        /// <summary>#1032: the player flies a Manual stretch for one of its Requirements.</summary>
+        private static bool YouFly(Planned planned)
+        {
+            return planned.Requirements.Any(r => r.Manual.Length > 0);
+        }
+
         private static string PhaseOf(Planned planned)
         {
             return string.Join(", ", planned.Requirements.Select(r => r.Phase).Distinct().ToArray());
@@ -662,7 +672,7 @@ namespace ClaudiaKerman.Core.Contracts
                 left.Tickable = true;
                 left.Ticked = ticked;
                 left.Swap = swap;
-                if (ticked) left.Reason = PhaseOf(planned) + " · +" + Whole(delta) + " m/s";
+                if (ticked) left.Reason = PhaseOf(planned) + (YouFly(planned) ? " · you fly" : "") + " · +" + Whole(delta) + " m/s";
                 else
                 {
                     var fresh = WhyNot(planned, set);
@@ -791,7 +801,7 @@ namespace ClaudiaKerman.Core.Contracts
             var windows = new Dictionary<string, TestWindow>();
             TestProblem(set, route, windows);
             choice.Requirements = set.SelectMany(p => p.Requirements.Select(r => new ChosenRequirement
-                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.ChildMay })).ToList();
+                { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.ChildMay, Manual = r.Manual })).ToList();
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);

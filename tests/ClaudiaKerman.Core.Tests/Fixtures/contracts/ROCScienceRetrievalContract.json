@@ -1,0 +1,44 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000022",
+        "kind": "ROCScienceRetrievalContract",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 21000.0,
+          "science": 10.0,
+          "reputation": 4.0
+        },
+        "settings": {
+          "type": "ROCScienceRetrievalContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000022",
+          "state": "Active",
+          "prestige": "0"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000022/0",
+            "kind": "CollectROCScienceRetrieval",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "CollectROCScienceRetrieval",
+              "state": "Incomplete",
+              "targetBody": "2",
+              "subject": "MunBoulder",
+              "rocType": "MunBoulder"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

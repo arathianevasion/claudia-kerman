@@ -52,6 +52,10 @@ namespace ClaudiaKerman.Core.Contracts
         public VesselNeeds Vessel;
         /// <summary>#1031: a Child Vessel the craft releases may serve it: every Requirement of a satellite.</summary>
         public bool ChildMay;
+        /// <summary>#1032: the hands-on work the player does in a Manual stretch at the leg serving it, "plant a flag on EVA"; "" when Claudia flies it all.</summary>
+        public string Manual = "";
+        /// <summary>#1032: the Manual stretch scans a surface feature with the robotic arm, so the arm must be aboard.</summary>
+        public bool ArmScan;
 
         public bool Plannable
         {
@@ -95,7 +99,6 @@ namespace ClaudiaKerman.Core.Contracts
         {
             { "SPACEWALK", "needs an EVA in a Manual stretch, not planned yet" },
             { "SURFACEEVA", "needs an EVA in a Manual stretch, not planned yet" },
-            { "FLAGPLANT", "needs a flag planted in a Manual stretch, not planned yet" },
             { "SPLASHDOWN", "splashdowns away from home aren't planned yet" },
             { "SCIENCE", "collecting science isn't planned yet" },
             { "CREWRECOVERY", "recovering crew isn't planned yet" },
@@ -162,6 +165,7 @@ namespace ClaudiaKerman.Core.Contracts
             var one = new ReadRequirement { Requirement = requirement };
             if (contract.Kind == ScienceKinds.CollectScience || contract.Kind == ScienceKinds.Survey) return ScienceKinds.Read(one, contract, requirement, home);
             if (StructureKinds.Plans(contract.Kind)) return StructureKinds.Read(one, contract, requirement, home);
+            if (ManualKinds.Plans(contract.Kind)) return ManualKinds.Read(one, contract, requirement, home);
             if (contract.Kind != Exploration || requirement.Kind != "ProgressTrackingParameter")
             {
                 one.NotYet = contract.Kind != Exploration ? TypeNotYet(contract.Kind) : "not yet: " + requirement.Kind + " isn't a Contract Requirement Claudia can plan yet";
@@ -172,6 +176,7 @@ namespace ClaudiaKerman.Core.Contracts
             ContractReach reach;
             string reason;
             if (type == "REACHSPACE") return body != home ? NotYet(one, AwayHopNotYet) : Hop(one, home, new HopBand { AboveAir = true });
+            if (type == "FLAGPLANT") return ManualKinds.Flag(one, body.Length == 0 ? null : body, home);
             if (type == "DEPTHRECORD") one.NotYet = DepthNotYet;
             else if (Records.Contains(type)) return ReadRecord(one, type, body, home);
             else if (OtherReasons.TryGetValue(type, out reason)) one.NotYet = "not yet: " + reason;

@@ -29,6 +29,8 @@ namespace ClaudiaKerman.Core.Contracts
         public ContractOrbit Orbit;
         /// <summary>#1031: a Child Vessel the craft releases may serve it (a satellite).</summary>
         public bool ChildMay;
+        /// <summary>#1032: the hands-on work the player does in a Manual stretch after the leg that lands there, "plant a flag on EVA"; "" when none.</summary>
+        public string Manual = "";
     }
 
     /// <summary>The Contract Route's record of one chosen Requirement: the leg of the Mission Plan that serves it, -1 when none does.</summary>
