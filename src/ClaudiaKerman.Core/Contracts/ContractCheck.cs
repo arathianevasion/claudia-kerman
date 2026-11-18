@@ -876,7 +876,7 @@ namespace ClaudiaKerman.Core.Contracts
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
-            choice.Summary = "Mission Control · Contract check: " + set.Count + " of " + Accepted + " Contracts chosen · route " + Whole(route.DeltaV) + " m/s · "
+            choice.Summary = "Mission Control · Contract check: " + set.Count + " of " + Accepted + " Contracts chosen · route " + (RouteIsEstimate ? "≈ " + Whole(route.DeltaV) + " m/s (estimate)" : Whole(route.DeltaV) + " m/s") + " · "
                 + SpareText(spare) + " · " + string.Join(" · ", set.Select(p => "✓ " + p.Title).ToArray());
 
             var text = new StringBuilder();

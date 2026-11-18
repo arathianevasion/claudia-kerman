@@ -303,6 +303,26 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void TheFoldedSummaryMarksTheRouteAsAnEstimateAfterATickButNotOtherwise()
+        {
+            var ticked = Control(TwoAtTheMunAndAHaul());
+            ticked.Send(Start(""));
+            ticked.Send(new TickContract("c-land", false));
+            ticked.Send(new TickContract("c-land", true));
+            Assert.Contains("(estimate)", ticked.View.ContractCheck.Headline);
+            ticked.Send(new PlanContracts());
+            DrainUntil(ticked, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Contains(ticked.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen · route ≈ ", StringComparison.Ordinal) && e.Text.Contains(" m/s (estimate) · "));
+
+            var untouched = Control(TwoAtTheMunAndAHaul());
+            untouched.Send(Start(""));
+            Assert.DoesNotContain("(estimate)", untouched.View.ContractCheck.Headline);
+            untouched.Send(new PlanContracts());
+            DrainUntil(untouched, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Contains(untouched.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal) && !e.Text.Contains("(estimate)"));
+        }
+
+        [Fact]
         public void WithNothingTypedTheMissionPlansFromTheContractsAlone()
         {
             var mission = Control(TwoAtTheMunAndAHaul());
