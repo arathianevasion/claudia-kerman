@@ -111,8 +111,6 @@ namespace ClaudiaKerman.Core.Contracts
 
         private static readonly Dictionary<string, string> OtherReasons = new Dictionary<string, string>
         {
-            { "SPACEWALK", "needs an EVA in a Manual stretch, not planned yet" },
-            { "SURFACEEVA", "needs an EVA in a Manual stretch, not planned yet" },
             { "SPLASHDOWN", "splashdowns away from home aren't planned yet" },
             { "SCIENCE", "collecting science isn't planned yet" },
             { "CREWRECOVERY", "recovering crew isn't planned yet" },
@@ -199,6 +197,8 @@ namespace ClaudiaKerman.Core.Contracts
             string reason;
             if (type == "REACHSPACE") return body != home ? NotYet(one, AwayHopNotYet) : Hop(one, home, new HopBand { AboveAir = true });
             if (type == "FLAGPLANT") return ManualKinds.Flag(one, body.Length == 0 ? null : body, home);
+            if (type == "SPACEWALK") return ManualKinds.Spacewalk(one, body.Length == 0 ? null : body, home);
+            if (type == "SURFACEEVA") return ManualKinds.SurfaceWalk(one, body.Length == 0 ? null : body, home);
             if (type == "DEPTHRECORD") one.NotYet = DepthNotYet;
             else if (Records.Contains(type)) return ReadRecord(one, type, body, home);
             else if (OtherReasons.TryGetValue(type, out reason)) one.NotYet = "not yet: " + reason;

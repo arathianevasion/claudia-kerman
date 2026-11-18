@@ -85,19 +85,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void AnOptionalMilestoneClaudiaCantPlanIsSkippedAndTheHoverSaysSo()
         {
-            var mark = ContractMarks.Of(Exploration("g", 0, "Minmus:LANDING", "?Minmus:SURFACEEVA"), false);
+            var mark = ContractMarks.Of(Exploration("g", 0, "Minmus:LANDING", "?Minmus:SPLASHDOWN"), false);
 
             Assert.True(mark.Plannable);
-            Assert.Equal("Claudia can plan this: land on Minmus (optional Requirement skipped: needs an EVA in a Manual stretch, not planned yet)", mark.Hover);
+            Assert.Equal("Claudia can plan this: land on Minmus (optional Requirement skipped: splashdowns away from home aren't planned yet)", mark.Hover);
         }
 
         [Fact]
         public void AContractWhoseOnlyMilestonesAreOptionalOnesClaudiaCantPlanIsNotYet()
         {
-            var mark = ContractMarks.Of(Exploration("g", 0, "?Mun:SPACEWALK"), false);
+            var mark = ContractMarks.Of(Exploration("g", 0, "?Mun:SPLASHDOWN"), false);
 
             Assert.False(mark.Plannable);
-            Assert.Equal("not yet: needs an EVA in a Manual stretch, not planned yet", mark.Hover);
+            Assert.Equal("not yet: splashdowns away from home aren't planned yet", mark.Hover);
         }
 
         [Fact]

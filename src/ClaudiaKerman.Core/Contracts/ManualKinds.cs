@@ -10,7 +10,9 @@ namespace ClaudiaKerman.Core.Contracts
     /// #1032: Contract Requirements met by hands-on work (ADR 0021: Core's kind table), each a Manual stretch Claudia plans. Claudia lands on
     /// the body as near the spot as she can; the player's Manual stretch does the rest: plants the flag on EVA (a plant-flag Contract, or an
     /// exploration Contract's flag), drives to a surface feature and scans it with the robotic arm (Breaking Ground), or walks to one and takes
-    /// a sample on EVA (Breaking Ground). On Kerbin they are "not yet", as ground surveys and bases there are.
+    /// a sample on EVA (Breaking Ground). #1246: so is every other EVA-only Requirement: an exploration Contract's spacewalk (in orbit of
+    /// its body) and surface EVA (after the landing), and a survey waypoint needing an EVA report or a surface sample (<see cref="ScienceKinds"/>).
+    /// On Kerbin's ground they are "not yet", as ground surveys and bases there are.
     /// </summary>
     internal static class ManualKinds
     {
@@ -25,9 +27,14 @@ namespace ClaudiaKerman.Core.Contracts
 
         public const string HomeFlagNotYet = "not yet: planting a flag on Kerbin isn't planned yet";
         public const string HomeSurfaceNotYet = "not yet: surface features on Kerbin aren't planned yet";
+        public const string HomeEvaNotYet = "not yet: an EVA on Kerbin's surface isn't planned yet";
         public const string NoArm = "this craft can't: no robotic scanner arm aboard";
         public const string NoKerbalForFlag = "this craft can't: planting a flag needs a kerbal aboard to go on EVA";
         public const string NoKerbalForSample = "this craft can't: a surface sample needs a kerbal aboard to go on EVA";
+
+        /// <summary>#1246: the Manual stretch for a spacewalk milestone, and for a surface EVA one.</summary>
+        public const string SpacewalkStretch = "take a spacewalk on EVA";
+        public const string SurfaceEvaStretch = "step out onto the surface on EVA";
 
         public static bool Plans(string kind)
         {
@@ -51,6 +58,23 @@ namespace ClaudiaKerman.Core.Contracts
             return ContractKinds.Visit(one, body, ContractReach.Land, "plant a flag on " + ContractKinds.Named(body), home);
         }
 
+        /// <summary>#1246: an exploration Contract's spacewalk on <paramref name="body"/>: an orbit of it (Kerbin's too), then the player's EVA.</summary>
+        public static ReadRequirement Spacewalk(ReadRequirement one, string body, string home)
+        {
+            if (body == null || body == "Sun") return ContractKinds.NotYet(one, "not yet: the Contract's body isn't one Claudia knows");
+            one.Manual = SpacewalkStretch;
+            return ContractKinds.Visit(one, body, ContractReach.Orbit, "take a spacewalk in orbit round " + ContractKinds.Named(body), home);
+        }
+
+        /// <summary>#1246: an exploration Contract's surface EVA on <paramref name="body"/>: a landing there, then the player's EVA.</summary>
+        public static ReadRequirement SurfaceWalk(ReadRequirement one, string body, string home)
+        {
+            if (body == null || body == "Sun") return ContractKinds.NotYet(one, "not yet: the Contract's body isn't one Claudia knows");
+            if (body == home) return ContractKinds.NotYet(one, HomeEvaNotYet);
+            one.Manual = SurfaceEvaStretch;
+            return ContractKinds.Visit(one, body, ContractReach.Land, "step out onto the surface of " + ContractKinds.Named(body) + " on EVA", home);
+        }
+
         private static ReadRequirement Surface(ReadRequirement one, ContractRequirement requirement, string home, bool arm)
         {
             var body = BodyOf(requirement);
@@ -64,14 +88,22 @@ namespace ClaudiaKerman.Core.Contracts
         }
 
         /// <summary>
-        /// "this craft can't: …" for what the Manual stretch needs that the craft lacks: a kerbal to go on EVA for a flag or a sample, the
-        /// robotic scanner arm for a scan; "" when it has it.
+        /// "this craft can't: …" for what the Manual stretch needs that the craft lacks: a kerbal to go on EVA for a flag, a sample, a
+        /// spacewalk, a surface EVA or an EVA report, the robotic scanner arm for a scan; "" when it has it.
         /// </summary>
         public static string Lacks(GameSnapshot snapshot, ReadRequirement read)
         {
             if (read.ArmScan) return snapshot.Craft.Parts.Any(p => p.Tags.Contains(ArmTag)) ? "" : NoArm;
             if (snapshot.Crew.Count > 0) return "";
-            return read.Manual.StartsWith("plant", System.StringComparison.Ordinal) ? NoKerbalForFlag : NoKerbalForSample;
+            if (read.Manual.StartsWith("plant", System.StringComparison.Ordinal)) return NoKerbalForFlag;
+            if (read.Manual == SpacewalkStretch) return NoKerbal("a spacewalk");
+            if (read.Manual == SurfaceEvaStretch) return NoKerbal("a surface EVA");
+            return read.Manual.Contains("EVA report") ? NoKerbal("an EVA report") : NoKerbalForSample;
+        }
+
+        private static string NoKerbal(string what)
+        {
+            return "this craft can't: " + what + " needs a kerbal aboard to go on EVA";
         }
 
         /// <summary>The surface feature the Contract names, in words: its ROC type as the save gives it, else "surface feature".</summary>
