@@ -140,6 +140,23 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("take an EVA report on EVA over the waypoint 3.0° N 10.0° E, above 20 km", chosen.Manual);
         }
 
+        [Fact]
+        public void ASurfaceSampleFromABandInSpaceIsNotYetForTheGameTakesOneOnlyLanded()
+        {
+            var left = Assert.Single(Check(ContractCheckTests.With(ScienceSurveyContractTests.Survey("c-s", "2", "HIGH", "surfaceSample", 20000, "3,10"))).NotThisFlight);
+
+            Assert.Equal(ScienceKinds.SampleInSpaceNotYet, left.Reason);
+        }
+
+        [Fact]
+        public void TheRequestSaysTheOrbitStretchIsFlownOverTheSpotAndTheEvaWaypointIsNotTheScienceBlocks()
+        {
+            var section = Chosen(ScienceSurveyContractTests.Survey("c-s", "2", "HIGH", "evaReport", 20000, "3,10"), out _).Section;
+
+            Assert.Contains("for one in orbit, be over the spot", section);
+            Assert.Contains("a waypoint on EVA is the player's, in its Manual stretch", section);
+        }
+
         // ---- What the craft needs, and Kerbin's ground ----
 
         [Fact]

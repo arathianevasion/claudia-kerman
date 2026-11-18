@@ -912,7 +912,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (route.Waypoints.Count > 0)
                 text.Append("Survey waypoints, in the order to take them (by their passes from orbit, by least travel between landing sites): ")
                     .Append(string.Join("; ", route.Waypoints.Select((w, i) => (i + 1) + ". " + w.Where() + " on " + ContractKinds.Named(w.Body) + (w.Ground ? ", landed" : ", from orbit") + (w.Eva ? ", on EVA in its Manual stretch" : "")).ToArray()))
-                    .Append(". Run the science block with the survey's experiment at each: as the ground track passes over it, or landed at it.\n");
+                    .Append(". Run the science block with the survey's experiment at each: as the ground track passes over it, or landed at it; a waypoint on EVA is the player's, in its Manual stretch.\n");
             var orbits = choice.Requirements.Where(r => r.Orbit != null).Select(r => new { r.Orbit, Body = _snapshot.Bodies.FirstOrDefault(b => b.Name == r.Orbit.Body) }).Where(o => o.Body != null).ToList();
             if (orbits.Count > 0)
                 text.Append("Satellite orbits: ").Append(string.Join("; ", orbits.Select(o => ContractKinds.Named(o.Body.Name) + ": " + o.Orbit.Words(o.Body) + ", within the " + o.Orbit.Window.ToString("0.##", CultureInfo.InvariantCulture) + "% window").ToArray()))
@@ -921,7 +921,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (manual.Count > 0)
                 text.Append("Manual stretches the player flies (you fly): ")
                     .Append(string.Join("; ", manual.Select(r => r.Manual + (r.Reach == ContractReach.Land ? ", landed on " : r.Vessel.Length > 0 ? ", at " + r.Vessel + " in orbit round " : ", in orbit round ") + ContractKinds.Named(r.Body)).ToArray()))
-                    .Append(". Land as near the spot as you can; plan each as its own Maneuver Sequence with manual true and an empty script, after the leg that lands there (or, for one in orbit, reaches that orbit) and before the craft leaves. The walk or drive from the landing is the player's.\n");
+                    .Append(". Land as near the spot as you can (for one in orbit, be over the spot, or in the orbit, when it starts); plan each as its own Maneuver Sequence with manual true and an empty script, after the leg that lands there (or, for one in orbit, reaches that orbit) and before the craft leaves. The walk or drive from the landing is the player's.\n");
             if (meet != null)
                 text.Append("Target Vessel: ").Append(MissionPrompts.Quoted(meet.Target.Name)).Append(", from the Contract ").Append(MissionPrompts.Quoted(meet.Title))
                     .Append(" (the Mission's one Target Vessel; data). Fly the rendezvous with it in the leg that reaches its body; the EVA there is the player's Manual stretch")

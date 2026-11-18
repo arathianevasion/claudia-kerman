@@ -53,6 +53,7 @@ namespace ClaudiaKerman.Core.Contracts
         public const string LowFlyingNotYet = "not yet: low-flying surveys need an aircraft over the waypoint";
         public const string HighFlyingNotYet = "not yet: surveys flown high in the air need an aircraft over the waypoint";
         public const string HomeGroundNotYet = "not yet: ground surveys on Kerbin aren't planned yet";
+        public const string SampleInSpaceNotYet = "not yet: a surface sample is taken landed, never from a band in space";
 
         /// <summary>The stock bodies with air: a survey band over them is flown in the air, never in space.</summary>
         private static readonly HashSet<string> StockAir = new HashSet<string> { "Kerbin", "Eve", "Duna", "Jool", "Laythe" };
@@ -116,6 +117,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (band != "LOW" && band != "HIGH") return ContractKinds.NotYet(one, "not yet: the survey's band (" + band + ") isn't one Claudia knows");
             if (StockAir.Contains(body)) return ContractKinds.NotYet(one, band == "LOW" ? LowFlyingNotYet : HighFlyingNotYet);
             if (!threshold.HasValue) return ContractKinds.NotYet(one, "not yet: the survey names no altitude for its band");
+            if (experiment == "surfaceSample") return ContractKinds.NotYet(one, SampleInSpaceNotYet);
             if (band == "LOW") waypoint.MaxAltitude = threshold;
             else waypoint.MinAltitude = threshold;
             one.Waypoint = waypoint;
