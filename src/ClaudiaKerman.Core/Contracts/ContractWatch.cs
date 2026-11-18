@@ -180,9 +180,14 @@ namespace ClaudiaKerman.Core.Contracts
             return text;
         }
 
-        /// <summary>The state of each Requirement in <paramref name="served"/> as the snapshot has it, with the gaps the mod knows.</summary>
-        public List<RequirementReading> Read(SnapshotContracts contracts, IEnumerable<ChosenRequirement> served, IDictionary<string, string> gaps)
+        /// <summary>
+        /// The state of each Requirement in <paramref name="served"/> as the snapshot has it, with the gaps the mod knows. A placed one the
+        /// game hasn't marked met (#1035) "completes after the Mission" only once the snapshot shows its placement made (#1244); else it is
+        /// not met, with the placement's gap.
+        /// </summary>
+        public List<RequirementReading> Read(GameSnapshot snapshot, IEnumerable<ChosenRequirement> served, IDictionary<string, string> gaps)
         {
+            var contracts = snapshot == null ? null : snapshot.Contracts;
             var readings = new List<RequirementReading>();
             foreach (var requirement in served)
             {
@@ -194,9 +199,12 @@ namespace ClaudiaKerman.Core.Contracts
                 else
                 {
                     var found = Find(contract.Requirements, requirement.Key);
+                    var unplaced = PlacementKinds.Unplaced(snapshot, requirement);
                     reading.State = found == null ? "not found" : found.State == "Complete" ? "met" : found.State == "Failed" ? "failed"
                         // #1035: placed, it is the game's to complete after the Mission: no hold waits for it and it is no miss.
-                        : requirement.AfterMission != null ? CompletesAfter : "not met";
+                        : requirement.AfterMission != null && unplaced == null ? CompletesAfter : "not met";
+                    // #1244: a placement not made is a miss like any other, its gap the placement's.
+                    if (reading.State == "not met" && unplaced != null) reading.Gap = unplaced;
                 }
                 string gap;
                 if (reading.State == "not met" && gaps != null && gaps.TryGetValue(requirement.Key, out gap)) reading.Gap = gap;
@@ -255,6 +263,8 @@ namespace ClaudiaKerman.Core.Contracts
         /// </summary>
         public static bool ConditionsHold(GameSnapshot snapshot, ChosenRequirement requirement, string home, string childVesselId = "")
         {
+            // #1244: a placed one is met by its placement; the game marks only what completes after the Mission.
+            if (requirement.AfterMission != null) return snapshot != null && PlacementKinds.Unplaced(snapshot, requirement) == null;
             var serving = Serving.Of(snapshot, childVesselId);
             if (serving == null) return false;
             var down = serving.Situation == "LANDED" || serving.Situation == "SPLASHED";
@@ -271,6 +281,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>Why the vessel that serves <paramref name="requirement"/> (as in <see cref="ConditionsHold"/>) doesn't meet it: where it is against what is asked.</summary>
         public static string Gap(GameSnapshot snapshot, ChosenRequirement requirement, string childVesselId = "")
         {
+            if (requirement.AfterMission != null && snapshot != null) return PlacementKinds.Unplaced(snapshot, requirement) ?? "";
             var serving = Serving.Of(snapshot, childVesselId);
             if (serving == null) return "the mod has no reading of the " + (string.IsNullOrEmpty(childVesselId) ? "craft" : "Child Vessel");
             var miss = serving.Situation == "ORBITING" && serving.Body == requirement.Body ? OrbitMiss(snapshot, serving, requirement) : null;

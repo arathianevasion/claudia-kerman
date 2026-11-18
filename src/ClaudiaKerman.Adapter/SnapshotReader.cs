@@ -142,7 +142,8 @@ namespace ClaudiaKerman.Adapter
         /// <summary>
         /// KSP's target, the Mission's Target Vessel live by its persistentId (<see cref="MissionDriver.TargetVesselId"/>, so the
         /// block calls' own snapshots read it too), and the other vessels a Mission Goal may name. The core keeps the entry only
-        /// for the Mission in play's target. A vessel is never its own target.
+        /// for the Mission in play's target. A vessel is never its own target. #1244: which of them carry a Sentinel telescope, and the
+        /// deployed science parts set up on a surface, so a placed Requirement's placement can be confirmed.
         /// </summary>
         private static void ReadTargets(GameSnapshot snapshot, Vessel vessel)
         {
@@ -170,8 +171,22 @@ namespace ClaudiaKerman.Adapter
                         Distance = Vector3d.Distance(other.GetWorldPos3D(), here),
                     };
                     ReadLiveOrbit(entry, other);
+                    entry.CarriesTelescope = CarriesTelescope(other);
                     snapshot.Vessels.Add(entry);
                 }
+                else if (other != null && (other.vesselType == VesselType.DeployedScienceController || other.vesselType == VesselType.DeployedSciencePart))
+                    snapshot.DeployedScience.Add(new SnapshotDeployedPart
+                    {
+                        Name = other.vesselName ?? "", Body = other.mainBody != null ? other.mainBody.bodyName : "", Situation = other.situation.ToString(),
+                        Station = other.vesselType == VesselType.DeployedScienceController,
+                    });
+        }
+
+        /// <summary>#1244: whether a vessel carries a SENTINEL Infrared Telescope, from its parts when loaded and its saved parts when not.</summary>
+        private static bool CarriesTelescope(Vessel vessel)
+        {
+            if (vessel.loaded) return vessel.parts.Any(p => p != null && p.partInfo != null && p.partInfo.name == PlacementKinds.TelescopePart);
+            return vessel.protoVessel != null && vessel.protoVessel.protoPartSnapshots.Any(p => p != null && p.partName == PlacementKinds.TelescopePart);
         }
 
         /// <summary>

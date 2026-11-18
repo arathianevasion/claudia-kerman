@@ -233,7 +233,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>#1035: a named part as the player knows it: the Sentinel telescope by its title, any other by its internal name.</summary>
         private static string PartWords(string name)
         {
-            return name == PlacementKinds.TelescopePart ? "SENTINEL Infrared Telescope" : name;
+            return name == PlacementKinds.TelescopePart ? PlacementKinds.TelescopeTitle : name;
         }
 
         /// <summary>The words for the first tag none of <paramref name="parts"/> has; null when they have them all.</summary>

@@ -254,6 +254,11 @@ namespace ClaudiaKerman.Core.Missions
         /// with its Contract's GUID and read by the game's identity, whatever its type (ADR 0013's amendment). Not in the JSON.
         /// </summary>
         public List<SnapshotVessel> ContractVessels = new List<SnapshotVessel>();
+        /// <summary>
+        /// #1244: the deployed science parts in the game (a Central Station and the experiments set up round it), each its own vessel once
+        /// deployed, so a deployed-science Contract's placement can be confirmed; empty when not read. Not in the JSON.
+        /// </summary>
+        public List<SnapshotDeployedPart> DeployedScience = new List<SnapshotDeployedPart>();
         /// <summary>The craft's <c>persistentId</c>, so it is never in the Target Vessel list (#709); 0 when not read. Not in the JSON.</summary>
         public uint CraftPersistentId;
 

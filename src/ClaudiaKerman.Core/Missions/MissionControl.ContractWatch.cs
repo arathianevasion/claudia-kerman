@@ -141,7 +141,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (snapshot == null || snapshot.Contracts == null) return new List<ChosenRequirement>();
             var served = ServedByFlownLeg(mission);
-            var readings = mission.Contracts.Read(snapshot.Contracts, served, null);
+            var readings = mission.Contracts.Read(snapshot, served, null);
             return served.Where(r => readings.Any(x => x.Key == r.Key && x.State == "not met")).ToList();
         }
 
@@ -154,10 +154,11 @@ namespace ClaudiaKerman.Core.Missions
             if (!mission.ManualPlanned || mission.ChosenRequirements.Count == 0) return "";
             var served = ServedByFlownLeg(mission).Where(r => r.Manual.Length > 0).ToList();
             if (served.Count == 0) return "";
-            var readings = mission.Contracts.Read(_snapshot == null ? null : _snapshot.Contracts, served, null);
+            var readings = mission.Contracts.Read(_snapshot, served, null);
             foreach (var reading in readings.Where(r => r.State == "not met"))
             {
-                reading.Gap = ContractWatch.NotMetAtHandBack;
+                // #1244: a station never set up keeps its placement's gap.
+                if (reading.Gap.Length == 0) reading.Gap = ContractWatch.NotMetAtHandBack;
                 Missed(mission, served.First(r => r.Key == reading.Key), reading.Gap);
             }
             return "\n" + ContractWatch.HandBackLine(readings).TrimEnd('\n');
@@ -196,7 +197,7 @@ namespace ClaudiaKerman.Core.Missions
                     + "For a Contract that will miss, propose dropping it, with the reason, in a revised Mission Plan for the player's Approval.\n";
             var served = ServedByFlownLeg(mission);
             if (served.Count > 0)
-                text += ContractWatch.Line(mission.Contracts.Read(_snapshot == null ? null : _snapshot.Contracts, served, mission.ContractGaps));
+                text += ContractWatch.Line(mission.Contracts.Read(_snapshot, served, mission.ContractGaps));
             text += mission.Contracts.TakeNews();
             return text.Length == 0 ? "" : "\n" + text.TrimEnd('\n');
         }
