@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using ClaudiaKerman.Core.Contracts;
 using ClaudiaKerman.Core.Ui;
 
 namespace ClaudiaKerman.Core.Missions
@@ -18,6 +19,9 @@ namespace ClaudiaKerman.Core.Missions
         {
             /// <summary>The Target Vessel changed since the pending plan was offered ("now Tug", "cleared"), so Approve is Re-plan; "" otherwise. Saved.</summary>
             public string TargetChange = "";
+            /// <summary>#1247: the Target Vessel Contract (GUID, title) whose vessel is the Target Vessel, from the card; "" when the target came from the goal, a pick or KSP's target. Not saved, as the chosen Contracts aren't.</summary>
+            public string TargetContractGuid = "";
+            public string TargetContractTitle = "";
         }
 
         /// <summary>The start form's goal and pick as it last reported them (#664); null until it has.</summary>
@@ -119,7 +123,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The Mission Goal needs a Target Vessel (#643's rule), so the Mission window shows its line and, between sequences, Choose and Clear.</summary>
         private bool TargetNeeded(Mission mission)
         {
-            return !MissionOver && TargetVessel.Choose(mission.Goal, TargetPick.Cleared, CurrentTargetFacts()).Needed;
+            return !MissionOver && (mission.TargetContractGuid.Length > 0 || TargetVessel.Choose(mission.Goal, TargetPick.Cleared, CurrentTargetFacts()).Needed);
         }
 
         /// <summary>Choose and Clear are on between sequences, as the Mission Settings are: never while Running or a request is out.</summary>
@@ -137,13 +141,14 @@ namespace ClaudiaKerman.Core.Missions
         {
             var mission = _mission;
             if (pick == null || pick.Kind == TargetPickKind.Auto || !CanChangeTarget) return;
-            var choice = ChooseTarget(mission.Goal, pick);
+            var choice = ChooseTarget(mission.Goal, pick, ContractVesselOf(mission));
             if (pick.Kind == TargetPickKind.Vessel && choice.Target == null)
             {
                 Note(LogKind.Notice, "Target Vessel unchanged: " + choice.Reason + ".");
                 return;
             }
             var before = mission.Target;
+            if (mission.TargetContractGuid.Length > 0 && (choice.Target == null || before == null || before.Id != choice.Target.Id)) DropTargetContract(mission);
             if (choice.Target == null ? before == null : before != null && before.Id == choice.Target.Id) return;
             mission.Target = choice.Target;
             if (_snapshot != null) FitTarget(_snapshot);
@@ -153,6 +158,28 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.Stage == MissionStage.WaitingForFlight) return;
             mission.TargetChange = choice.Target != null ? "now " + choice.Target.Name : "cleared";
             mission.ConfirmPrompt = null;
+        }
+
+        /// <summary>#1247: the vessel of the Contract that gave the Mission its Target Vessel, so the choice is made as it was at Start; null when none did.</summary>
+        private SnapshotVessel ContractVesselOf(Mission mission)
+        {
+            if (mission.TargetContractGuid.Length == 0 || mission.Target == null) return null;
+            var id = mission.Target.Id;
+            return (_snapshot == null ? null : _snapshot.ContractVessels.Concat(_snapshot.Vessels).FirstOrDefault(v => v.Id == id))
+                ?? new SnapshotVessel { Id = id, Name = mission.Target.Name, ContractGuid = mission.TargetContractGuid };
+        }
+
+        /// <summary>
+        /// #1247: a pick or Clear after Start takes the Target Vessel from the Contract that gave it, as it unticks it before Start
+        /// (ADR 0013's amendment): the Contract leaves the Mission, which never flies it without its vessel, and the log names it.
+        /// </summary>
+        private void DropTargetContract(Mission mission)
+        {
+            var guid = mission.TargetContractGuid;
+            mission.ChosenRequirements = mission.ChosenRequirements.Where(r => ContractWatch.GuidOf(r.Key) != guid).ToList();
+            mission.TargetContractGuid = "";
+            Notice("Contract dropped from the Mission: " + mission.TargetContractTitle + " (its Target Vessel is changed).");
+            mission.TargetContractTitle = "";
         }
 
         /// <summary>A pending Mission Plan is revised for the new Target Vessel as soon as the target is read; a Sequence Plan waits for Re-plan.</summary>
