@@ -50,6 +50,8 @@ namespace ClaudiaKerman.Core.Missions
     public sealed class SnapshotVessel
     {
         public uint Id;
+        /// <summary>#1243: its persistent GUID, as in <see cref="SnapshotCraft.VesselId"/>, so a released Child Vessel is found by it; "" when not read.</summary>
+        public string VesselId = "";
         public string Name = "";
         /// <summary>The body it is at; "" when not read.</summary>
         public string Body = "";
