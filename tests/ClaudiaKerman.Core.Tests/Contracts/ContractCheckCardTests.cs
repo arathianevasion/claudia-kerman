@@ -319,7 +319,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.DoesNotContain("(estimate)", untouched.View.ContractCheck.Headline);
             untouched.Send(new PlanContracts());
             DrainUntil(untouched, v => v.Stage == MissionStage.AwaitingPlanApproval);
-            Assert.DoesNotContain(untouched.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("Contract check:") && e.Text.Contains("(estimate)"));
+            Assert.Contains(untouched.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal) && !e.Text.Contains("(estimate)"));
         }
 
         [Fact]
