@@ -807,7 +807,7 @@ namespace ClaudiaKerman.Adapter
             if (Is(module, "ModuleRobotArmScanner")) Tag(info, "arm_scanner");
             // #1245: Breaking Ground's deployable science parts, for a deployed-science Contract: every one (the experiments, the comm hub,
             // the ground solar panel) and which are experiments and the Central Station; by class name, as for the arm scanner.
-            if (Is(module, "ModuleGroundSciencePart")) Tag(info, PlacementKinds.DeployableTag);
+            if (Is(module, "ModuleGroundSciencePart") || Is(module, "ModuleGroundCommsPart")) Tag(info, PlacementKinds.DeployableTag);
             if (Is(module, "ModuleGroundExperiment")) Tag(info, PlacementKinds.ExperimentTag);
             if (Is(module, "ModuleGroundExpControl")) Tag(info, PlacementKinds.StationTag);
         }

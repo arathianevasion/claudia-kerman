@@ -249,6 +249,18 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void ADeployedScienceContractOnACraftWithExperimentsButNoCentralStationReadsThisCraftCant()
+        {
+            // #1245: the experiments report to a Central Station; without one aboard no station is set up for the game to confirm.
+            var snapshot = ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station"));
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 990003, Name = "DeployedSeismicSensor", Tags = { PlacementKinds.DeployableTag, PlacementKinds.ExperimentTag }, ParentId = snapshot.Craft.Parts[0].Id });
+
+            var left = Assert.Single(ContractCheck.Work(snapshot, "", false, ContractCheckTests.Margin).NotThisFlight);
+
+            Assert.Equal(PlacementKinds.NoDeployableScience, left.Reason);
+        }
+
+        [Fact]
         public void ADeployedScienceContractNamingNoShareOfScienceIsNotYet()
         {
             var contract = Fixture("DeployedScienceContract.json", "c-station");

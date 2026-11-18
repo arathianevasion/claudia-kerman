@@ -63,7 +63,7 @@ namespace ClaudiaKerman.Core.Contracts
         public const string StationTag = "deployable_station";
 
         public const string NoDeployableScience = "this craft can't: no deployable science aboard";
-        public const string NoKerbalForStation ="this craft can't: setting up a deployed science station needs a kerbal aboard to go on EVA";
+        public const string NoKerbalForStation = "this craft can't: setting up a deployed science station needs a kerbal aboard to go on EVA";
         /// <summary>The telescope's burn is priced from low orbit round home, so a craft elsewhere can't place one yet.</summary>
         public const string AwayNotYet = "not yet: a Sentinel telescope is placed from Kerbin orbit only";
         public const string HomeStationNotYet = "not yet: deployed science on Kerbin isn't planned yet";
