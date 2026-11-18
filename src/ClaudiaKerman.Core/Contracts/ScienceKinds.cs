@@ -18,6 +18,8 @@ namespace ClaudiaKerman.Core.Contracts
         public double Longitude;
         /// <summary>Taken landed at the waypoint; false for a pass over it in a space band.</summary>
         public bool Ground;
+        /// <summary>#1246: taken by the player on EVA in a Manual stretch (an EVA report, a surface sample), not by the science block.</summary>
+        public bool Eva;
         /// <summary>A space band's floor and ceiling above the surface, m; null where it has none.</summary>
         public double? MinAltitude;
         public double? MaxAltitude;
@@ -38,8 +40,9 @@ namespace ClaudiaKerman.Core.Contracts
     /// #1030: collect-science and survey Contract Requirements (ADR 0021: Core's kind table). Collect science is the science block run at
     /// the body: in space near it, an orbit of it; on its surface, a landing on it (on Kerbin, home again after the reentry). A survey
     /// waypoint in a space band (a band over a body with no air) is a pass over it from orbit; on the ground, a landing at it. Surveys flown in
-    /// the air (low-flying, or high over a body with air) need an aircraft and are "not yet", as are the EVA experiments (the science block
-    /// leaves EVA reports and samples to the player) and ground surveys on Kerbin.
+    /// the air (low-flying, or high over a body with air) need an aircraft and are "not yet", as are ground surveys on Kerbin. #1246: the EVA
+    /// experiments (an EVA report, a surface sample) the science block leaves to the player: each is a Manual stretch at the leg that meets
+    /// the waypoint, after the landing at it or in the orbit that passes over it.
     /// </summary>
     internal static class ScienceKinds
     {
@@ -49,14 +52,14 @@ namespace ClaudiaKerman.Core.Contracts
 
         public const string LowFlyingNotYet = "not yet: low-flying surveys need an aircraft over the waypoint";
         public const string HighFlyingNotYet = "not yet: surveys flown high in the air need an aircraft over the waypoint";
-        public const string EvaNotYet = "not yet: needs an EVA in a Manual stretch, not planned yet";
         public const string HomeGroundNotYet = "not yet: ground surveys on Kerbin aren't planned yet";
 
         /// <summary>The stock bodies with air: a survey band over them is flown in the air, never in space.</summary>
         private static readonly HashSet<string> StockAir = new HashSet<string> { "Kerbin", "Eve", "Duna", "Jool", "Laythe" };
 
-        /// <summary>The experiments the science block can't run: the player's job on EVA.</summary>
-        private static readonly HashSet<string> EvaExperiments = new HashSet<string> { "evaReport", "surfaceSample" };
+        /// <summary>The experiments the science block can't run, in words: the player's job on EVA in a Manual stretch.</summary>
+        private static readonly Dictionary<string, string> EvaExperiments = new Dictionary<string, string>
+            { { "evaReport", "an EVA report" }, { "surfaceSample", "a surface sample" } };
 
         public static ReadRequirement Read(ReadRequirement one, SnapshotContract contract, ContractRequirement requirement, string home)
         {
@@ -93,14 +96,21 @@ namespace ClaudiaKerman.Core.Contracts
             if (body == null || body == "Sun") return ContractKinds.NotYet(one, "not yet: the Contract's body isn't one Claudia knows");
             if (!latitude.HasValue || !longitude.HasValue) return ContractKinds.NotYet(one, "not yet: the survey names no waypoint");
             if (experiment.Length == 0) return ContractKinds.NotYet(one, "not yet: the survey names no experiment");
-            if (EvaExperiments.Contains(experiment)) return ContractKinds.NotYet(one, EvaNotYet);
+            string eva;
+            EvaExperiments.TryGetValue(experiment, out eva);
             var waypoint = new SurveyWaypoint { Key = requirement.Key, Body = body, Latitude = latitude.Value, Longitude = longitude.Value };
             if (band == "GROUND")
             {
                 if (body == home) return ContractKinds.NotYet(one, HomeGroundNotYet);
                 waypoint.Ground = true;
-                one.Experiment = experiment;
                 one.Waypoint = waypoint;
+                if (eva != null)
+                {
+                    waypoint.Eva = true;
+                    one.Manual = "walk to the waypoint " + waypoint.Where() + " and take " + eva + " there on EVA";
+                    return ContractKinds.Visit(one, body, ContractReach.Land, "take " + eva + " at the waypoint " + waypoint.Where() + " on " + ContractKinds.Named(body), home);
+                }
+                one.Experiment = experiment;
                 return ContractKinds.Visit(one, body, ContractReach.Land, "take a " + experiment + " landed at the waypoint " + waypoint.Where() + " on " + ContractKinds.Named(body), home);
             }
             if (band != "LOW" && band != "HIGH") return ContractKinds.NotYet(one, "not yet: the survey's band (" + band + ") isn't one Claudia knows");
@@ -108,11 +118,17 @@ namespace ClaudiaKerman.Core.Contracts
             if (!threshold.HasValue) return ContractKinds.NotYet(one, "not yet: the survey names no altitude for its band");
             if (band == "LOW") waypoint.MaxAltitude = threshold;
             else waypoint.MinAltitude = threshold;
-            one.Experiment = experiment;
             one.Waypoint = waypoint;
             var km = (threshold.Value / 1000).ToString("0.#", CultureInfo.InvariantCulture) + " km";
-            return ContractKinds.Visit(one, body, ContractReach.Orbit,
-                "take a " + experiment + " over the waypoint " + waypoint.Where() + ", " + (band == "LOW" ? "below " : "above ") + km + " over " + ContractKinds.Named(body), home);
+            var over = "over the waypoint " + waypoint.Where() + ", " + (band == "LOW" ? "below " : "above ") + km;
+            if (eva != null)
+            {
+                waypoint.Eva = true;
+                one.Manual = "take " + eva + " on EVA " + over;
+                return ContractKinds.Visit(one, body, ContractReach.Orbit, "take " + eva + " " + over + " over " + ContractKinds.Named(body), home);
+            }
+            one.Experiment = experiment;
+            return ContractKinds.Visit(one, body, ContractReach.Orbit, "take a " + experiment + " " + over + " over " + ContractKinds.Named(body), home);
         }
     }
 }

@@ -188,7 +188,7 @@ namespace ClaudiaKerman.Core.Contracts
         }
 
         /// <summary>
-        /// #1032: the Manual stretch that serves a hands-on Requirement: the craft's first manual leg after the landing that meets it, before
+        /// #1032: the Manual stretch that serves a hands-on Requirement: the craft's first manual leg after the landing (#1246: or the orbit) that meets it, before
         /// the craft goes elsewhere. The landing may be flown already (a retry after Hand back), so it is looked for in the whole plan; the
         /// Manual stretch is one still to fly (from <paramref name="from"/>). A plan with none there is a finding.
         /// </summary>
@@ -202,7 +202,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (plan.Sequences[leg].Manual && MissionCards.FliesCraft(snapshot.Craft.Name, plan.Sequences[leg].Vessel))
                     return new Touch { Leg = leg, Order = landing.Order, Body = landing.Body, Reach = landing.Reach };
             problems.Add("\"" + requirement.Title + "\" needs \"" + requirement.Words + "\", by hand: no Manual stretch for the player to " + requirement.Manual
-                + " after leg " + (landing.Leg + 1) + " \"" + plan.Sequences[landing.Leg].Name + "\" lands there: add one (manual true and an empty script) after that leg, before the craft leaves");
+                + " after leg " + (landing.Leg + 1) + " \"" + plan.Sequences[landing.Leg].Name + "\" " + (requirement.Reach == ContractReach.Land ? "lands" : "reaches orbit") + " there: add one (manual true and an empty script) after that leg, before the craft leaves");
             return null;
         }
 
