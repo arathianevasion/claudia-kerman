@@ -109,7 +109,7 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #1243: the vessel id of the Child Vessel that serves <paramref name="requirement"/>, when the plan serves it from a Child Vessel's
-        /// leg (a satellite the craft releases); "" when the craft serves it, or the Child Vessel hasn't separated (then the gap says so).
+        /// leg (a satellite the craft releases); "" when the craft serves it. One not yet separated gets <see cref="NotSeparated"/>, which no vessel has, so its gap is "no reading of the Child Vessel".
         /// </summary>
         private static string ServingChildId(Mission mission, ChosenRequirement requirement)
         {
