@@ -405,6 +405,18 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void ACometDetectionRequirementReadsCompletesAfterTheMissionOnlyWithItsTelescopeNearKerbinsOrbit()
+        {
+            var snapshot = WithTelescope(Fixture("CometDetectionContract.json", "c-comets"));
+            var check = Remote(snapshot);
+            var chosen = Assert.Single(check.Choose(check.TickedGuids).Requirements);
+
+            Assert.Equal("not met", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
+            Released(snapshot, "Sun", KerbinOrbit * 0.97, KerbinOrbit * 1.05);
+            Assert.Equal("completes after the Mission", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
+        }
+
+        [Fact]
         public void AnUnplacedTelescopeHoldsNoLegAndGoesToTheDebriefAsAMissWithItsGap()
         {
             // The hold path: the conditions don't hold, so no wait for the game; the gap is the placement's.
