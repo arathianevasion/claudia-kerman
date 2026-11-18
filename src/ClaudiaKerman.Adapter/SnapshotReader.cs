@@ -805,6 +805,11 @@ namespace ClaudiaKerman.Adapter
             }
             // #1032: Breaking Ground's robotic scanner arm, for a surface-feature scan Contract; by class name, so the game without the expansion reads as ever.
             if (Is(module, "ModuleRobotArmScanner")) Tag(info, "arm_scanner");
+            // #1245: Breaking Ground's deployable science parts, for a deployed-science Contract: every one (the experiments, the comm hub,
+            // the ground solar panel) and which are experiments and the Central Station; by class name, as for the arm scanner.
+            if (Is(module, "ModuleGroundSciencePart")) Tag(info, PlacementKinds.DeployableTag);
+            if (Is(module, "ModuleGroundExperiment")) Tag(info, PlacementKinds.ExperimentTag);
+            if (Is(module, "ModuleGroundExpControl")) Tag(info, PlacementKinds.StationTag);
         }
 
         private static void Tag(SnapshotPart info, string tag)

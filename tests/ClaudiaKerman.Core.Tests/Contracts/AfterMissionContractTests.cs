@@ -42,6 +42,16 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return snapshot;
         }
 
+        /// <summary>#1245: the pad craft carrying a Central Station and a deployable experiment, with the kerbal the test snapshot has aboard.</summary>
+        private static GameSnapshot WithStation(params SnapshotContract[] contracts)
+        {
+            var snapshot = ContractCheckTests.With(contracts);
+            var root = snapshot.Craft.Parts[0].Id;
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 990002, Name = "DeployedCentralStation", Tags = { PlacementKinds.DeployableTag, PlacementKinds.StationTag }, ParentId = root });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 990003, Name = "DeployedSeismicSensor", Tags = { PlacementKinds.DeployableTag, PlacementKinds.ExperimentTag }, ParentId = root });
+            return snapshot;
+        }
+
         /// <summary>Remote: the craft itself may stay in solar orbit as the telescope.</summary>
         private static ContractCheck Remote(GameSnapshot snapshot)
         {
@@ -177,7 +187,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void ADeployedScienceContractWhoseWaitRunsPastItsDeadlineLessTheSpareCompletesLater()
         {
-            var snapshot = ContractCheckTests.With();
+            var snapshot = WithStation();
             var contract = Fixture("DeployedScienceContract.json", "c-station");
             contract.DeadlineUt = snapshot.Ut + 40 * 21600;
             snapshot.Contracts.Accepted.Add(contract);
@@ -214,7 +224,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void ADeployedScienceContractIsPlannedAsALandingAndAManualStretchToSetUpTheStationThatCompletesAfterTheMission()
         {
-            var check = ContractCheck.Work(ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station")), "", false, ContractCheckTests.Margin);
+            var check = ContractCheck.Work(WithStation(Fixture("DeployedScienceContract.json", "c-station")), "", false, ContractCheckTests.Margin);
 
             var row = Assert.Single(check.Fitting);
             Assert.Equal("Mun", row.Phase);
@@ -226,12 +236,25 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void ADeployedScienceContractOnACraftWithNoDeployableExperimentReadsThisCraftCant()
+        {
+            // #1245: a kerbal aboard isn't enough; the station has to be carried there. A Central Station alone sets up no experiment.
+            var snapshot = ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station"));
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 990002, Name = "DeployedCentralStation", Tags = { PlacementKinds.DeployableTag, PlacementKinds.StationTag }, ParentId = snapshot.Craft.Parts[0].Id });
+
+            var left = Assert.Single(ContractCheck.Work(snapshot, "", false, ContractCheckTests.Margin).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.CraftCant, left.Kind);
+            Assert.Equal("this craft can't: no deployable science aboard", left.Reason);
+        }
+
+        [Fact]
         public void ADeployedScienceContractNamingNoShareOfScienceIsNotYet()
         {
             var contract = Fixture("DeployedScienceContract.json", "c-station");
             contract.Requirements[0].Settings.RemoveAll(s => s.Name == "percentage");
 
-            var left = Assert.Single(ContractCheck.Work(ContractCheckTests.With(contract), "", false, ContractCheckTests.Margin).NotThisFlight);
+            var left = Assert.Single(ContractCheck.Work(WithStation(contract), "", false, ContractCheckTests.Margin).NotThisFlight);
 
             Assert.Equal(LeftOutKind.NotYet, left.Kind);
             Assert.Contains("names no share of science to collect", left.Reason);
@@ -252,7 +275,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
         private static ChosenRequirement StationChosen(out GameSnapshot snapshot)
         {
-            snapshot = ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station"));
+            snapshot = WithStation(Fixture("DeployedScienceContract.json", "c-station"));
             var check = ContractCheck.Work(snapshot, "", false, ContractCheckTests.Margin);
             return Assert.Single(check.Choose(check.TickedGuids).Requirements);
         }

@@ -55,7 +55,15 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>Provisional (#1035): Kerbin days a deployed science station takes per percent of its subject's science.</summary>
         public const double DeployedDaysPerPercent = 1;
 
-        public const string NoKerbalForStation = "this craft can't: setting up a deployed science station needs a kerbal aboard to go on EVA";
+        /// <summary>#1245: the Adapter's tag on every Breaking Ground deployable science part: experiments, the Central Station, the ground solar panel.</summary>
+        public const string DeployableTag = "deployable_science";
+        /// <summary>#1245: the tag on a deployable experiment.</summary>
+        public const string ExperimentTag = "deployable_experiment";
+        /// <summary>#1245: the tag on a Central Station, the controller a deployed station's experiments report to.</summary>
+        public const string StationTag = "deployable_station";
+
+        public const string NoDeployableScience = "this craft can't: no deployable science aboard";
+        public const string NoKerbalForStation ="this craft can't: setting up a deployed science station needs a kerbal aboard to go on EVA";
         /// <summary>The telescope's burn is priced from low orbit round home, so a craft elsewhere can't place one yet.</summary>
         public const string AwayNotYet = "not yet: a Sentinel telescope is placed from Kerbin orbit only";
         public const string HomeStationNotYet = "not yet: deployed science on Kerbin isn't planned yet";
@@ -210,9 +218,14 @@ namespace ClaudiaKerman.Core.Contracts
             return altitudes[0] + sun.Radius - near <= at.Sma && at.Sma <= altitudes[1] + sun.Radius + near;
         }
 
-        /// <summary>"this craft can't: …" when a deployed science station's Manual stretch has no kerbal to go on EVA; "" otherwise.</summary>
+        /// <summary>
+        /// "this craft can't: …" when a deployed science station's Manual stretch can't be flown: the craft carries no Central Station or no
+        /// deployable experiment (the parts the Adapter tags, #1245), or has no kerbal to go on EVA; "" otherwise.
+        /// </summary>
         internal static string Lacks(GameSnapshot snapshot)
         {
+            var parts = snapshot.Craft.Parts;
+            if (!parts.Any(p => p.Tags.Contains(StationTag)) || !parts.Any(p => p.Tags.Contains(ExperimentTag))) return NoDeployableScience;
             return snapshot.Crew.Count > 0 ? "" : NoKerbalForStation;
         }
 
