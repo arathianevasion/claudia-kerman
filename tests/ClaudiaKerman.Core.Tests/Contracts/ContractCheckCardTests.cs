@@ -371,28 +371,33 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
-        public void TypedWordsThatDontFitAreRefusedAndTheRefusalNamesThePartTestTheCraftCouldFly()
+        public void TypedWordsThatDontFitGoToTheCraftCheckBlockerWhichNamesTheHopContractByTitle()
         {
-            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.BoosterTest("c-test")));
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.BoosterTest("c-test")), false, ScriptedResponse.Fixture("craft-check-fail.sse"));
 
             mission.Send(Start(WordsNeedingOrbit));
-            Settle();
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
 
+            Assert.Equal("", mission.View.StartForm.Refusal);
             Assert.Null(mission.View.ContractCheck);
-            Assert.Equal("Your words don't fit this craft with the Craft Check's reserve. Without your words this craft could fly: Test liquidEngine.v2 at 51–56 km.", mission.View.StartForm.Refusal);
-            Assert.Equal(0, Requests);
+            Assert.Equal(CraftVerdict.Fail, mission.View.CraftCheck.Verdict);
+            var blocker = Assert.Single(mission.View.CraftCheck.Findings, f => f.Code == "delta_v_short");
+            Assert.Contains("\nWithout your words this craft could fly: PartTest.", blocker.Explanation);
+            Assert.DoesNotContain("liquidEngine", blocker.Explanation);
+            Assert.Equal(1, blocker.Explanation.Split(new[] { "Without your words" }, StringSplitOptions.None).Length - 1);
         }
 
         [Fact]
-        public void TypedWordsThatDontFitWithNoHopContractAcceptedStartAsBefore()
+        public void TypedWordsThatDontFitWithNoHopContractGiveTheCraftCheckBlockerAsBefore()
         {
-            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.Exploration("c-mun", 10000, "Mun:ORBIT")));
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.Exploration("c-mun", 10000, "Mun:ORBIT")), false, ScriptedResponse.Fixture("craft-check-fail.sse"));
 
             mission.Send(Start(WordsNeedingOrbit));
-            Settle();
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
 
-            Assert.Null(mission.View.ContractCheck);
             Assert.Equal("", mission.View.StartForm.Refusal);
+            Assert.Equal(CraftVerdict.Fail, mission.View.CraftCheck.Verdict);
+            Assert.DoesNotContain(mission.View.CraftCheck.Findings, f => f.Explanation.Contains("Without your words"));
         }
 
         [Fact]

@@ -124,11 +124,12 @@ namespace ClaudiaKerman.Core.Missions
         /// The card is posted for this start and it waits for the player's answer: there are accepted Contracts, the craft's delta-v is known
         /// and the typed words alone fit. A start already answered from the card goes on. Pressed again, Start Mission posts a new card in
         /// place of the old (new words, a changed craft). Why the start can't go on at all, or "": the craft's delta-v isn't known, so the
-        /// Contracts can't be priced (never dropped silently), or the craft can't reach orbit: with nothing typed, no Contract fits; with words typed, the refusal names the hop Contracts it could fly without them (#1090).
+        /// Contracts can't be priced (never dropped silently), or the craft can't reach orbit with nothing typed (no Contract fits). Words typed that don't fit go on to the Craft Check (#1241).
         /// </summary>
         private bool HeldForContracts(StartMission start, out string refusal)
         {
             refusal = "";
+            _craftCheck.HopContractsWithoutWords = "";
             if (start.ContractsAnswered) return false;
             _folded = null;
             _contractCheck = null;
@@ -144,12 +145,8 @@ namespace ClaudiaKerman.Core.Missions
             if (!check.WordsFit)
             {
                 if (check.Words.Length == 0) refusal = "This craft can't reach orbit with the Craft Check's reserve, so no Contract fits.";
-                else
-                {
-                    // #1090: words are priced with a launch to orbit; the hop Contracts the craft could fly without them are named.
-                    var hops = check.HopsWithoutWords();
-                    if (hops.Length > 0) refusal = "Your words don't fit this craft with the Craft Check's reserve. Without your words this craft could fly: " + hops + ".";
-                }
+                // #1241: words that don't fit go on to the Craft Check, whose Blocker names the hop Contracts the craft could fly without them.
+                else _craftCheck.HopContractsWithoutWords = check.HopsWithoutWords();
                 return false;
             }
             _contractCheck = check;
