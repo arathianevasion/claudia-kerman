@@ -45,6 +45,8 @@ namespace ClaudiaKerman.Core.Contracts
 
         /// <summary>The SENTINEL Infrared Telescope's part name.</summary>
         public const string TelescopePart = "InfraredTelescope";
+        /// <summary>The telescope as the player knows it.</summary>
+        public const string TelescopeTitle = "SENTINEL Infrared Telescope";
 
         /// <summary>Provisional (#1035): Kerbin days a Sentinel telescope takes to map one asteroid. No public source gives the rate; the playtest checks it.</summary>
         public const double SentinelDaysPerAsteroid = 10;
@@ -167,6 +169,45 @@ namespace ClaudiaKerman.Core.Contracts
             if (trip == null) return 0;
             seconds = transferSeconds;
             return trip.Departure + trip.PlaneChange + trip.ArrivalExcess;
+        }
+
+        /// <summary>
+        /// #1244: how near a telescope's solar orbit must come to the planet's, as a share of the planet's orbit radius: the planet's orbit
+        /// lies between the telescope's periapsis less this share and its apoapsis plus it. Provisional, as the game's own test isn't public.
+        /// </summary>
+        public const double NearShare = 0.1;
+
+        /// <summary>
+        /// #1244: why a placed Requirement's placement isn't made, by the snapshot (the game marks no Requirement for it): no vessel carrying
+        /// the telescope (the craft or a released one) in solar orbit near the planet's orbit, or no Central Station with an experiment landed
+        /// on the body. Null when the placement is made, or <paramref name="requirement"/> isn't placed.
+        /// </summary>
+        public static string Unplaced(GameSnapshot snapshot, ChosenRequirement requirement)
+        {
+            if (requirement.AfterMission == null || snapshot == null) return null;
+            if (requirement.Placement != null)
+                return TelescopesOf(snapshot).Any(t => NearOrbit(snapshot, t, requirement.Placement.Planet)) ? null
+                    : "no " + TelescopeTitle + " is in solar orbit near " + ContractKinds.Named(requirement.Placement.Planet) + "'s orbit";
+            var landed = snapshot.DeployedScience.Where(p => p.Body == requirement.Body && p.Situation == "LANDED").ToList();
+            return landed.Any(p => p.Station) && landed.Any(p => !p.Station) ? null : "no deployed science station is set up on " + ContractKinds.Named(requirement.Body);
+        }
+
+        /// <summary>The periapsis and apoapsis altitudes of each vessel carrying a telescope round the Sun: the craft and the released ones.</summary>
+        private static IEnumerable<double[]> TelescopesOf(GameSnapshot snapshot)
+        {
+            if (snapshot.Orbit != null && snapshot.Orbit.Body == "Sun" && snapshot.Craft.Parts.Any(p => p.Name == TelescopePart))
+                yield return new[] { snapshot.Orbit.Periapsis, snapshot.Orbit.Apoapsis };
+            foreach (var vessel in snapshot.Vessels.Where(v => v.CarriesTelescope && v.Body == "Sun" && v.Situation == "ORBITING" && v.PeriapsisM.HasValue && v.ApoapsisM.HasValue))
+                yield return new[] { vessel.PeriapsisM.Value, vessel.ApoapsisM.Value };
+        }
+
+        private static bool NearOrbit(GameSnapshot snapshot, double[] altitudes, string planet)
+        {
+            var sun = snapshot.Bodies.FirstOrDefault(b => b.Name == "Sun");
+            var at = snapshot.Bodies.FirstOrDefault(b => b.Name == planet);
+            if (sun == null || at == null || at.Sma <= 0) return false;
+            var near = at.Sma * NearShare;
+            return altitudes[0] + sun.Radius - near <= at.Sma && at.Sma <= altitudes[1] + sun.Radius + near;
         }
 
         /// <summary>"this craft can't: …" when a deployed science station's Manual stretch has no kerbal to go on EVA; "" otherwise.</summary>
