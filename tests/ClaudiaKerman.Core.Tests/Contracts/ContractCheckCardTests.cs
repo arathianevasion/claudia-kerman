@@ -235,6 +235,51 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AfterStartAMissionWhoseTargetVesselCameFromAContractShowsChooseAndClear()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.True(mission.View.TargetNeeded);
+            Assert.True(mission.View.CanChangeTarget);
+            Assert.Equal("Gusdun's Capsule", mission.View.TargetVesselName);
+        }
+
+        [Fact]
+        public void ClearAfterStartDropsTheTargetVesselContractAndSaysSo()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            mission.Send(new ChangeTarget(TargetPick.Cleared));
+
+            Assert.Null(mission.View.TargetVesselId);
+            Assert.Contains(mission.View.Log, e => e.Text == "Contract dropped from the Mission: RecoverAsset (its Target Vessel is changed).");
+            Assert.False(mission.View.TargetNeeded);
+        }
+
+        [Fact]
+        public void PickingAnotherVesselAfterStartDropsTheTargetVesselContractAndSaysSo()
+        {
+            var snapshot = ARescue();
+            var station = new SnapshotVessel { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            snapshot.Vessels.Add(station);
+            var mission = Control(snapshot);
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            mission.Send(new ChangeTarget(TargetPick.Of(station)));
+
+            Assert.Equal(5000u, mission.View.TargetVesselId);
+            Assert.Contains(mission.View.Log, e => e.Text == "Contract dropped from the Mission: RecoverAsset (its Target Vessel is changed).");
+        }
+
+        [Fact]
         public void PlanTheseSendsOneStartMissionRequestWithTheContractRouteAndThePlayersWords()
         {
             var mission = Control(TwoAtTheMunAndAHaul());
