@@ -158,15 +158,36 @@ namespace ClaudiaKerman.Adapter
             var here = vessel.GetWorldPos3D();
             foreach (var other in FlightGlobals.Vessels)
                 if (other != null && other != vessel && Nameable(other.vesselType))
-                    snapshot.Vessels.Add(new SnapshotVessel
+                {
+                    var entry = new SnapshotVessel
                     {
                         Id = other.persistentId,
+                        VesselId = other.id.ToString("N"),
                         Name = other.vesselName ?? "",
                         Body = other.mainBody != null ? other.mainBody.bodyName : "",
                         Situation = other.situation.ToString(),
                         // From the craft, so same-named vessels can be told apart and the list puts the nearest first (#709).
                         Distance = Vector3d.Distance(other.GetWorldPos3D(), here),
-                    });
+                    };
+                    ReadLiveOrbit(entry, other);
+                    snapshot.Vessels.Add(entry);
+                }
+        }
+
+        /// <summary>
+        /// #1243: a vessel's orbit as it is now (apoapsis and periapsis altitudes, m, and inclination, degrees), so the satellite hold can
+        /// judge a released Child Vessel by its own orbit. None when it is landed or splashed.
+        /// </summary>
+        private static void ReadLiveOrbit(SnapshotVessel entry, Vessel other)
+        {
+            var orbit = other.orbit;
+            if (entry.IsDown || orbit == null || orbit.referenceBody == null) return;
+            double pe;
+            double? ap;
+            TargetVessel.OrbitAltitudes(orbit.semiMajorAxis, orbit.eccentricity, orbit.referenceBody.Radius, out pe, out ap);
+            entry.PeriapsisM = pe;
+            entry.ApoapsisM = ap;
+            entry.Inclination = orbit.inclination;
         }
 
         /// <summary>

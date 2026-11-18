@@ -63,8 +63,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             DrainUntil(mission, v => MissionRequests(transport) >= 4);
 
             var debrief = DebriefText(transport);
-            Assert.Contains("inclination 3.4° outside the 5% window", debrief);
-            Assert.DoesNotContain("apoapsis", debrief);
+            // The probe's gap alone: nothing of the craft's 80 km orbit (apoapsis and periapsis far below the window).
+            Assert.Contains("\"gap\":\"inclination 3.4° outside the 5% window\"", debrief);
             Assert.DoesNotContain(mission.View.Log, e => e.Text.StartsWith("Holding for the game to mark"));
         }
 
