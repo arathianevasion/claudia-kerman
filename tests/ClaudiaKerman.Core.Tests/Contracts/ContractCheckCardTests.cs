@@ -311,12 +311,14 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             ticked.Send(new TickContract("c-land", true));
             Assert.Contains("(estimate)", ticked.View.ContractCheck.Headline);
             ticked.Send(new PlanContracts());
+            DrainUntil(ticked, v => v.Stage == MissionStage.AwaitingPlanApproval);
             Assert.Contains(ticked.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen · route ≈ ", StringComparison.Ordinal) && e.Text.Contains(" m/s (estimate) · "));
 
             var untouched = Control(TwoAtTheMunAndAHaul());
             untouched.Send(Start(""));
             Assert.DoesNotContain("(estimate)", untouched.View.ContractCheck.Headline);
             untouched.Send(new PlanContracts());
+            DrainUntil(untouched, v => v.Stage == MissionStage.AwaitingPlanApproval);
             Assert.DoesNotContain(untouched.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("Contract check:") && e.Text.Contains("(estimate)"));
         }
 
