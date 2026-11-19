@@ -193,8 +193,8 @@ namespace ClaudiaKerman.Core.Tests
             var optimal = offer.RowFor(Duna(WindowKind.Optimal));
             var total = DunaWindows(NewGame).Optimal.TotalDv.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture);
             var facts = CraftCheckPrompts.Facts(Goal, snapshot, 15, null, false, optimal);
-            Assert.Contains(": " + total + " m/s (the player's Optimal window)", facts);
-            Assert.DoesNotContain("the player's Optimal", CraftCheckPrompts.Facts(Goal, snapshot, 15, null));
+            Assert.Contains(": " + total + " m/s (plan_transfer, Optimal pick)", facts);
+            Assert.DoesNotContain("Optimal pick", CraftCheckPrompts.Facts(Goal, snapshot, 15, null));
 
             var mission = Control(new StreamingFakeTransport());
             mission.Send(snapshot);

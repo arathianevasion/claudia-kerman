@@ -442,11 +442,7 @@ function launch {
     }
 
     if coasting {
-      if hop and ship:verticalspeed <= 0 {
-        set done to true.
-        return.
-      }
-      if not hop and altitude > body_values:atm_height {
+      if (hop and ship:verticalspeed <= 0) or (not hop and altitude > body_values:atm_height) {
         set done to true.
         return.
       }

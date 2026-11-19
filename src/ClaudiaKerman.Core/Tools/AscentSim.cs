@@ -157,6 +157,8 @@ namespace ClaudiaKerman.Core.Tools
         /// False flies the node's own stops alone, as before.
         /// </summary>
         public bool EccStop = true;
+        /// <summary>#1048: a hop: the flight ends, reached, at the first cutoff (the apoapsis at TargetAp), with no coast or circularization.</summary>
+        public bool Hop;
     }
 
     /// <summary>The craft when a stage lit.</summary>
@@ -180,6 +182,8 @@ namespace ClaudiaKerman.Core.Tools
     internal sealed class AscentFlight
     {
         public bool ReachesOrbit;
+        /// <summary>#1048: a hop (<see cref="AscentOptions.Hop"/>) got its apoapsis to TargetAp; <see cref="DeltaVToOrbitOrHop"/> is then what that took.</summary>
+        public bool ReachesHop;
         /// <summary>Why not; "" when it does.</summary>
         public string Failure = "";
         /// <summary>The stage burning (or last burnt) where it failed; -1 when it reached orbit.</summary>
@@ -194,8 +198,8 @@ namespace ClaudiaKerman.Core.Tools
         public double MaxQ;
         /// <summary>The highest apoapsis reached, m: ranks the shapes that fail.</summary>
         public double BestAp;
-        /// <summary>Delta-v spent from the pad to a circular orbit, m/s.</summary>
-        public double DeltaVToOrbit;
+        /// <summary>Delta-v spent from the pad to a circular orbit (a hop: to its apoapsis), m/s.</summary>
+        public double DeltaVToOrbitOrHop;
         /// <summary>Apoapsis the circularization left, m; 0 until it ends.</summary>
         public double OrbitAp;
         /// <summary>Periapsis the circularization left, m; 0 until it ends.</summary>
@@ -459,7 +463,7 @@ namespace ClaudiaKerman.Core.Tools
                 var s = Math.Sin(pitch * Math.PI / 180);
                 ax += force / _mass * (c * ex + s * ux);
                 ay += force / _mass * (c * ey + s * uy);
-                _flight.DeltaVToOrbit += force / _mass * dt;
+                _flight.DeltaVToOrbitOrHop += force / _mass * dt;
             }
             var spd = Math.Sqrt(horizontal * horizontal + vertical * vertical);
             if (density > 0 && spd > 0)
@@ -523,6 +527,11 @@ namespace ClaudiaKerman.Core.Tools
                 var ratio = _o.SeaLevelAtm > 0 ? atm / _o.SeaLevelAtm : 0;
                 var stage = Current;
                 var thrust = stage != null ? stage.Thrust(atm, _o.SeaLevelAtm) : 0;
+                if (_o.Hop && ap >= target - topup / 2)
+                {
+                    _flight.ReachesHop = true;
+                    return _flight;
+                }
 
                 if (coasting)
                 {

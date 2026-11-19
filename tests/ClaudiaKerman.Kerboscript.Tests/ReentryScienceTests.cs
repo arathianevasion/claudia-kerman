@@ -266,53 +266,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(4, Number("reentry_proper_g(" + D(dv) + ", 0, 0, 1, " + r + ", 0, 0, " + mu + ")"), 4);
         }
 
-        // ---- reentry: time to the atmosphere ----
-
-        private static double TimeToRadius(double ecc, double sma, double trueAnomalyDegrees, double radius, double seconds)
-        {
-            // Independent check: advance the mean anomaly by `seconds`, solve Kepler's equation, read the radius.
-            var ta = trueAnomalyDegrees * Math.PI / 180;
-            var ea = 2 * Math.Atan2(Math.Sqrt(1 - ecc) * Math.Sin(ta / 2), Math.Sqrt(1 + ecc) * Math.Cos(ta / 2));
-            var m = ea - ecc * Math.Sin(ea) + seconds * Math.Sqrt(KerbinMu / Math.Pow(sma, 3));
-            var e = m;
-            for (var i = 0; i < 50; i++) e -= (e - ecc * Math.Sin(e) - m) / (1 - ecc * Math.Cos(e));
-            return sma * (1 - ecc * Math.Cos(e));
-        }
-
-        [Theory]
-        [InlineData(180)]
-        [InlineData(120)]
-        [InlineData(90)]
-        [InlineData(250)]
-        public void The_entry_eta_lands_on_the_top_of_the_atmosphere(double trueAnomaly)
-        {
-            // Apoapsis 200 km, periapsis 30 km above Kerbin; the atmosphere tops out at 70 km.
-            var rPe = KerbinRadius + 30000;
-            var rAp = KerbinRadius + 200000;
-            var sma = (rPe + rAp) / 2;
-            var ecc = (rAp - rPe) / (rAp + rPe);
-            var entry = KerbinRadius + 70000;
-            var eta = Number(string.Format(CultureInfo.InvariantCulture, "claudia_fall_eta({0}, {1}, {2}, {3}, {4})", D(ecc), D(sma), D(KerbinMu), D(entry), D(trueAnomaly)));
-            Assert.True(eta > 0, "eta " + eta);
-            Assert.Equal(entry, TimeToRadius(ecc, sma, trueAnomaly, entry, eta), 0);
-        }
-
-        [Fact]
-        public void The_entry_eta_is_zero_inside_the_atmosphere_and_minus_one_for_an_orbit_that_stays_out()
-        {
-            var rPe = KerbinRadius + 30000;
-            var rAp = KerbinRadius + 200000;
-            var sma = (rPe + rAp) / 2;
-            var ecc = (rAp - rPe) / (rAp + rPe);
-            Assert.Equal(0, Number(string.Format(CultureInfo.InvariantCulture, "claudia_fall_eta({0}, {1}, {2}, {3}, 0)", D(ecc), D(sma), D(KerbinMu), D(KerbinRadius + 70000))));
-
-            var outPe = KerbinRadius + 100000;
-            var outSma = (outPe + rAp) / 2;
-            var outEcc = (rAp - outPe) / (rAp + outPe);
-            Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "claudia_fall_eta({0}, {1}, {2}, {3}, 180)", D(outEcc), D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
-            Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "claudia_fall_eta(1.2, {0}, {1}, {2}, 180)", D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
-        }
-
         // ---- reentry: a skip-out (#592) ----
 
         [Theory]

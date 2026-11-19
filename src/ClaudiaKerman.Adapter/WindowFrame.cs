@@ -30,7 +30,7 @@ namespace ClaudiaKerman.Adapter
         private readonly string _title;
         private readonly string _keyboardLockId;
         private readonly string _mouseLockId;
-        private readonly Vector2 _min;
+        private Vector2 _min;
         private readonly bool _resizable;
         private bool _keyboardLocked;
         private bool _mouseLocked;
@@ -43,6 +43,10 @@ namespace ClaudiaKerman.Adapter
         private string _appliedScene;
         private Rect _default;
         private WindowBox _lastStored;
+        private float _lastStoredScale;
+        // The UI scale the sizes are for (0: they don't follow it), and the minimum at scale 1.
+        private float _scale;
+        private Vector2 _minDesign;
 
         public Rect Rect;
 
@@ -55,7 +59,11 @@ namespace ClaudiaKerman.Adapter
         /// <param name="title">The stock window title. Empty for windows in <see cref="ClaudiaSkin.Window"/>, which draw their own title bar, so the title shows once.</param>
         /// <param name="lockId">Unique per window; the keyboard and mouse locks get their own suffixes.</param>
         /// <param name="min">Smallest size a resize allows: of the window, or of the area given to <see cref="HandleResize"/>.</param>
-        public WindowFrame(int windowId, string title, string lockId, Rect initial, Vector2 min, bool resizable)
+        /// <param name="sizesAtScale">
+        /// The <see cref="ClaudiaSkin.FontScale"/> <paramref name="initial"/> and <paramref name="min"/> are sized for: they,
+        /// and the window's size, follow the scale from then on. 0 (a window in the stock skin) keeps them as given.
+        /// </param>
+        public WindowFrame(int windowId, string title, string lockId, Rect initial, Vector2 min, bool resizable, float sizesAtScale = 0)
         {
             _windowId = windowId;
             _title = title;
@@ -65,6 +73,23 @@ namespace ClaudiaKerman.Adapter
             _min = min;
             _resizable = resizable;
             _default = initial;
+            _scale = sizesAtScale;
+            if (_scale > 0) _minDesign = min / _scale;
+            FollowScale();
+        }
+
+        // A new UI scale resizes the default, the minimum and a resizable window by as much; the position is kept (Show
+        // keeps it on screen). A remembered box is kept with its scale and resized from that when applied (ApplyRemembered).
+        private void FollowScale()
+        {
+            if (_scale <= 0) return;
+            var now = ClaudiaSkin.FontScale;
+            if (now == _scale) return;
+            var by = now / _scale;
+            _scale = now;
+            _min = new Vector2(Mathf.Round(_minDesign.x * now), Mathf.Round(_minDesign.y * now));
+            _default = new Rect(_default.x, _default.y, Mathf.Round(_default.width * by), Mathf.Round(_default.height * by));
+            if (_resizable) Rect = new Rect(Rect.x, Rect.y, Mathf.Max(Mathf.Round(Rect.width * by), _min.x), Mathf.Max(Mathf.Round(Rect.height * by), _min.y));
         }
 
         /// <summary>Position and size are remembered per scene under this name (see <see cref="WindowMemory"/>).</summary>
@@ -76,6 +101,8 @@ namespace ClaudiaKerman.Adapter
         /// <summary>Draws the window at its current size and updates the mouse lock. <paramref name="options"/> only apply to windows that aren't resizable.</summary>
         public void Show(GUI.WindowFunction draw, params GUILayoutOption[] options)
         {
+            // The scale first, so a box remembered at another scale is resized once, from the scale it was kept at.
+            FollowScale();
             ApplyRemembered();
             Rect resized;
             if (_resizable && TryResize(out resized)) Rect = resized;
@@ -208,7 +235,7 @@ namespace ClaudiaKerman.Adapter
             SetMouseLock(false);
         }
 
-        // On entering a scene (or the first draw), the remembered box replaces the default.
+        // On entering a scene (or the first draw), the remembered box replaces the default, resized for the UI scale now.
         private void ApplyRemembered()
         {
             if (_memoryName == null) return;
@@ -216,11 +243,12 @@ namespace ClaudiaKerman.Adapter
             if (scene == _appliedScene) return;
             _appliedScene = scene;
             WindowBox box;
-            if (WindowMemory.TryGet(_memoryName, out box))
+            if (WindowMemory.TryGet(_memoryName, StoreScale, out box))
                 Rect = new Rect(box.X, box.Y, _resizable ? Mathf.Max(box.Width, _min.x) : Rect.width, _resizable ? Mathf.Max(box.Height, _min.y) : Rect.height);
             else
                 Rect = _default;
             _lastStored = new WindowBox(Rect.x, Rect.y, Rect.width, Rect.height);
+            _lastStoredScale = StoreScale;
         }
 
         // Saved once a drag or resize is let go, not on every frame of it.
@@ -228,9 +256,18 @@ namespace ClaudiaKerman.Adapter
         {
             if (_memoryName == null || _resizing || Input.GetMouseButton(0)) return;
             var box = new WindowBox(Rect.x, Rect.y, Rect.width, Rect.height);
-            if (box.Equals(_lastStored)) return;
+            // A new scale alone is stored too, so the box isn't later resized from the scale before.
+            if (box.Equals(_lastStored) && StoreScale == _lastStoredScale) return;
             _lastStored = box;
-            WindowMemory.Store(_memoryName, box);
+            _lastStoredScale = StoreScale;
+            WindowMemory.Store(_memoryName, box, StoreScale);
+        }
+
+        // The scale the window's size is for; a window in the stock skin doesn't follow it, so it is kept as at the old
+        // base, the scale of a line written without one, and is never resized.
+        private float StoreScale
+        {
+            get { return _scale > 0 ? _scale : UiScale.OldBase; }
         }
 
         private void SetMouseLock(bool locked)

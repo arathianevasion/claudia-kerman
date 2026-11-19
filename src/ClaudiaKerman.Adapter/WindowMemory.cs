@@ -33,14 +33,16 @@ namespace ClaudiaKerman.Adapter
             }
         }
 
-        public static bool TryGet(string window, out WindowBox box)
+        /// <summary>The box resized from the UI scale it was kept at to <paramref name="scaleNow"/>.</summary>
+        public static bool TryGet(string window, float scaleNow, out WindowBox box)
         {
-            return _layouts.TryGet(Scene(), window, out box);
+            return _layouts.TryGet(Scene(), window, scaleNow, out box);
         }
 
-        public static void Store(string window, WindowBox box)
+        /// <summary>Keeps the box with the UI <paramref name="scale"/> its size is for.</summary>
+        public static void Store(string window, WindowBox box, float scale)
         {
-            if (_directory != null && _layouts.Set(Scene(), window, box)) _layouts.Save(_directory);
+            if (_directory != null && _layouts.Set(Scene(), window, box, scale)) _layouts.Save(_directory);
         }
 
         /// <summary>Forgets where the window sat in this scene, so it goes back to its default.</summary>

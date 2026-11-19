@@ -396,7 +396,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void AutoModeStopsAtTheDueTimeThePickSets()
+        public void AutoModeStartsAtTheDueTimeThePickSets()
         {
             var mission = Control(new StreamingFakeTransport(HomePlan("Ascend from Duna", "Return to Kerbin"), AscentPlan()));
             ToDeparture(mission, Landed("Duna", NewGame, 20000));
@@ -405,14 +405,14 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new UtAdvanced(mission.View.DueTime.Ut + 1));
             _background.Drain();
 
-            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
-            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
         }
 
         [Fact]
-        public void AWarpToTheDueTimeIsNoneForTheDueTimeARepickMovesTo()
+        public void ADueTimeARepickMovesAfterTheWarpIsApprovedByAutoModeAtItsNewTime()
         {
-            // #967: the warp is tied to the plan and its Due Time; the same plan with a new Due Time waits for the player.
+            // #967: nothing ties Auto Mode to the Due Time warped to; the same plan re-timed starts at its new Due Time.
             var mission = Control(new StreamingFakeTransport(HomePlan("Ascend from Duna", "Return to Kerbin"), AscentPlan()));
             ToDeparture(mission, Landed("Duna", NewGame, 20000));
             mission.Send(new SetAutoMode(true));
@@ -425,8 +425,8 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new UtAdvanced(soonest + 1));
             _background.Drain();
 
-            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
-            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
         }
 
         [Fact]

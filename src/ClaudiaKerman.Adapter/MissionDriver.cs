@@ -231,6 +231,10 @@ namespace ClaudiaKerman.Adapter
         public static System.Collections.Generic.IList<PlannedSequence> PlanLegs;
         public static System.Collections.Generic.IList<PlannedSequence> BlockTestPlan;
 
+        /// <summary>#1029: the Mission's part test watch, for <c>ADDONS:CLAUDIA:PARTTEST</c>; refreshed every frame, null with no Mission. <see cref="BlockTestPartTests"/> stands in for it in a block test.</summary>
+        public static Core.Contracts.PartTestWatch PartTests;
+        public static Core.Contracts.PartTestWatch BlockTestPartTests;
+
         /// <summary>The Child Vessel the run flies, for <c>ADDONS:CLAUDIA:ENTRYDROP</c> (#823); "" for the craft.</summary>
         public static string RunningChild = "";
 
@@ -290,6 +294,7 @@ namespace ClaudiaKerman.Adapter
             PhysicsWarpAllowed = _mission.View.PhysicsWarpAllowed;
             TimeCapHours = _mission.View.Settings.TimeCapHours;
             PlanLegs = _mission.View.PlanLegs;
+            PartTests = _mission.View.PartTests;
             RunningChild = _mission.View.RunningChild;
             if (_mission.View.Stage != MissionStage.None) AimedPlane = _mission.View.ArrivalPlane;
             CurrentSequence = _mission.View.CurrentSequence;

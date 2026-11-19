@@ -93,7 +93,7 @@ namespace ClaudiaKerman.Core.Tests
             };
             var flight = AscentSim.Fly(options, new BodyAir(Duna()), Drag(), Stages());
             var cut = Cutoff(flight);
-            _out.WriteLine("shape " + shape + ": " + (flight.ReachesOrbit ? "orbit" : flight.Failure) + ", dv to orbit " + Math.Round(flight.DeltaVToOrbit)
+            _out.WriteLine("shape " + shape + ": " + (flight.ReachesOrbit ? "orbit" : flight.Failure) + ", dv to orbit " + Math.Round(flight.DeltaVToOrbitOrHop)
                 + ", left " + Math.Round(flight.DeltaVLeft) + ", coast_ap " + Math.Round(flight.CoastAp)
                 + (cut == null ? "" : ", last burning row " + Math.Round(cut[0]) + " m, nose " + Math.Round(90 - cut[1], 1) + " deg above the horizon, prograde " + Math.Round(90 - cut[2], 1)
                     + ", h " + Math.Round(cut[9]) + " v " + Math.Round(cut[10]) + " m/s"));
@@ -119,7 +119,7 @@ namespace ClaudiaKerman.Core.Tests
         public void The_shape_plan_ascent_picks_reaches_a_60_km_orbit_for_clearly_less_than_1463_m_s()
         {
             var best = Best();
-            Assert.True(best.DeltaVToOrbit < 1300, "dv to orbit " + best.DeltaVToOrbit);
+            Assert.True(best.DeltaVToOrbitOrHop < 1300, "dv to orbit " + best.DeltaVToOrbitOrHop);
         }
 
         // Before #978 the shapes 0.20 to 0.80 left 2,507 to 2,539 m/s; now 0.05 to 0.80 leave 2,507 to 2,663.

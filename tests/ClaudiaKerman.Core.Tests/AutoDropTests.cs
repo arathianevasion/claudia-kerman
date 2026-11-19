@@ -80,28 +80,171 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(AutoDrop.LegsFree(plan, 1));
         }
 
-        [Fact]
-        public void AKerbinReturnThatSaysItLandsIsALanding()
+        /// <summary>
+        /// Flight m20261111-033300-95d4: the Mission Plan in hand for the Duna ascent, after the Duna landing. The Kerbin return says it
+        /// lands, and the empty radials (legs on them) still rode to orbit. Both intents the step had in flight, verbatim.
+        /// </summary>
+        [Theory]
+        [InlineData("Eject at the soonest Duna-to-Kerbin window toward a 35 km periapsis at Kerbin, coast to the encounter, then reenter and land.")]
+        [InlineData("Eject from Duna orbit at the soonest Duna-to-Kerbin window toward a 35 km periapsis at Kerbin, coast to the encounter, then reenter and land.")]
+        public void AfterTheDunaLandingAKerbinReturnThatSaysItLandsLeavesTheLegsFree(string intent)
         {
-            var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg("Return to Kerbin", "Reenter and land on the KSC runway.") };
-            Assert.False(AutoDrop.LegsFree(plan, 0));
+            var plan = new List<PlannedSequence>
+            {
+                Leg("Launch from Duna to orbit", "Launch from the Duna surface to a 60 km orbit and circularize."),
+                Leg("Return to Kerbin and reentry", intent),
+            };
+            Assert.True(AutoDrop.LegsFree(plan, 0));
+            Assert.Equal(new[] { "shield", "leg" }, AutoDrop.FreeKinds(plan, 0).ToArray());
         }
 
-        // The player's ruling (fix round): a Kerbin return under chutes is no landing, but a sequence that also comes down on another body is.
+        // The player's ruling (second fix round): a Kerbin return never counts as a landing on its own, whatever its words; only one that
+        // also comes down on another stock body is.
         [Theory]
+        [InlineData("Return to Kerbin", "Reenter and land on the KSC runway.")]
+        [InlineData("Return to Kerbin and touch down at KSC", "")]
         [InlineData("Return to KSC", "Deorbit from Kerbin orbit, reenter and descend under the Mk16 chute.")]
+        [InlineData("Return from the Mun to Kerbin and land", "")]
         [InlineData("Return from the Mun to Kerbin", "Deorbit and reenter over KSC under the chutes.")]
         [InlineData("Come home from Duna", "Reentry and descent under chutes.")]
+        [InlineData("Return to Kerbin", "Depart Duna in the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Leave Mun orbit, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Burn Ike to Kerbin, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Eject from low Duna orbit at the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Burn from low Duna orbit at the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Ejection from Duna at the soonest window, then reenter and land.")]
+        // Fix round 3: more ways of leaving Duna (or the Mun) for home.
+        [InlineData("Return to Kerbin", "Escape Duna's SOI toward Kerbin, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Burn out of Duna orbit at the soonest window, coast to Kerbin, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Leave low Duna orbit at the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Duna–Kerbin transfer at the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Duna → Kerbin transfer, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Ejection burn at Duna, then reenter Kerbin's atmosphere and land.")]
+        [InlineData("Return to Kerbin", "Burn at Mun periapsis for Kerbin, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Wait in Duna orbit for the window, then eject, reenter and land.")]
+        [InlineData("Return to Kerbin", "Eject from Duna orbit; coast past Ike; reenter and land.")]
+        // A line break doesn't hide the return.
+        [InlineData("Duna departure", "Eject toward Kerbin.\nReturn, reenter and land.")]
         public void AKerbinReturnUnderChutesIsNoLanding(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
             Assert.True(AutoDrop.LegsFree(plan, 0));
         }
 
+        /// <summary>
+        /// Flight m20261111-172716-a40a: Claudia split the trip home in two, and the reentry step names Kerbin but says no "return". The
+        /// player's ruling (fix round 2 after flight): a landing on Kerbin is never a landing, whatever words it uses.
+        /// </summary>
+        [Fact]
+        public void TheSplitTripHomeLeavesTheLegsFreeAtTheDunaAscent()
+        {
+            var plan = new List<PlannedSequence>
+            {
+                Leg("Crew report on Duna", "Run the crewReport experiment from the landed pod and transmit it."),
+                Leg("Ascent from Duna to orbit", "Launch from the Duna surface to a 60 km orbit and circularize."),
+                Leg("Return transfer to Kerbin", "Depart Duna at the soonest Duna-Kerbin window and coast toward Kerbin."),
+                Leg("Reentry at Kerbin", "Coast to the Kerbin encounter and reenter with heat shield and parachutes to recover the crew."),
+            };
+            Assert.True(AutoDrop.LegsFree(plan, 1));
+            Assert.Equal(new[] { "shield", "leg" }, AutoDrop.FreeKinds(plan, 1).ToArray());
+        }
+
+        [Theory]
+        [InlineData("Reentry at Kerbin", "")]
+        [InlineData("Land at KSC", "")]
+        [InlineData("Deorbit and splash down on Kerbin", "")]
+        [InlineData("Kerbin landing", "Deorbit, reenter and descend under the chutes.")]
+        [InlineData("Home stretch", "Reenter and land at the Kerbal Space Center.")]
+        [InlineData("Second stop", "Leave Mun orbit, then land at Kerbin.")]
+        [InlineData("Second stop", "Leave Mun orbit, then splash down at KSC.")]
+        [InlineData("Home", "Reenter over KSC and deploy chutes.")]
+        [InlineData("Home", "Descend into Kerbin's atmosphere and splash down.")]
+        public void ALandingOnKerbinIsNoLanding(string name, string intent)
+        {
+            var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
+            Assert.True(AutoDrop.LegsFree(plan, 0));
+        }
+
+        /// <summary>
+        /// Fix round 2 review: a step lands on Kerbin only when a Kerbin place goes with a come-down word, not on any mention. Kerbin
+        /// overhead, in view for comms, or as a relay doesn't free the legs before a landing whose step doesn't name the away body.
+        /// </summary>
+        [Theory]
+        [InlineData("Final descent", "Land in the crater with Kerbin overhead for the comms link.")]
+        [InlineData("Powered descent", "Descend to the surface; keep Kerbin in view for comms.")]
+        [InlineData("Landing", "Touch down near the equator during Kerbin-rise.")]
+        [InlineData("Landing", "Touch down on the plains, as on Kerbin.")]
+        [InlineData("Land", "Touch down before heading back toward Kerbin later.")]
+        [InlineData("Descent", "Deorbit from low orbit and land near the Kerbin-facing side.")]
+        [InlineData("Descent", "Descend and land. Kerbin's SOI is far away so no hurry.")]
+        [InlineData("Touchdown", "Land with the antenna pointed at Kerbin.")]
+        [InlineData("Deorbit burn", "Lower periapsis to 10 km over the landing site; Kerbin is overhead.")]
+        [InlineData("Suicide burn", "Land at the target near the equator, Kerbin side.")]
+        [InlineData("Land", "Land in the crater (comms via KSC).")]
+        [InlineData("Landing", "Land; transmit to KSC.")]
+        [InlineData("Landing", "From Kerbin's view the site is on the near side; land there.")]
+        [InlineData("Duna entry", "Reenter and land, Kerbin relay overhead.")]
+        public void AMentionOfKerbinIsNoLandingOnKerbin(string name, string intent)
+        {
+            var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
+            Assert.False(AutoDrop.LegsFree(plan, 0));
+        }
+
+        /// <summary>
+        /// Fix round 3: a landing word after the body, before the next reentry word or Kerbin, comes down there, even when the body follows
+        /// "leave", "depart" or "from ... orbit". The name says nothing of the body, so only the intent tells.
+        /// </summary>
+        [Theory]
+        [InlineData("Leave Mun orbit and land at the crater, then return to Kerbin")]
+        [InlineData("Depart Mun orbit and land at the crater, then return to Kerbin.")]
+        [InlineData("Leave Minmus orbit and touch down on the flats, then return to Kerbin.")]
+        [InlineData("From low Mun orbit, burn retrograde and land near the crater, then return to Kerbin.")]
+        [InlineData("From Mun orbit, land at the crater for science, then return to Kerbin.")]
+        [InlineData("Burn from Mun orbit and touch down at the crater, then return to Kerbin.")]
+        [InlineData("Come down from Mun orbit and land at the crater, then return to Kerbin.")]
+        [InlineData("Depart Mun orbit for a powered descent to the crater, then return to Kerbin.")]
+        [InlineData("Leaving Mun orbit, descend to the crater; later return to Kerbin.")]
+        // An air body's own reentry, with the return after the landing.
+        [InlineData("Duna: reenter and land on the plains, then return to Kerbin.")]
+        [InlineData("Aerobrake at Laythe, reenter and land, refuel, then return to Kerbin.")]
+        // The body and the landing word share a clause, so a Kerbin place after them doesn't take the landing.
+        [InlineData("Mun landing and Kerbin return.")]
+        [InlineData("Leave Mun orbit and land at the crater before the Kerbin window.")]
+        [InlineData("Ike landing before the Kerbin transfer.")]
+        public void LeavingAMoonsOrbitToLandThereIsALanding(string intent)
+        {
+            Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg("Second stop", intent) }, 0));
+        }
+
+        [Fact]
+        public void LeavingAMoonsOrbitToLandThereIsALandingAsTheNameAlone()
+        {
+            Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg("Leave Mun orbit and land at the crater, then return to Kerbin", "") }, 0));
+        }
+
+        /// <summary>The name and intent don't read as one clause: "Return to Kerbin" then "From Mun orbit, land ..." lands on the Mun.</summary>
+        [Fact]
+        public void TheNameAndIntentAreSeparateClauses()
+        {
+            Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg("Return to Kerbin", "From Mun orbit, land at the crater for science, then reenter at Kerbin.") }, 0));
+        }
+
+        [Theory]
+        [InlineData("Transfer from Kerbin orbit to the Mun and land", "")]
+        [InlineData("Return to Kerbin orbit, refuel, then depart for the Mun and land", "")]
+        public void AFlightOutToLandIsALanding(string name, string intent)
+        {
+            Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg(name, intent) }, 0));
+        }
+
         [Theory]
         [InlineData("Mun and home", "Deorbit to the Mun crater, then return to Kerbin.")]
+        [InlineData("Deorbit to the Mun crater, then return to Kerbin and land", "")]
         [InlineData("Return to Kerbin via Minmus", "Descend to the Minmus flats for a sample, then come home.")]
         [InlineData("Second stop", "Deorbit from Mun orbit to the crater, then return to Kerbin.")]
+        [InlineData("Land at the Mun's crater, then return to Kerbin", "")]
+        [InlineData("Mun and home", "Descend from Mun orbit to the crater, then return to Kerbin.")]
+        [InlineData("Mun and home", "Do the deorbit burn from the Mun’s orbit, then return to Kerbin.")]
         public void AReturnThatAlsoComesDownOnAnotherBodyIsALanding(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
@@ -112,6 +255,9 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Mun descent", "Descend on the engine to the crater.")]
         [InlineData("Duna", "Powered descent to the Lowlands.")]
         [InlineData("Ike", "Descending to the equator.")]
+        [InlineData("Descent to Duna equator", "")]
+        [InlineData("Laythe", "Leave Kerbin orbit for Laythe, aerobrake and splash down.")]
+        [InlineData("Laythe splashdown", "After the Kerbin transfer, aerobrake and come down under the chutes.")]
         public void DescendAndDescentAreLandings(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };

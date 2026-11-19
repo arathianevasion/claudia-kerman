@@ -60,7 +60,7 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <param name="craftName">The Mission's craft, so a sequence that flies a Child Vessel is marked with that vessel's name.</param>
-        public static string MissionPlanBody(MissionPlan plan, string craftName)
+        public static string MissionPlanBody(MissionPlan plan, string craftName, IList<string[]> serves = null)
         {
             var body = new StringBuilder();
             for (var i = 0; i < plan.Sequences.Count; i++)
@@ -70,7 +70,10 @@ namespace ClaudiaKerman.Core.Missions
                     .Append(FliesCraft(craftName, s.Vessel) ? "" : " [" + s.Vessel + "]").Append(": ").Append(s.Intent)
                     .Append(" (").Append(MetresPerSecond(s.DeltaV)).Append(", ").Append(s.Timing);
                 if (s.DueTimeUt.HasValue) body.Append("; Due Time ").Append(KerbinTime.Date(s.DueTimeUt.Value));
-                body.Append(")\n");
+                body.Append(')');
+                // #1024: the mod's own Serves tags, never Claudia's words.
+                if (serves != null && i < serves.Count && serves[i].Length > 0) body.Append(" · serves: ").Append(string.Join("; ", serves[i]));
+                body.Append('\n');
             }
             body.Append(ChildVesselLines(plan));
             body.Append("Total ").Append(MetresPerSecond(plan.TotalDeltaV)).Append(", ").Append(plan.ExpectedDuration).Append('.');

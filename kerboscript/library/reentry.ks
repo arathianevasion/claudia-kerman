@@ -113,10 +113,7 @@ function reentry_open_action {
   if mode = "none" or out {
     return "wait".
   }
-  if agl <= last_agl {
-    return "deploy".
-  }
-  if speed <= max_speed and pressure >= min_pressure {
+  if agl <= last_agl or (speed <= max_speed and pressure >= min_pressure) {
     return "deploy".
   }
   return "wait".
@@ -131,10 +128,7 @@ function reentry_chute_stage {
     return "wait".
   }
   if has_drogues and not drogues_out {
-    if reentry_drogue_action(mode, drogues_out, speed, agl, pressure) = "deploy" {
-      return "drogues".
-    }
-    return "wait".
+    return choose "drogues" if reentry_drogue_action(mode, drogues_out, speed, agl, pressure) = "deploy" else "wait".
   }
   if reentry_chute_action(mode, mains_out, speed, agl, pressure) = "deploy" {
     return "mains".
@@ -562,7 +556,7 @@ function reentry {
   // Wait (on rails) for the atmosphere if the craft is still above it, on the orbit the drop leaves.
   local entry_in is 0.
   if ship:altitude > body_:atm:height and not claudia_on_ground() {
-    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
+    set entry_in to addons:claudia:falleta(lexicon("ecc", ship:orbit:eccentricity, "sma", ship:orbit:semimajoraxis, "mu", body_:mu, "r_fall", body_:radius + body_:atm:height, "ta", ship:orbit:trueanomaly)).
     if entry_in < 0 {
       return claudia_finish(ctx, false, "the orbit never reaches the atmosphere (periapsis " + round(ship:periapsis) + " m)", extra).
     }
@@ -611,13 +605,13 @@ function reentry {
       reentry_abort(opt:chute_mode, reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts)).
       return claudia_finish(ctx, false, waited, extra).
     }
-    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
+    set entry_in to addons:claudia:falleta(lexicon("ecc", ship:orbit:eccentricity, "sma", ship:orbit:semimajoraxis, "mu", body_:mu, "r_fall", body_:radius + body_:atm:height, "ta", ship:orbit:trueanomaly)).
     set trim to trim_ask().
   }
   local flown is claudia_fly_correction(ctx, trim).
   if trim:error = "" and trim:dv > 0 { addons:claudia:blocknote(ctx:block, lexicon("phase", "late_trim", "miss_before_km", round(trim:miss_before_km, 1), "dv", round(flown:dv, 2), "miss_after_km", round(trim:miss_after_km, 1), "reason", flown:reason)). }
   if entry_in > below:lead {
-    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
+    set entry_in to addons:claudia:falleta(lexicon("ecc", ship:orbit:eccentricity, "sma", ship:orbit:semimajoraxis, "mu", body_:mu, "r_fall", body_:radius + body_:atm:height, "ta", ship:orbit:trueanomaly)).
     local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).
     if waited <> "" {
       reentry_abort(opt:chute_mode, reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts)).
@@ -676,7 +670,7 @@ function reentry {
   local shield_uids is claudia_shield_drop(ship:parts, list(), shield).
   local predicted is addons:claudia:reentryimpact(lexicon("chutes", chute_mode <> "none", "shield_drop", shield_uids)).
   addons:claudia:blocknote(ctx:block, reentry_prediction_note(predicted)).
-  local air_ut is time:seconds + (choose claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly) if entry_in > 0 else 0).
+  local air_ut is time:seconds + (choose addons:claudia:falleta(lexicon("ecc", ship:orbit:eccentricity, "sma", ship:orbit:semimajoraxis, "mu", body_:mu, "r_fall", body_:radius + body_:atm:height, "ta", ship:orbit:trueanomaly)) if entry_in > 0 else 0).
   local hold_ut is choose time:seconds + addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime, "to_air", air_ut - time:seconds)):hold_in if held else air_ut. // #941: hold from a turn time plus margin before the air (Core's hold_in)
   local waited is choose claudia_wait_until(ctx, hold_ut) if hold_ut > time:seconds else "".
   if waited = "" { if held { lock steering to srfretrograde. } set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds) if air_ut > time:seconds else "". }
@@ -877,7 +871,7 @@ function reentry {
   until fell <> "" or not skipped {
     set skipped to false.
     set in_air to false.
-    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
+    set entry_in to addons:claudia:falleta(lexicon("ecc", ship:orbit:eccentricity, "sma", ship:orbit:semimajoraxis, "mu", body_:mu, "r_fall", body_:radius + body_:atm:height, "ta", ship:orbit:trueanomaly)).
     local skip is addons:claudia:entryskip(lexicon("passes", passes, "pe", ship:periapsis, "air_top", body_:atm:height, "entry_in", entry_in, "auto", auto_duration, "max_duration", opt:max_duration, "elapsed", time:seconds - ctx:start_ut)).
     set fell to skip:refusal.
     if fell = "" {

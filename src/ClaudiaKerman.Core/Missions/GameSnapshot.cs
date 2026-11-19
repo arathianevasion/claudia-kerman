@@ -31,7 +31,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The stage the part is in (its inverse stage number): 0 is the last to go.</summary>
         public int Stage;
         /// <summary>What the part can do, as the adapter reads it: command, crew_seat, probe_core, parachute, landing_leg,
-        /// heat_shield, antenna, electric_generator, reaction_wheel, rcs, aero_stabiliser, gimbal, engine, experiment, kos_processor, decoupler, docking_port.</summary>
+        /// heat_shield, antenna, electric_generator, reaction_wheel, rcs, aero_stabiliser, gimbal, engine, experiment, kos_processor, decoupler, docking_port, wheel (#1031: a wheel that isn't a landing leg).</summary>
         public List<string> Tags = new List<string>();
         public int CrewCapacity;
         /// <summary>The kerbals aboard this part (#927); -1: not read (an older snapshot), when <see cref="PartTree.CommandPart"/> goes by seats. Written only to the capture, never to Claudia's facts.</summary>
@@ -52,6 +52,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool EngineFuelled;
         /// <summary>The part hangs on its parent's surface (<c>Part.attachMode</c> SRF_ATTACH), not on a stack node: a radial part. <see cref="EntryStack"/> counts shields on the stack only. Not in the JSON: the prompt doesn't carry it.</summary>
         public bool SurfaceAttached;
+        /// <summary>#1033: the parts stowed in its inventory, by internal name (an EVA repair kit, a part to attach). Not in the JSON.</summary>
+        public List<string> Stowed = new List<string>();
         /// <summary>The part's resources as the adapter reads them (<see cref="EntryCraft"/>'s who-pays count); empty when not read. Not in the JSON: the prompt doesn't carry it.</summary>
         public List<SnapshotPartResource> Resources = new List<SnapshotPartResource>();
         /// <summary>A decoupler's neighbours its firing lets go of, by <see cref="Id"/> (#924): what is across its explosive node, or every neighbour of an omni decoupler. Empty when not read or not a decoupler. Not in the JSON: the prompt doesn't carry it.</summary>
@@ -247,8 +249,19 @@ namespace ClaudiaKerman.Core.Missions
         public SnapshotTarget FormTarget;
         /// <summary>The other vessels in the game a Mission Goal may name (ADR 0013); empty when not read. Not in the JSON.</summary>
         public List<SnapshotVessel> Vessels = new List<SnapshotVessel>();
+        /// <summary>
+        /// #1033: the vessels the game spawned for accepted Target Vessel Contracts (a rescue's pod, a vessel to repair, a comet), each tagged
+        /// with its Contract's GUID and read by the game's identity, whatever its type (ADR 0013's amendment). Not in the JSON.
+        /// </summary>
+        public List<SnapshotVessel> ContractVessels = new List<SnapshotVessel>();
         /// <summary>The craft's <c>persistentId</c>, so it is never in the Target Vessel list (#709); 0 when not read. Not in the JSON.</summary>
         public uint CraftPersistentId;
+
+        /// <summary>
+        /// The player's accepted Contracts (#1037, ADR 0021); null when not read (Science or Sandbox, or before the game's Contract
+        /// system has loaded). Only the recording form carries it, and only with an accepted Contract, so every other snapshot is as before.
+        /// </summary>
+        public Contracts.SnapshotContracts Contracts;
 
         /// <summary>
         /// What the Mission Settings give a Planning Tool for the inputs Claudia leaves out: daylight landing on, and the time cap in
@@ -545,6 +558,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             // The recording form (with bodies) is the one that keeps the target's id.
             if (Target != null) WriteTarget(json, Target, withBodies);
+            if (withBodies && Contracts != null && Contracts.Accepted.Count > 0) Contracts.Write(json);
             return json.EndObject().ToString();
         }
 
@@ -690,6 +704,7 @@ namespace ClaudiaKerman.Core.Missions
                 RcsOn = JsonNode.Bool(root["rcs_on"]),
                 _parsedImpactInS = JsonNode.Double(root["impact_in_s"]),
                 Target = ReadTarget(root["target"]),
+                Contracts = ClaudiaKerman.Core.Contracts.SnapshotContracts.Read(root["contracts"]),
             };
             var craft = root["craft"];
             if (craft != null)

@@ -1,0 +1,56 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000012",
+        "kind": "OrbitalConstructionContract",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 72000.0,
+          "science": 0.0,
+          "reputation": 14.0
+        },
+        "settings": {
+          "type": "OrbitalConstructionContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000012",
+          "state": "Active",
+          "prestige": "1"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000012/0",
+            "kind": "CrewTraitParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "CrewTraitParameter",
+              "state": "Incomplete",
+              "targetTrait": "Engineer",
+              "targetCount": "1"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000012/1",
+            "kind": "ConstructionParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "ConstructionParameter",
+              "state": "Incomplete",
+              "partName": "batteryBankLarge",
+              "vesselName": "Comms Relay K-3",
+              "targetBody": "1"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

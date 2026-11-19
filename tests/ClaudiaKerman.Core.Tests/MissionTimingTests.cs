@@ -357,6 +357,25 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(3, CostLog(mission).Split('\n').Count(l => l.Contains("\"pending\"")));
         }
 
+        [Fact]
+        public void AutoModesLateApprovalAtTheDueTimeReplansWithNoStopLineWhileTheReplanIsOut()
+        {
+            // #967 review: the re-plan is Claudia's to send; nothing calls the player while it is out.
+            var transport = new StreamingFakeTransport(TimedMissionPlan(), SequencePlan(Due, Due + 3600, 400), SequencePlan(Due + 90000, null, null, 100, "Mun transfer, next window"));
+            var mission = Control(transport);
+            ToSequencePlan(mission);
+            mission.Send(new SetAutoMode(true));
+            mission.TakeCommands();
+
+            mission.Send(new UtAdvanced(Due + 40000));
+
+            Assert.Empty(Of<StartScript>(mission.TakeCommands()));
+            Assert.True(mission.View.Busy);
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Late Approval:") && e.Text.Contains("re-planning"));
+            Assert.Equal("", mission.View.AutoModeStop);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == "Auto Mode is waiting for you: a Due Time.");
+        }
+
         // ---- Late Approval ----
 
         [Fact]

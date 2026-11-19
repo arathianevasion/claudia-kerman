@@ -21,7 +21,7 @@ A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You 
 
 Claudia is also a Kerbal: a female crew member with the **Super Intelligence** role, which combines Pilot, Engineer and Scientist. She flies aboard crewed craft, or remotely from Mission Control for probes. If she dies aboard, the Mission is **Lost**, and she returns to the roster later.
 
-In Flight, the **Capcom strip** under the altimeter follows the Mission: Claudia's latest line, where the Mission is in its plan, the Spending Cap and what is locked. Its tab expands the Mission window docked to it, and it turns amber when she needs you. In the Space Center and Tracking Station, the **Missions list** shows every Mission in the save: the active one, Paused ones and finished ones with their final Debrief and cost.
+In Flight, the **Capcom strip** between the altimeter and the app launcher bar follows the Mission: Claudia's latest line, where the Mission is in its plan, the Spending Cap and what is locked. Its tab expands the Mission window docked to it, and it turns amber when she needs you. In the Space Center and Tracking Station, the **Missions list** shows every Mission in the save: the active one, Paused ones and finished ones with their final Debrief and cost.
 
 ## Building Blocks
 
@@ -86,13 +86,13 @@ While Claudia's programs run, runtime gates block the most harmful calls. Your o
 - Your own **Anthropic API key**.
 - The stock delta-v calculations turned on. The Craft Check stops and asks if they are off.
 
-Sandbox, Science and Career all work.
+Sandbox, Science and Career all work. In Career, Claudia reads your accepted Contracts and suggests the ones your craft can complete on the Mission.
 
 ## API key and cost
 
 Claudia uses the Claude API with your own key. Each Mission has its own **Spending Cap**, $10 by default, which you can raise later; the mod never sends a request that could go over it. When the cap has no room, the Mission is **Paused** until you raise it.
 
-The start form shows an estimate. As a rough guide, a Mun landing and return costs about $2.40 on Sonnet 5.5, about $0.12 on Haiku 5.5 (the default). Failed and retried legs cost the most, so a clean flight costs less.
+The start form shows an estimate. As a rough guide, a biome-specific Mun landing and return costs about $2.40 on Sonnet 5.5, about $0.12 on Haiku 5.5 (the default). Failed and retried legs cost the most, so a clean flight costs less.
 
 The key is stored as **plain text** in `~/Library/Application Support/ClaudiaKerman/`, readable only by you. If the `ANTHROPIC_API_KEY` environment variable is set, it is used instead. The key is never written to logs, saves or Mission records, and never placed under GameData.
 
@@ -138,7 +138,7 @@ You need the .NET 10 SDK. The adapter and kOS addon compile against your own KSP
 
 A failing test, or a script that doesn't compile or uses something forbidden, exits non-zero. A build stages the mod in `dist/GameData/ClaudiaKerman/`. To install it, copy that folder into your KSP `GameData` folder, next to kOS and HarmonyKSP. kOS and HarmonyKSP are dependencies you install yourself; they are never bundled.
 
-CI (`.github/workflows/ci.yml`) runs on every push: the core tests, then, with kOS.Safe from the public kOS release, the Script Check tests, a Script Check of every shipped script and block test script, the Core Library tests, and a check that the syntax-error and forbidden-call fixtures fail.
+CI (`.github/workflows/ci.yml`) runs the gate as three parallel jobs (core, kerboscript, scriptcheck; see the file header): the core tests, then, with kOS.Safe from the public kOS release, the Script Check tests, a Script Check of every shipped script and block test script, the Core Library tests, and a check that the syntax-error and forbidden-call fixtures fail.
 
 ### In-game tests
 

@@ -311,6 +311,19 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(result.GetProperty("optimal").GetProperty("total_dv").GetDouble(), 660, 682);
         }
 
+        /// <summary>#994, the player's ruling: spare delta-v may aim the entry toward KSC, but never buys a capture just to aim when the craft can enter directly, however much it has.</summary>
+        [Fact]
+        public void A_craft_that_can_enter_never_captures_to_aim_however_much_delta_v_it_has()
+        {
+            var snapshot = ShieldedAtDuna();
+            snapshot.Stages.Add(new SnapshotStage { DeltaVVac = 20000 });
+            var plan = HomeLanding.Arrival(snapshot, "Kerbin");
+            Assert.True(plan.Need <= plan.SpareDv, "the capture is paid for: " + plan.Need + " of " + plan.SpareDv);
+            Assert.True(plan.CanEnter);
+            Assert.False(plan.CaptureFirst);
+            Assert.False(Plan(snapshot).GetProperty("capture").GetBoolean());
+        }
+
         /// <summary>The same craft without the shield keeps today's capture, deorbit and reentry; so does a home with no air, where nothing enters.</summary>
         [Fact]
         public void No_shield_or_no_air_keeps_the_capture()

@@ -1,0 +1,55 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1034-4a01-9f00-000000000012",
+        "kind": "GrandTour",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 180000.0,
+          "science": 0.0,
+          "reputation": 40.0
+        },
+        "settings": {
+          "type": "GrandTour",
+          "guid": "0d5e8a10-1034-4a01-9f00-000000000012",
+          "state": "Active",
+          "prestige": "2"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1034-4a01-9f00-000000000012/0",
+            "kind": "VesselDestinationParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "VesselDestinationParameter",
+              "state": "Incomplete",
+              "targetBody": "2",
+              "targetType": "Orbit"
+            }
+          },
+          {
+            "key": "0d5e8a10-1034-4a01-9f00-000000000012/1",
+            "kind": "VesselDestinationParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "VesselDestinationParameter",
+              "state": "Incomplete",
+              "targetBody": "3",
+              "targetType": "Orbit"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

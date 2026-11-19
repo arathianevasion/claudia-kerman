@@ -1,0 +1,93 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000007",
+        "kind": "BaseContract",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 188000.0,
+          "science": 0.0,
+          "reputation": 36.0
+        },
+        "settings": {
+          "type": "BaseContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000007",
+          "state": "Active",
+          "prestige": "1"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000007/0",
+            "kind": "LocationAndSituationParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "LocationAndSituationParameter",
+              "state": "Incomplete",
+              "targetBody": "2",
+              "targetSituation": "LANDED",
+              "noun": "outpost"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000007/1",
+            "kind": "VesselSystemsParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "VesselSystemsParameter",
+              "state": "Incomplete",
+              "typeString": "base",
+              "mannedStatus": "MANNED",
+              "requireNew": "True",
+              "checkModuleTypes": "Antenna|Power|Dock",
+              "launchID": "0"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000007/2",
+            "kind": "CrewCapacityParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "CrewCapacityParameter",
+              "state": "Incomplete",
+              "targetCapacity": "5"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000007/3",
+            "kind": "CrewTraitParameter",
+            "state": "Incomplete",
+            "optional": true,
+            "settings": {
+              "name": "CrewTraitParameter",
+              "state": "Incomplete",
+              "targetTrait": "Pilot",
+              "targetCount": "2"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000007/4",
+            "kind": "StabilityParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "StabilityParameter",
+              "state": "Incomplete",
+              "holdSeconds": "10"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

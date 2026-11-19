@@ -408,6 +408,25 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(mission.View.WindowPickNeeded);
         }
 
+        [Fact]
+        public void AutoModeAtTheDueTimeAfterAHeldWindowClosedAsksForAPickWithNoDueTimeStopLine()
+        {
+            // #967 review: the Alert's revision is out; nothing calls the player for the Due Time meanwhile.
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan()));
+            ToLaunchPlan(mission, 1203.48, 20000);
+            mission.Send(new SetAutoMode(true));
+            mission.TakeCommands();
+
+            mission.Send(new UtAdvanced(Window(1203.48).DepartureUt + 120 * Day));
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("was missed") && e.Text.Contains("picks again"));
+            Assert.Equal("", mission.View.AutoModeStop);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == "Auto Mode is waiting for you: a Due Time.");
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.True(mission.View.WindowPickNeeded);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == "Auto Mode is waiting for you: a Due Time.");
+        }
+
         /// <summary>The Duna transfer's Sequence Plan, its window closing at <paramref name="closes"/> and the next one costing what it planned (#774).</summary>
         private static ScriptedResponse TransferPlan(double closes)
         {

@@ -67,6 +67,8 @@ namespace ClaudiaKerman.Core.Missions
             mission.Coast = null;
             mission.LeaveSnapshot = null;
             mission.CheckPending = false;
+            mission.ContractGaps.Clear();
+            mission.Hold = null;
         }
 
         private static string RunEventsJson(Mission mission)
@@ -133,7 +135,7 @@ namespace ClaudiaKerman.Core.Missions
                 CrossingFact(mission);
                 // RunFacts first: it finishes a drop being measured, which the run total rebases.
                 var facts = RunFacts(mission);
-                turn.UserText = turn.UserText.Replace(MissionPrompts.RunDeltaVSlot, RunDeltaV(mission, turn.Report)) + facts;
+                turn.UserText = turn.UserText.Replace(MissionPrompts.RunDeltaVSlot, RunDeltaV(mission, turn.Report)) + facts + ContractDebriefText(mission);
                 // The chutes the entries still to fly may open, from the craft as the run left it (one may be used or lost).
                 GroupChutes(mission);
                 if (mission.ScienceKept.Count > 0 && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
@@ -223,7 +225,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>#757: the rest of the Mission Plan judged against the Delta-v Map, as the margin recheck is told of it.</summary>
         private static string RecheckLegFacts(Mission mission, GameSnapshot snapshot)
         {
-            return PlanLegs.RecheckFacts(PlanLegs.Judge(snapshot, RestOfPlan(mission), mission.PlannedAscent));
+            return PlanLegs.RecheckFacts(PlanLegs.Judge(snapshot, RestOfPlan(mission), mission.PlannedAscent, true));
         }
 
         /// <summary>The mod's margin check of the craft as it is now against the rest of the Mission Plan; a manual stretch has no run's monopropellant to go by.</summary>

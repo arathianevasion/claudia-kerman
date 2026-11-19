@@ -330,16 +330,21 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void AutoModeNeverApprovesAtTheAscentsDueTime()
+        public void AutoModeStartsTheAscentFromDunaAtItsDueTime()
         {
+            // #967: the player's ruling, after the Duna ascent waited in flight m20261111-172716-a40a.
             var mission = Control(new StreamingFakeTransport(HomePlan("Ascend from Duna", "Return to Kerbin"), AscentPlan()));
             ToAscent(mission, "Duna", 1203.48);
             mission.Send(new SetAutoMode(true));
-            mission.Send(new UtAdvanced(mission.View.DueTime.Ut + 1));
+            var due = mission.View.DueTime.Ut;
+            mission.Send(new UtAdvanced(due - 1));
+            _background.Drain();
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            mission.Send(new UtAdvanced(due + 1));
             _background.Drain();
 
-            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
-            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
         }
 
         [Fact]

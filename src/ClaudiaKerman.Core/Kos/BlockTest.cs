@@ -87,6 +87,13 @@ namespace ClaudiaKerman.Core.Kos
         /// </summary>
         public IList<Missions.PlannedSequence> Plan { get; private set; }
 
+        /// <summary>
+        /// #1029: the part tests a test plans, for <c>ADDONS:CLAUDIA:PARTTEST</c>; a block test has no Mission. One
+        /// <c>part_test = window | part | situation | min_alt | max_alt [| min_spd | max_spd]</c> line per test, window ascent or descent,
+        /// the altitudes empty for a test met in the situation alone.
+        /// </summary>
+        public IList<Contracts.ChosenRequirement> PartTests { get; private set; }
+
         /// <summary>Real seconds the run may take, warp included, before it is aborted and fails.</summary>
         public double TimeoutSeconds { get; private set; }
 
@@ -104,6 +111,7 @@ namespace ClaudiaKerman.Core.Kos
                 TimeoutSeconds = 900,
                 Checks = new List<string>(),
                 Plan = new List<Missions.PlannedSequence>(),
+                PartTests = new List<Contracts.ChosenRequirement>(),
             };
             var targetKeys = false;
             foreach (var raw in (text ?? "").Replace("\r\n", "\n").Split('\n'))
@@ -140,6 +148,7 @@ namespace ClaudiaKerman.Core.Kos
                         if (fields.Length < 2) throw new FormatException(name + ": plan is 'name | delta-v | intent': " + value);
                         spec.Plan.Add(new Missions.PlannedSequence { Name = fields[0].Trim(), DeltaV = Number(name, fields[1].Trim()), Intent = fields.Length > 2 ? fields[2].Trim() : "" });
                         break;
+                    case "part_test": spec.PartTests.Add(PartTest(name, value, spec.PartTests.Count)); break;
                     case "timeout_s": spec.TimeoutSeconds = Number(name, value); break;
                     case "check":
                         Readable(name, value, Split(name, value));
@@ -161,6 +170,24 @@ namespace ClaudiaKerman.Core.Kos
         }
 
         /// <summary>Pass only if the run reported and every check holds.</summary>
+        private static Contracts.ChosenRequirement PartTest(string name, string value, int index)
+        {
+            var fields = value.Split('|').Select(f => f.Trim()).ToArray();
+            if (fields.Length < 3 || (fields[0] != "ascent" && fields[0] != "descent"))
+                throw new FormatException(name + ": part_test is 'ascent|descent | part | situation | min_alt | max_alt [| min_spd | max_spd]': " + value);
+            Func<int, double?> at = i => fields.Length > i && fields[i].Length > 0 ? Number(name, fields[i]) : (double?)null;
+            var band = at(3).HasValue ? new Contracts.HopBand { MinAltitude = at(3), MaxAltitude = at(4), MinSpeed = at(5), MaxSpeed = at(6) } : null;
+            return new Contracts.ChosenRequirement
+            {
+                Key = "block-test/" + index, Title = "block test", Words = "test " + fields[1], Body = "Kerbin",
+                Test = new Contracts.PartTestSpec
+                {
+                    Part = fields[1], Situation = fields[2].ToUpperInvariant(), Band = band, Chute = fields[1].IndexOf("parachute", StringComparison.OrdinalIgnoreCase) >= 0,
+                    Window = fields[0] == "ascent" ? Contracts.TestWindow.Ascent : Contracts.TestWindow.Descent,
+                },
+            };
+        }
+
         public BlockTestResult Judge(RunOutcome outcome)
         {
             var lines = new List<string>();

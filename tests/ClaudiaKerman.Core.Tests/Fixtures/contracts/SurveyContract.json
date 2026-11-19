@@ -1,0 +1,70 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000004",
+        "kind": "SurveyContract",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 38500.0,
+          "science": 6.0,
+          "reputation": 9.0
+        },
+        "settings": {
+          "type": "SurveyContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000004",
+          "state": "Active",
+          "prestige": "1",
+          "targetBand": "LOW",
+          "centerLatitude": "-0.4",
+          "centerLongitude": "-74.9"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000004/0",
+            "kind": "SurveyWaypointParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "SurveyWaypointParameter",
+              "state": "Incomplete",
+              "targetBody": "1",
+              "experiment": "temperatureScan",
+              "flightThreshold": "17500",
+              "band": "LOW",
+              "wpLatitude": "-0.31",
+              "wpLongitude": "-74.62",
+              "wpLandlocked": "True",
+              "wpNavigationId": "a6d7c35b-0f43-4a8e-8f61-2c2e1d0b4c11"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000004/1",
+            "kind": "SurveyWaypointParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "SurveyWaypointParameter",
+              "state": "Incomplete",
+              "targetBody": "1",
+              "experiment": "crewReport",
+              "flightThreshold": "17500",
+              "band": "LOW",
+              "wpLatitude": "-0.52",
+              "wpLongitude": "-75.18",
+              "wpLandlocked": "True",
+              "wpNavigationId": "0b8f6e55-6c1e-4d4b-9a2f-7b3c5d9e1f22"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

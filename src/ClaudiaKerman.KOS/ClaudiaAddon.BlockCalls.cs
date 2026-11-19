@@ -102,6 +102,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (dock, each tick): DockGuidance's wanted velocity and coast band for the craft's port in the target port's frame; lexicon along, lat, dv_error, fire, cmd_along, cmd_lat, cmd_side"));
             AddSuffix("DOCKFUEL", new OneArgsSuffix<Lexicon, Lexicon>(DockFuel,
                 "Core Library only (dock): whether the craft's RCS delta-v covers a dock from distance (m) at speed (m/s); lexicon error, dv, need"));
+            AddSuffix("PARTTEST", new OneArgsSuffix<Lexicon, StringValue>(PartTestCall,
+                "Core Library only (launch, reentry, each tick from claudia_tick): the Mission's planned part test due now in this block, if any (#1029); lexicon how (run, stage or empty), uid"));
             AddSuffix("CHUTEGROUP", new OneArgsSuffix<Lexicon, Lexicon>(ChuteGroupSet,
                 "Core Library only (reentry): this entry's Chute Group, read fresh, from none and engine; lexicon error, last (true: every chute aboard), stage, stages, uids, titles, touchdown_speed, why, warning"));
             AddSuffix("ENTRYFINISH", new OneArgsSuffix<Lexicon, Lexicon>(EntryFinishSet,
@@ -110,6 +112,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): what this Entry drops, from home, separate, chutes, core and drop_error (error: a stack it refuses); lexicon error, number, shield, jettison, jettison_first, decouplers, gone, names, stuck, lead"));
             AddSuffix("ENTRYTRIM", new OneArgsSuffix<Lexicon, Lexicon>(EntryTrimCall,
                 "Core Library only (reentry): at most one late trim toward the Mission's landing target, from to_air, home, dv_left, isp and has_node; lexicon as CORRECTIONBURN's, dv 0 and aim_note when none flies"));
+            AddSuffix("FALLETA", new OneArgsSuffix<ScalarValue, Lexicon>(FallEtaCall,
+                "Core Library only (reentry): seconds until a closed orbit or an inbound hyperbolic path falls to r_fall, from ecc, sma, mu, r_fall, ta (degrees); 0 under it now, -1 never"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
                 "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, core, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
             AddSuffix("LIFTOFFCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(LiftoffClearCall,
@@ -384,6 +388,58 @@ namespace ClaudiaKerman.KOS
                 return KosValues.FromPlain(fuel);
             }, () => string.Format(CultureInfo.InvariantCulture, "{0:0.0} units, Isp {1:0} s, {2:0.00} t: {3:0.0} m/s of RCS, needs {4:0.0}{5}",
                 monoprop, fuel["isp"], mass, fuel["dv"], fuel["need"], fuel["error"] as string == "" ? "" : "; " + fuel["error"]));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:PARTTEST</c> (#1029, ADR 0014, ADR 0021): Core's <see cref="Core.Contracts.PartTestWatch"/> told the craft as it
+        /// is this tick; it answers the block's one action. The block stages or runs the part's Run Test; nothing here fires anything. What was
+        /// run and each window passed unrun go to the Mission's events and KSP.log. A failure answers nothing to do, so the block flies on.
+        /// </summary>
+        private Lexicon PartTestCall(StringValue block)
+        {
+            var watch = MissionDriver.BlockTestPartTests ?? MissionDriver.PartTests;
+            var none = new Lexicon { { new StringValue("how"), new StringValue("") }, { new StringValue("uid"), new StringValue("") } };
+            if (watch == null || !watch.Pending(block.ToString())) return none;
+            Core.Contracts.TestSignal signal = null;
+            var answer = Guarded("PARTTEST", () =>
+            {
+                signal = watch.Tick(block.ToString(), ReadTestCraft(shared.Vessel));
+                foreach (var note in signal.Notes)
+                {
+                    Debug.Log("[ClaudiaKerman] PARTTEST " + block + ": " + note);
+                    if (MissionDriver.Current != null) MissionDriver.Current.Send(new PartTestNoted(note));
+                }
+                return new Lexicon { { new StringValue("how"), new StringValue(signal.How) }, { new StringValue("uid"), new StringValue(signal.Uid) } };
+            }, () => signal == null || signal.How.Length == 0 ? "nothing due" : signal.How + " " + signal.Key, 5);
+            return answer as Lexicon ?? none;
+        }
+
+        /// <summary>The craft for the part test watch: where it is, how fast, and each part a planned test names (of those sharing a name, one that can run its test now).</summary>
+        private static Core.Contracts.TestCraft ReadTestCraft(Vessel vessel)
+        {
+            var craft = new Core.Contracts.TestCraft
+            {
+                Body = vessel.mainBody.bodyName, Altitude = vessel.altitude, Speed = vessel.srfSpeed, Situation = vessel.situation.ToString(),
+            };
+            foreach (var part in vessel.parts)
+            {
+                var name = part.partInfo == null ? "" : part.partInfo.name;
+                if (name.Length == 0) continue;
+                // Of parts sharing a name, the first that can run its test now: another may be spent or still stowed.
+                Core.Contracts.TestPart had;
+                if (craft.Parts.TryGetValue(name, out had) && had.CanRun) continue;
+                var test = part.Modules.GetModule<ModuleTestSubject>();
+                var chute = part.Modules.GetModule<ModuleParachute>();
+                var read = new Core.Contracts.TestPart
+                {
+                    Uid = part.flightID.ToString(CultureInfo.InvariantCulture),
+                    CanRun = test != null && test.Events.Any(e => e.active && e.guiActive && (e.guiName ?? "").IndexOf("Run Test", StringComparison.OrdinalIgnoreCase) >= 0),
+                    CanStage = part.inverseStage == vessel.currentStage - 1,
+                    ChuteOpen = chute != null && chute.deploymentState != ModuleParachute.deploymentStates.STOWED,
+                };
+                if (had == null || read.CanRun) craft.Parts[name] = read;
+            }
+            return craft;
         }
 
         private Lexicon ChuteGroupSet(Lexicon input)
@@ -763,6 +819,15 @@ namespace ClaudiaKerman.KOS
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
                     node.ContainsKey("error_km") ? string.Format(CultureInfo.InvariantCulture, "; aimed {0:0.00} km from the target", node["error_km"]) : "",
                     node["error"] as string == "" ? "" : "; " + node["error"])) + AimLine(node) + PlanLine(node));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:FALLETA</c> (#994, ADR 0014): <see cref="BlockCalls.FallEta(System.Collections.Generic.IDictionary{string, object})"/>, pure. A failure (logged by Guarded) answers -1, the "never" the block refuses on.</summary>
+        private ScalarValue FallEtaCall(Lexicon input)
+        {
+            var eta = -1.0;
+            var answer = Guarded("FALLETA", () => ScalarValue.Create(eta = BlockCalls.FallEta(KosValues.ToDictionary(input))),
+                () => eta < 0 ? "never" : string.Format(CultureInfo.InvariantCulture, "{0:0} s", eta));
+            return answer as ScalarValue ?? ScalarValue.Create(-1);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:ENTRYTRIM</c> (#892): <see cref="BlockCalls.EntryTrim"/> with this planet's air and the craft reentry flies; the log line is the decision.</summary>

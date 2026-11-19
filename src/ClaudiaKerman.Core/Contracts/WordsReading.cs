@@ -1,0 +1,173 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Andrew Watson
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+using ClaudiaKerman.Core.Missions;
+
+namespace ClaudiaKerman.Core.Contracts
+{
+    /// <summary>
+    /// #1036: the player's typed words read into the same body-and-reach model the Contract Requirements are read into, so one leg can serve
+    /// both. A clause that goes somewhere ("land on the Mun", "orbit Minmus", "fly to Minmus and capture into orbit") is a need of that
+    /// body at that reach; a clause that rules something out ("don't land on the Mun", "only fly by", "without landing") is a limit on the
+    /// reach. Clauses that are neither are left to the Craft Check's own reading of the words. The words always win: a limit is never
+    /// loosened for a Contract, and a need is never dropped for one.
+    /// </summary>
+    internal sealed class WordsReading
+    {
+        /// <summary>The limit that holds at every body.</summary>
+        public const string Anywhere = "*";
+
+        private static readonly Regex Clause = new Regex(@"([.;:,!?]|\b(?:and|then|after|before)\b)", RegexOptions.IgnoreCase);
+        private static readonly Regex Negated = new Regex(@"\b(?:don['’]?t|do\s+not|never|no|not|without|avoid(?:ing)?|skip(?:ping)?)\b", RegexOptions.IgnoreCase);
+        private static readonly Regex Only = new Regex(@"\b(?:only|just|merely)\b", RegexOptions.IgnoreCase);
+        private static readonly Regex Orbit = new Regex(@"\borbit(?:s|ing|ed)?\b", RegexOptions.IgnoreCase);
+        private static readonly Regex Goes = new Regex(@"\b(?:(?:go|fly|head|travel|transfer|get|burn)\s+(?:back\s+)?to|transfer|intercept|visit)\b", RegexOptions.IgnoreCase);
+
+        /// <summary>The furthest the words take each body.</summary>
+        public readonly Dictionary<string, ContractReach> Needs = new Dictionary<string, ContractReach>();
+        /// <summary>The player's own clause behind each need, "land on the Mun".</summary>
+        public readonly Dictionary<string, string> NeedWords = new Dictionary<string, string>();
+        /// <summary>The most each body may be taken (<see cref="Anywhere"/> for all), and the clause that says so.</summary>
+        public readonly Dictionary<string, ContractReach> Limits = new Dictionary<string, ContractReach>();
+        public readonly Dictionary<string, string> LimitWords = new Dictionary<string, string>();
+        /// <summary>The clauses read here, trimmed: the Craft Check's legs for them are priced as needs instead.</summary>
+        public readonly HashSet<string> Consumed = new HashSet<string>();
+
+        /// <summary>#1060: the bodies the words put in an order, as (earlier, later) pairs: "then", "before" and "after" order what they join.</summary>
+        public readonly List<KeyValuePair<string, string>> Precedes = new List<KeyValuePair<string, string>>();
+
+        public static WordsReading Read(GameSnapshot snapshot, string words, string home)
+        {
+            var read = new WordsReading();
+            var bodies = snapshot.Bodies.Select(b => b.Name).Where(n => n.Length > 0 && n != home).Distinct().ToList();
+            string lastBody = null;
+            // #1060: the bodies of the clauses joined so far ("orbit the Mun and orbit Minmus"), and of the group before it.
+            var group = new List<string>();
+            var previous = new List<string>();
+            var join = 0; // +1 the next clause is after the group before it ("then", "before"), -1 it is before it ("after")
+            var leading = 0; // "After orbiting Minmus, land on the Mun": the first group is before (+1) or after (-1) the next
+            var pieces = Clause.Split(words ?? "");
+            // The Craft Check's own clauses split at "then" and "and" but not "after" and "before": a clause read in parts is consumed whole.
+            var whole = new System.Text.StringBuilder();
+            var consumedBefore = 0;
+            for (var p = 0; p < pieces.Length; p++)
+            {
+                var clause = pieces[p].Trim();
+                if (p % 2 == 1)
+                {
+                    var word = clause.ToLowerInvariant();
+                    if (word == "after" || word == "before") whole.Append(pieces[p]);
+                    else
+                    {
+                        if (read.Consumed.Count > consumedBefore) read.Consumed.Add(whole.ToString().Trim());
+                        whole.Clear();
+                        consumedBefore = read.Consumed.Count;
+                    }
+                    var connective = word == "then" || word == "before" || word == "after";
+                    if ((connective || word.Length == 1 && ".;!?".Contains(word)) || leading != 0)
+                    {
+                        // A group ends at a connective, at the end of a sentence, and after a leading "after"/"before" clause.
+                        if (group.Count > 0)
+                        {
+                            previous = group;
+                            group = new List<string>();
+                            if (leading != 0) { if (!connective) join = leading; leading = 0; }
+                        }
+                    }
+                    if (connective)
+                    {
+                        if (previous.Count == 0 && group.Count == 0) leading = word == "after" ? 1 : word == "before" ? -1 : 0;
+                        else join = word == "after" ? -1 : 1;
+                    }
+                    continue;
+                }
+                whole.Append(pieces[p]);
+                if (clause.Length == 0) continue;
+                var named = bodies.Where(b => Names(clause, b)).ToList();
+                var namesHome = Names(clause, home);
+                var landing = SequenceWords.Landing.IsMatch(clause);
+                var flyby = SequenceWords.Flyby.IsMatch(clause);
+                var orbit = Orbit.IsMatch(clause) || SequenceWords.Capture.IsMatch(clause);
+                var not = Negated.Match(clause);
+                if (not.Success && (landing || orbit || flyby))
+                {
+                    // "don't land" holds the body to an orbit; "don't orbit" to a flyby. Only the bodies after the "not" are held:
+                    // "land on Minmus not the Mun" lands on Minmus.
+                    var after = named.Where(b => Regex.IsMatch(clause.Substring(not.Index), @"\b" + Regex.Escape(b) + @"\b", RegexOptions.IgnoreCase)).ToList();
+                    if (after.Count == 0 && (named.Count > 0 || namesHome)) continue;
+                    read.Limit(after, landing ? ContractReach.Orbit : ContractReach.Flyby, clause);
+                    continue;
+                }
+                if (Only.IsMatch(clause) && flyby)
+                {
+                    read.Limit(named, ContractReach.Flyby, clause);
+                    read.Need(named, ContractReach.Flyby, clause);
+                    continue;
+                }
+                var reach = landing ? ContractReach.Land : orbit ? ContractReach.Orbit : flyby || Goes.IsMatch(clause) ? ContractReach.Flyby : (ContractReach?)null;
+                if (reach == null) continue;
+                // "fly to Minmus and capture into orbit": the clause that names no body is about the one before it.
+                if (named.Count == 0 && !namesHome && lastBody != null && reach != ContractReach.Flyby) named = new List<string> { lastBody };
+                if (named.Count == 0) continue;
+                read.Need(named, reach.Value, clause);
+                if (join != 0) read.Order(previous, named, join > 0);
+                join = 0;
+                group.AddRange(named);
+                lastBody = named[named.Count - 1];
+            }
+            if (read.Consumed.Count > consumedBefore) read.Consumed.Add(whole.ToString().Trim());
+            return read;
+        }
+
+        private static bool Names(string clause, string body)
+        {
+            return Regex.IsMatch(clause, @"\b" + Regex.Escape(body) + @"\b", RegexOptions.IgnoreCase);
+        }
+
+        private void Need(IEnumerable<string> bodies, ContractReach reach, string clause)
+        {
+            foreach (var body in bodies)
+            {
+                Consumed.Add(clause);
+                ContractReach had;
+                if (Needs.TryGetValue(body, out had) && had >= reach) continue;
+                Needs[body] = reach;
+                NeedWords[body] = clause;
+            }
+        }
+
+        private void Order(IEnumerable<string> last, IEnumerable<string> next, bool nextIsLater)
+        {
+            foreach (var a in last)
+                foreach (var b in next)
+                    if (a != b) Precedes.Add(nextIsLater ? new KeyValuePair<string, string>(a, b) : new KeyValuePair<string, string>(b, a));
+        }
+
+        private void Limit(IList<string> bodies, ContractReach most, string clause)
+        {
+            Consumed.Add(clause);
+            foreach (var body in bodies.Count == 0 ? new[] { Anywhere } : bodies.ToArray())
+            {
+                ContractReach had;
+                if (Limits.TryGetValue(body, out had) && had <= most) continue;
+                Limits[body] = most;
+                LimitWords[body] = clause;
+            }
+        }
+
+        /// <summary>The player's words that rule out <paramref name="reach"/> at <paramref name="body"/>; null when they don't.</summary>
+        public string Forbids(string body, ContractReach reach)
+        {
+            foreach (var key in new[] { body, Anywhere })
+            {
+                ContractReach most;
+                if (Limits.TryGetValue(key, out most) && reach > most) return LimitWords[key];
+            }
+            return null;
+        }
+    }
+}

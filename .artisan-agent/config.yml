@@ -75,7 +75,8 @@ team_guardrails_repo:
 #   estimate_multipliers:
 #     all: 1.1
 #     claude-opus-5-5: 1.3
-estimate_multipliers: {}
+# Retro lesson L3 (run 1038): tickets cost 21-51% of their estimate.
+estimate_multipliers: {'all': 0.6}
 
 # Minimum estimate per ticket, in dollars, keyed by model id; "all" covers a
 # model without its own key. The plan step raises a smaller estimate to its
@@ -108,3 +109,7 @@ host_configured: false
 ci_gate:
   workflow: ci.yml
   timeout_minutes: 30
+
+# Docs-only changes skip the merge gate (#1075). '*' crosses '/' here, so the
+# ! lines keep nested markdown (a test fixture) from skipping the gate.
+merge_gate_skip_paths: ['docs/**', '*.md', '!src/**', '!tests/**', '!tools/**', '!kerboscript/**']

@@ -374,14 +374,15 @@ namespace ClaudiaKerman.Core.Missions
         /// The legs for the bodies a Mission Goal names (#757): home's launch and landing, each named body's own legs, the trips along the
         /// way to it (by the bodies it orbits) and between the named bodies. With none named, home's system, as the Map has always read.
         /// </summary>
-        private List<DeltaVLeg> LegsFor(IList<SnapshotBody> named)
+        private List<DeltaVLeg> LegsFor(IList<SnapshotBody> named, bool highRoutes = true)
         {
             if (named.Count == 0)
                 return Legs.Where(l => l.Bodies.All(b => b == Home || Moons.Contains(b)) && l.Id.IndexOf('>') < 0).ToList();
             var names = new HashSet<string>(named.Select(b => b.Name));
             var route = new HashSet<string> { Home };
             foreach (var at in named.SelectMany(Ancestry).Where(b => b.Sma > 0)) route.Add(at.Name);
-            return WithHighRoutes(Legs.Where(l => l.Bodies.All(route.Contains) && (!OnOneBody(l) || names.Contains(l.Bodies[0]) || (l.Bodies[0] == Home && !IsPolar(l)))).ToList(), named);
+            var legs = Legs.Where(l => l.Bodies.All(route.Contains) && (!OnOneBody(l) || names.Contains(l.Bodies[0]) || (l.Bodies[0] == Home && !IsPolar(l)))).ToList();
+            return highRoutes ? WithHighRoutes(legs, named) : legs;
         }
 
         private static bool OnOneBody(DeltaVLeg leg)
@@ -405,23 +406,62 @@ namespace ClaudiaKerman.Core.Missions
         /// (and says so), so no separate capture line follows it: the capture can't be counted twice (#776). With the craft's
         /// <paramref name="snapshot"/>, an airless body's landing or ascent is given with the craft's gravity loss, at the lowest TWR of the
         /// stages that fly it (the legs before it spent in firing order, as <see cref="PlanLegs"/> does); with no TWR known, the bare figure, marked.
-        /// With the player's <paramref name="window"/> (#686), that window's trip is at its figures, not the Map's.
+        /// With the player's <paramref name="window"/> (#686), that window's trip is at its figures, not the Map's, named as plan_transfer's.
+        /// #998: a craft away from home starts there (<see cref="FromStart"/>): no launch from home and no trips out of its low orbit.
         /// </summary>
         public string ToText(IList<SnapshotBody> named, GameSnapshot snapshot = null, WindowRow window = null)
         {
-            var legs = LegsFor(named);
-            var windowLeg = window == null ? null : legs.FirstOrDefault(l => window.Budgets(l.Id));
             var text = new StringBuilder();
-            // Spent before the first landing: the launch and the trips in, the last hop to a named body included.
+            foreach (var row in Priced(named, snapshot, window)) text.Append(row.Text);
+            return text.ToString();
+        }
+
+        /// <summary>One priced line of <see cref="ToText(IList{SnapshotBody}, GameSnapshot, WindowRow)"/>: its leg, figure, the capture in it and its text.</summary>
+        private sealed class PricedLeg
+        {
+            public DeltaVLeg Leg;
+            public double Figure;
+            public double Arrival;
+            public string Text;
+        }
+
+        /// <summary>The lines of <see cref="ToText(IList{SnapshotBody}, GameSnapshot, WindowRow)"/> with the figures they were priced at.</summary>
+        private List<PricedLeg> Priced(IList<SnapshotBody> named, GameSnapshot snapshot, WindowRow window)
+        {
+            var start = RoutePlanners.Start(snapshot);
+            // Round the star (between planets) or escaping, the trips are priced as before.
+            var away = RoutePlanners.Away(snapshot, Home) != null;
+            var legs = LegsFor(named, !away);
+            // In flight at home, the launch is flown (#998: launch:Home only when the craft is on the ground there).
+            if (snapshot != null && start != null && start.Name == Home && !snapshot.IsGrounded) legs = legs.Where(l => l.Id != "launch:" + Home).ToList();
+            // The start's rows (#998): their figures and notes are final.
+            var planned = new Dictionary<DeltaVLeg, string>();
+            var windowUsed = false;
+            if (away) legs = FromStart(legs, named, snapshot, start, window, planned, out windowUsed);
+            // From home with no row passed, the player's pick is plan_transfer's figure, as PlanLegs judges it (#998).
+            if (window == null && snapshot != null && start != null && start.Name == Home && !snapshot.WindowPick.IsNone)
+            {
+                var to = snapshot.Bodies.FirstOrDefault(b => snapshot.WindowPick.IsFor(b.Name));
+                string why;
+                var figure = to == null || !RoutePlanners.PlansTrip(snapshot, start, to, Home) ? null : RoutePlanners.Transfer(snapshot, to, null, snapshot.MarginPercent, out why, true);
+                var row = figure == null ? null : new WindowRow { Kind = snapshot.WindowPick.Kind, From = Home, Body = to.Name, TotalDv = figure.DeltaV, CaptureDv = figure.Capture };
+                if (row != null && legs.Any(l => row.Budgets(l.Id))) window = row;
+            }
+            var windowLeg = window == null || away ? null : legs.FirstOrDefault(l => window.Budgets(l.Id));
+            var rows = new List<PricedLeg>();
+            // Spent before the first landing: the launch (or the start's rows) and the trips in, the last hop to a named body included.
             var goal = new HashSet<string>(named.Select(b => b.Name));
-            double used = legs.Where(l => l.Id == "launch:" + Home || (l.Id.StartsWith("transfer:", StringComparison.Ordinal)
-                && (l.Id.IndexOf('>') < 0 || goal.Contains(l.Id.Substring(l.Id.IndexOf('>') + 1))))).Sum(l => l.DeltaV);
+            double used = planned.Keys.Sum(l => l.DeltaV) + legs.Where(l => !planned.ContainsKey(l) && (l.Id == "launch:" + Home || (l.Id.StartsWith("transfer:", StringComparison.Ordinal)
+                && (l.Id.IndexOf('>') < 0 || goal.Contains(l.Id.Substring(l.Id.IndexOf('>') + 1)))))).Sum(l => l.DeltaV);
             foreach (var leg in legs.Where(l => !HeldByTrip(legs, l)))
             {
                 var figure = leg.DeltaV;
                 var note = "";
                 var sbody = snapshot == null ? null : snapshot.Bodies.FirstOrDefault(b => b.Name == leg.Bodies[0]);
-                var airless = sbody != null && named.Count > 0 && IsSurface(leg) && leg.Bodies[0] != Home && AirlessBody(leg.Bodies[0]);
+                string fixedNote;
+                var fixedRow = planned.TryGetValue(leg, out fixedNote);
+                if (fixedRow) note = fixedNote;
+                var airless = !fixedRow && sbody != null && named.Count > 0 && IsSurface(leg) && leg.Bodies[0] != Home && AirlessBody(leg.Bodies[0]);
                 if (airless)
                 {
                     var twr = MarginCheck.LowestTwr(snapshot, sbody, used, used + Math.Max(1, leg.DeltaV));
@@ -434,8 +474,9 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     // A high-orbit route's capture stops short of the low circle the window's is costed to (#866).
                     figure = window.TotalDv - leg.HighSaving;
-                    note = " (the player's " + window.Kind + " window)";
+                    note = " (plan_transfer, " + window.Kind + " pick)";
                 }
+                var text = new StringBuilder();
                 text.Append("- ").Append(leg.Id).Append(": ").Append(leg.Description).Append(": ").Append(Whole(figure)).Append(" m/s").Append(note);
                 if (leg.PlaneChange > 0 && leg != windowLeg)
                     text.Append(" (carries a plane change of ").Append(Whole(leg.PlaneChange)).Append(" m/s)");
@@ -443,12 +484,101 @@ namespace ClaudiaKerman.Core.Missions
                 if (leg.Id.StartsWith("transfer:", StringComparison.Ordinal) && arrival > 0)
                     text.Append(" (includes the capture, ").Append(Whole(arrival)).Append(" m/s)");
                 text.Append('\n');
-                if (IsSurface(leg) && leg.Bodies[0] != Home) used += figure;
+                rows.Add(new PricedLeg { Leg = leg, Figure = figure, Arrival = arrival, Text = text.ToString() });
+                if (IsSurface(leg) && leg.Bodies[0] != Home && !fixedRow) used += figure;
             }
             // A trip the Map has no leg for (between two bodies it doesn't start from): the window's own line.
-            if (window != null && windowLeg == null)
-                text.Append("- transfer:").Append(window.From).Append('>').Append(window.Body).Append(": the player's ").Append(window.Kind.ToString()).Append(" window: ").Append(Whole(window.TotalDv)).Append(" m/s\n");
-            return text.ToString();
+            if (window != null && windowLeg == null && !windowUsed)
+                rows.Add(new PricedLeg { Text = "- transfer:" + window.From + ">" + window.Body + ": the player's " + window.Kind + " window: " + Whole(window.TotalDv) + " m/s\n" });
+            return rows;
+        }
+
+        /// <summary>
+        /// #998, the route from a <paramref name="start"/> away from home (<see cref="RoutePlanners"/>): from the ground, the ascent by plan_ascent; then the
+        /// trip to the first named body other than the start, home last (or to the body on its way, <see cref="HopTo"/>), the Map's from a planet to its
+        /// own moon or a moon to its planet, else plan_transfer's; the trips on from there are the Map's. A planner's refusal gives the Map's figure, called an estimate. The rows they replace go: home's launch, the trips out of
+        /// home's low orbit, and the start's own capture. Each new row's note goes in <paramref name="planned"/>.
+        /// </summary>
+        private List<DeltaVLeg> FromStart(List<DeltaVLeg> legs, IList<SnapshotBody> named, GameSnapshot snapshot, SnapshotBody start, WindowRow window,
+            Dictionary<DeltaVLeg, string> planned, out bool windowUsed)
+        {
+            windowUsed = false;
+            var first = new List<DeltaVLeg>();
+            string why;
+            if (snapshot.IsGrounded)
+            {
+                var map = Leg("ascend:" + start.Name);
+                var ascent = RoutePlanners.Ascent(snapshot, out why, true);
+                if (ascent != null)
+                    Plan(first, planned, Copy(map, "ascend:" + start.Name, "Surface of " + start.Name + " to a low orbit", ascent.DeltaV), " (" + ascent.Source + ")");
+                else if (map != null)
+                {
+                    var figure = AirlessBody(start.Name) ? WithGravityLoss(map.Id, MarginCheck.LowestTwr(snapshot, start, 0, Math.Max(1, map.DeltaV))) : map.DeltaV;
+                    Plan(first, planned, Copy(map, map.Id, map.Description, figure), Estimate(why));
+                }
+            }
+            // Only the hop from the start: the trips on from there are the Map's, as from any body. Home, named with another, is where the route ends.
+            var to = HopTo(start, named.Where(b => b.Name != start.Name).OrderBy(b => b.Name == Home ? 1 : 0).FirstOrDefault());
+            if (to != null)
+            {
+                var home = to.Name == Home;
+                // The window's trip is this row, whatever plan_transfer said: no second line for it.
+                windowUsed = window != null && window.Body == to.Name;
+                var id = home ? "return:" + start.Name : "transfer:" + start.Name + ">" + to.Name;
+                var description = "Low " + start.Name + " orbit to low " + to.Name + " orbit (departure, plane change and capture)";
+                var trip = home ? Leg(id) : Trip(start, to);
+                if (trip != null && !home) trip = Copy(trip, id, description, trip.DeltaV);
+                if (RoutePlanners.IsMapTrip(start, to))
+                {
+                    if (trip != null) Plan(first, planned, trip, "");
+                }
+                else
+                {
+                    var figure = RoutePlanners.Transfer(snapshot, to, window, snapshot.MarginPercent, out why, true);
+                    if (figure != null)
+                        Plan(first, planned, new DeltaVLeg
+                        {
+                            Id = id, Description = trip != null ? trip.Description : description, DeltaV = figure.DeltaV, Departure = figure.DeltaV - figure.Capture,
+                            Arrival = figure.Capture, Bodies = new[] { start.Name, to.Name },
+                        }, " (" + figure.Source + ")");
+                    else if (trip != null) Plan(first, planned, trip, Estimate(why));
+                }
+            }
+            var replaced = new HashSet<string>(first.Select(l => l.Id)) { "launch:" + Home, "capture:" + start.Name };
+            return first.Concat(legs.Where(l => !replaced.Contains(l.Id) && !(l.Id.StartsWith("transfer:", StringComparison.Ordinal) && l.Bodies[0] == Home))).ToList();
+        }
+
+        private static void Plan(List<DeltaVLeg> first, Dictionary<DeltaVLeg, string> planned, DeltaVLeg leg, string note)
+        {
+            first.Add(leg);
+            planned[leg] = note;
+        }
+
+        private static string Estimate(string why)
+        {
+            return " (estimate, the Map's: " + why + ")";
+        }
+
+        /// <summary>A new leg with <paramref name="leg"/>'s parts (none when null) and its own id and figure.</summary>
+        private static DeltaVLeg Copy(DeltaVLeg leg, string id, string description, double figure)
+        {
+            return new DeltaVLeg
+            {
+                Id = id, Description = leg != null && leg.Id == id ? leg.Description : description, DeltaV = figure,
+                Departure = leg != null ? leg.Departure : 0, Arrival = leg != null ? leg.Arrival : 0, PlaneChange = leg != null ? leg.PlaneChange : 0,
+                ArrivalExcess = leg != null ? leg.ArrivalExcess : 0, Bodies = leg != null ? leg.Bodies : new[] { id.Substring(id.IndexOf(':') + 1) },
+            };
+        }
+
+        /// <summary>The body a trip from <paramref name="start"/> toward <paramref name="goal"/> goes to first: the goal, or the body on its way that orbits the body whose system holds both.</summary>
+        internal SnapshotBody HopTo(SnapshotBody start, SnapshotBody goal)
+        {
+            if (start == null || goal == null || start.Name == goal.Name) return null;
+            var up = Ancestry(start).Select(b => b.Name).ToList();
+            var down = Ancestry(goal);
+            var top = down.FindIndex(b => up.Contains(b.Name));
+            if (top < 0) return null;
+            return top == 0 ? goal : down[top - 1];
         }
 
         private bool AirlessBody(string name)
@@ -474,13 +604,28 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// One line of figures for the per-turn text of a Mission Plan request: "launch:Kerbin 3,418; transfer:Mun 1,170 (capture 310); ...".
         /// "" when the goal names no body, so other Missions' requests are unchanged. Polar legs and home's landing are left out, and a
-        /// capture stands alone only where no transfer in the line holds it.
+        /// capture stands alone only where no transfer in the line holds it. With the craft's <paramref name="snapshot"/> away from home (#1002), the line
+        /// starts where it is, at the figures <see cref="ToText(IList{SnapshotBody}, GameSnapshot, WindowRow)"/> gives the Craft Check; at home it is as before.
         /// </summary>
-        public string CompactLine(IList<SnapshotBody> named)
+        public string CompactLine(IList<SnapshotBody> named, GameSnapshot snapshot = null)
         {
             if (named.Count == 0) return "";
-            var legs = LegsFor(named).Where(l => !IsPolar(l) && l.Id != "land:" + Home).ToList();
             var parts = new List<string>();
+            // #1002: a craft away from home starts where it is, at the figures the Craft Check priced (#998).
+            if (snapshot != null && RoutePlanners.Away(snapshot, Home) != null)
+            {
+                var priced = Priced(named, snapshot, null).Where(r => r.Leg != null && !IsPolar(r.Leg) && r.Leg.Id != "land:" + Home).ToList();
+                var all = priced.Select(r => r.Leg).ToList();
+                foreach (var row in priced)
+                {
+                    if (HeldByTrip(all, row.Leg)) continue;
+                    var text = row.Leg.Id + " " + Whole(row.Figure);
+                    if (row.Leg.Id.StartsWith("transfer:", StringComparison.Ordinal) && row.Arrival > 0) text += " (capture " + Whole(row.Arrival) + ")";
+                    parts.Add(text);
+                }
+                return string.Join("; ", parts.ToArray());
+            }
+            var legs = LegsFor(named).Where(l => !IsPolar(l) && l.Id != "land:" + Home).ToList();
             foreach (var leg in legs)
             {
                 if (HeldByTrip(legs, leg)) continue;

@@ -17,7 +17,8 @@ namespace ClaudiaKerman.Core.Missions
     /// never counts a radial shield as one (#843).
     /// </para>
     /// <para>
-    /// <b>Landing legs once no landing is left</b> (<see cref="LegsFree"/>). No Mission Plan (a block test): they stay.
+    /// <b>Landing legs once no landing is left</b> (<see cref="LegsFree"/>); a landing on Kerbin is none, unless the step also comes down on another body it names.
+    /// No Mission Plan (a block test): they stay.
     /// </para>
     /// </summary>
     public static class AutoDrop
@@ -33,28 +34,34 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// True when the Mission Plan (<paramref name="plan"/>, null: none) has no landing still to fly from the sequence in hand
         /// (<paramref name="step"/>, -1 before the first) on, that one included. A landing, read from the words as <see cref="SequenceWords"/>
-        /// reads them: land or touch down, a deorbit, a reentry, or descend / descent, manual legs too. The Kerbin return (a return home whose
-        /// words don't say it lands or touches down) is not one: it comes down on the crew part's chutes, as this flight's "Return to KSC" did.
-        /// Unless it also names another stock body, not as where the return comes from (the player's ruling: "Deorbit to the Mun crater, then return
-        /// to Kerbin" lands on the Mun; "Return from the Mun to Kerbin" doesn't).
+        /// reads them: land or touch down, a deorbit, a reentry, or descend / descent, manual legs too. A landing on Kerbin is never one,
+        /// whatever its words (the player's ruling): a step that comes down at Kerbin or a place on it (KSC;
+        /// <see cref="SequenceWords.KerbinDown"/>), or returns home, is one only when it comes down on another stock body it names
+        /// (<see cref="SequenceWords.IsLandingSite"/>). "Reentry at Kerbin", "Land at KSC" and "Deorbit and splash down on Kerbin" aren't;
+        /// "Deorbit to the Mun crater, then return to Kerbin and land" and "Leave Mun orbit and land at the crater, then return to Kerbin"
+        /// land on the Mun; "Return from the Mun to Kerbin and land" and "Eject from Duna orbit at the soonest Duna-to-Kerbin window, ...
+        /// then reenter and land" don't. A step that does neither (no body, an away body it doesn't tie the landing to: "Duna entry", or
+        /// Kerbin only in passing: "Land with Kerbin overhead") is one. Name and intent read as separate sentences, line breaks as spaces.
         /// </summary>
         public static bool LegsFree(IList<PlannedSequence> plan, int step)
         {
             if (plan == null) return false;
             for (var i = Math.Max(0, step); i < plan.Count; i++)
-                if (Lands(SequenceWords.Of(plan[i]))) return false;
+                if (Lands(Spaces.Replace(plan[i].Name + ". " + plan[i].Intent, " "))) return false;
             return true;
         }
+
+        private static readonly Regex Spaces = new Regex(@"\s+");
 
         /// <summary>The stock bodies a craft can come down on, Kerbin aside (Core reads the plan's words only, no Game Snapshot, twice a second).</summary>
         private static readonly Regex AwayBody = new Regex(@"\b(Moho|Eve|Gilly|Mun|Minmus|Duna|Ike|Dres|Laythe|Vall|Tylo|Bop|Pol|Eeloo)\b", RegexOptions.IgnoreCase);
 
         private static bool Lands(string words)
         {
-            if (SequenceWords.Landing.IsMatch(words)) return true;
-            if (!SequenceWords.Deorbit.IsMatch(words) && !SequenceWords.Reentry.IsMatch(words) && !SequenceWords.Descent.IsMatch(words)) return false;
-            return !SequenceWords.ReturnHome.IsMatch(words)
-                || AwayBody.Matches(words).Cast<Match>().Any(m => !SequenceWords.ReturnsFromBefore(words.Substring(0, m.Index)));
+            if (!SequenceWords.Landing.IsMatch(words) && !SequenceWords.Deorbit.IsMatch(words) && !SequenceWords.Reentry.IsMatch(words)
+                && !SequenceWords.Descent.IsMatch(words)) return false;
+            return !SequenceWords.ReturnHome.IsMatch(words) && !SequenceWords.KerbinDown.IsMatch(words)
+                || AwayBody.Matches(words).Cast<Match>().Any(m => SequenceWords.IsLandingSite(words, m));
         }
     }
 }

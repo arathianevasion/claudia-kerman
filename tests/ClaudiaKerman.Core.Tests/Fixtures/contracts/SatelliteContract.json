@@ -1,0 +1,77 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000005",
+        "kind": "SatelliteContract",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 61000.0,
+          "science": 0.0,
+          "reputation": 15.0
+        },
+        "settings": {
+          "type": "SatelliteContract",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000005",
+          "state": "Active",
+          "prestige": "1"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000005/0",
+            "kind": "VesselSystemsParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "VesselSystemsParameter",
+              "state": "Incomplete",
+              "typeString": "probe",
+              "mannedStatus": "UNMANNED",
+              "requireNew": "True",
+              "checkModuleTypes": "Antenna|Generator",
+              "launchID": "0"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000005/1",
+            "kind": "SpecificOrbitParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "SpecificOrbitParameter",
+              "state": "Incomplete",
+              "TargetBody": "1",
+              "orbitType": "POLAR",
+              "inclination": "88.4",
+              "eccentricity": "0.012",
+              "sma": "1150000",
+              "lan": "41.2",
+              "argumentOfPeriapsis": "12.8",
+              "meanAnomalyAtEpoch": "0",
+              "epoch": "21837.94",
+              "deviationWindow": "5"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000005/2",
+            "kind": "StabilityParameter",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "StabilityParameter",
+              "state": "Incomplete",
+              "holdSeconds": "10"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

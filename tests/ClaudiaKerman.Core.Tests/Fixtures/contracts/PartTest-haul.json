@@ -1,0 +1,74 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000002",
+        "kind": "PartTest",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 31000.0,
+          "science": 0.0,
+          "reputation": 6.0
+        },
+        "settings": {
+          "type": "PartTest",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000002",
+          "state": "Active",
+          "prestige": "0",
+          "part": "batteryBank",
+          "haul": "True",
+          "dest": "2",
+          "sit": "ORBITING"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000002/0",
+            "kind": "PartTest",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "PartTest",
+              "state": "Incomplete",
+              "part": "batteryBank",
+              "body": "2",
+              "situation": "ORBITING",
+              "haul": "True",
+              "repeatability": "0"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000002/1",
+            "kind": "ReachDestination",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "ReachDestination",
+              "state": "Incomplete",
+              "disableOnStateChange": "False",
+              "dest": "2"
+            }
+          },
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000002/2",
+            "kind": "ReachSituation",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "ReachSituation",
+              "state": "Incomplete",
+              "disableOnStateChange": "False",
+              "sit": "ORBITING"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

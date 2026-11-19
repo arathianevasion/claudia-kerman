@@ -25,28 +25,71 @@ namespace ClaudiaKerman.Core.Ui
 
     /// <summary>
     /// Where each window sat last time, per scene, kept in the mod's config folder (never the save), so the
-    /// same window can sit in different places in the Space Center, the VAB/SPH and Flight. Format:
-    /// <c>scene.window = x, y, width, height</c> lines, <c>#</c> comments; a line that doesn't parse is ignored.
+    /// same window can sit in different places in the Space Center, the VAB/SPH and Flight. Each box keeps the UI scale
+    /// it was sized at (<see cref="UiScale"/>), so it opens resized for the scale now. Format:
+    /// <c>scene.window = x, y, width, height[, scale]</c> lines, <c>#</c> comments; the scale is written only when it isn't
+    /// <see cref="UiScale.OldBase"/>, as a line without it was kept at that base from before #993 (so a box sized then at
+    /// 100% and 100% opens 20% smaller now), and a line that doesn't parse is ignored.
     /// </summary>
     public sealed class WindowLayouts
     {
         public const string FileName = "windows.cfg";
 
-        private readonly Dictionary<string, WindowBox> _boxes = new Dictionary<string, WindowBox>(StringComparer.Ordinal);
+        private readonly Dictionary<string, Kept> _boxes = new Dictionary<string, Kept>(StringComparer.Ordinal);
 
-        public bool TryGet(string scene, string window, out WindowBox box)
+        private struct Kept
         {
-            return _boxes.TryGetValue(Key(scene, window), out box);
+            public WindowBox Box;
+            public float Scale;
         }
 
-        /// <summary>Remembers a box; returns false when it is the one already remembered.</summary>
+        /// <summary>The box as sized for <see cref="UiScale.OldBase"/>, as a line without a scale.</summary>
+        public bool TryGet(string scene, string window, out WindowBox box)
+        {
+            return TryGet(scene, window, UiScale.OldBase, out box);
+        }
+
+        /// <summary>The box resized for <paramref name="scaleNow"/> from the scale it was kept at (<see cref="Rescale"/>).</summary>
+        public bool TryGet(string scene, string window, float scaleNow, out WindowBox box)
+        {
+            Kept kept;
+            var found = _boxes.TryGetValue(Key(scene, window), out kept);
+            box = found ? Rescale(kept.Box, kept.Scale, scaleNow) : default(WindowBox);
+            return found;
+        }
+
+        /// <summary>Remembers a box sized for <see cref="UiScale.OldBase"/>, as a line without a scale; returns false when it is the one already remembered.</summary>
         public bool Set(string scene, string window, WindowBox box)
         {
+            return Set(scene, window, box, UiScale.OldBase);
+        }
+
+        /// <summary>Remembers a box sized for the UI <paramref name="scale"/>; returns false when it is the one already remembered.</summary>
+        public bool Set(string scene, string window, WindowBox box, float scale)
+        {
             box = new WindowBox((float)Math.Round(box.X), (float)Math.Round(box.Y), (float)Math.Round(box.Width), (float)Math.Round(box.Height));
-            WindowBox old;
-            if (_boxes.TryGetValue(Key(scene, window), out old) && old.Equals(box)) return false;
-            _boxes[Key(scene, window)] = box;
+            // As the file keeps it, so the same scale read back is the same.
+            scale = (float)Math.Round(scale, ScaleDecimals);
+            Kept old;
+            if (_boxes.TryGetValue(Key(scene, window), out old) && old.Box.Equals(box) && old.Scale == scale) return false;
+            _boxes[Key(scene, window)] = new Kept { Box = box, Scale = scale };
             return true;
+        }
+
+        // A scale is kept to 4 decimals; two closer than the last of them are the same.
+        private const int ScaleDecimals = 4;
+        private const float ScaleTolerance = 0.0001f;
+
+        /// <summary>
+        /// A box sized at the UI scale <paramref name="from"/>, sized for <paramref name="to"/>: the position is kept (the
+        /// caller keeps it on screen), the size grows or shrinks by as much, rounded to whole pixels.
+        /// </summary>
+        public static WindowBox Rescale(WindowBox box, float from, float to)
+        {
+            if (from <= 0 || to <= 0 || Math.Abs(from - to) < ScaleTolerance) return box;
+            var by = to / from;
+            return new WindowBox(box.X, box.Y, (float)Math.Round(box.Width * by, MidpointRounding.AwayFromZero),
+                (float)Math.Round(box.Height * by, MidpointRounding.AwayFromZero));
         }
 
         /// <summary>Forgets a box, so the window goes back to its default; returns false when none was remembered.</summary>
@@ -93,13 +136,14 @@ namespace ClaudiaKerman.Core.Ui
                 if (eq <= 0 || line.IndexOf('.') < 0 || line.IndexOf('.') > eq) continue;
                 var key = line.Substring(0, eq).Trim();
                 var numbers = line.Substring(eq + 1).Split(',');
-                var values = new float[4];
-                var ok = numbers.Length == 4;
-                for (var i = 0; ok && i < 4; i++)
+                var values = new float[5];
+                values[4] = UiScale.OldBase;
+                var ok = numbers.Length == 4 || numbers.Length == 5;
+                for (var i = 0; ok && i < numbers.Length; i++)
                     ok = float.TryParse(numbers[i].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out values[i])
                         && !float.IsNaN(values[i]) && !float.IsInfinity(values[i]);
-                if (!ok || values[2] <= 0 || values[3] <= 0) continue;
-                _boxes[key] = new WindowBox(values[0], values[1], values[2], values[3]);
+                if (!ok || values[2] <= 0 || values[3] <= 0 || values[4] <= 0) continue;
+                _boxes[key] = new Kept { Box = new WindowBox(values[0], values[1], values[2], values[3]), Scale = values[4] };
             }
         }
 
@@ -110,12 +154,15 @@ namespace ClaudiaKerman.Core.Ui
             keys.Sort(StringComparer.Ordinal);
             foreach (var key in keys)
             {
-                var box = _boxes[key];
+                var box = _boxes[key].Box;
                 text.Append(key).Append(" = ")
                     .Append(box.X.ToString("0", CultureInfo.InvariantCulture)).Append(", ")
                     .Append(box.Y.ToString("0", CultureInfo.InvariantCulture)).Append(", ")
                     .Append(box.Width.ToString("0", CultureInfo.InvariantCulture)).Append(", ")
-                    .Append(box.Height.ToString("0", CultureInfo.InvariantCulture)).Append('\n');
+                    .Append(box.Height.ToString("0", CultureInfo.InvariantCulture));
+                var scale = _boxes[key].Scale;
+                if (Math.Abs(scale - UiScale.OldBase) >= ScaleTolerance) text.Append(", ").Append(scale.ToString("0.####", CultureInfo.InvariantCulture));
+                text.Append('\n');
             }
             return text.ToString();
         }

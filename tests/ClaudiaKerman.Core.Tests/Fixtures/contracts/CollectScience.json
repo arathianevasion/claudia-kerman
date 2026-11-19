@@ -1,0 +1,45 @@
+{
+  "ut": 21900.0,
+  "situation": "PRELAUNCH",
+  "body": "Kerbin",
+  "mode": "CAREER",
+  "contracts": {
+    "limit": 2,
+    "active": 1,
+    "accepted": [
+      {
+        "guid": "0d5e8a10-1037-4a01-9f00-000000000010",
+        "kind": "CollectScience",
+        "state": "Active",
+        "deadline_ut": 9223437.94,
+        "rewards": {
+          "funds": 18000.0,
+          "science": 1.0,
+          "reputation": 3.0
+        },
+        "settings": {
+          "type": "CollectScience",
+          "guid": "0d5e8a10-1037-4a01-9f00-000000000010",
+          "state": "Active",
+          "prestige": "0",
+          "body": "2",
+          "location": "Space"
+        },
+        "requirements": [
+          {
+            "key": "0d5e8a10-1037-4a01-9f00-000000000010/0",
+            "kind": "CollectScience",
+            "state": "Incomplete",
+            "optional": false,
+            "settings": {
+              "name": "CollectScience",
+              "state": "Incomplete",
+              "body": "2",
+              "location": "Space"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

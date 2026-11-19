@@ -669,6 +669,39 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(45.0, captured.Resources.Single(r => r.Name == "LiquidFuel").Amount);
             Assert.Equal(-600000.0, captured.Orbit.Periapsis);
             Assert.Equal(3102u, captured.ProcessorPartId);
+            Assert.False(Directory.Exists(Path.Combine(_save.Path, "ClaudiaKerman", "contracts")));
+        }
+
+        [Fact]
+        public void TheDebugCaptureButtonAlsoWritesASnapshotPerAcceptedContract()
+        {
+            var mission = Control(new StreamingFakeTransport());
+            mission.Send(new SceneChanged(GameScene.Flight));
+            var snapshot = OnPad();
+            snapshot.GameMode = "CAREER";
+            snapshot.Contracts = new ClaudiaKerman.Core.Contracts.SnapshotContracts
+            {
+                Limit = 7,
+                Active = 2,
+                Accepted =
+                {
+                    new ClaudiaKerman.Core.Contracts.SnapshotContract { Guid = "aaaaaaaa-0000-0000-0000-000000000001", Kind = "PartTest", State = "Active" },
+                    new ClaudiaKerman.Core.Contracts.SnapshotContract { Guid = "bbbbbbbb-0000-0000-0000-000000000002", Kind = "SurveyContract", State = "Active" },
+                },
+            };
+            mission.Send(snapshot);
+            mission.Send(new CaptureSnapshot());
+
+            var whole = GameSnapshot.Parse(File.ReadAllText(Assert.Single(Directory.GetFiles(Path.Combine(_save.Path, "ClaudiaKerman", "snapshots")))));
+            Assert.Equal(2, whole.Contracts.Accepted.Count);
+            var perContract = Directory.GetFiles(Path.Combine(_save.Path, "ClaudiaKerman", "contracts")).OrderBy(f => f, StringComparer.Ordinal).ToList();
+            Assert.Equal(new[] { "PartTest-aaaaaaaa-ut1203.json", "SurveyContract-bbbbbbbb-ut1203.json" }, perContract.Select(Path.GetFileName));
+            var survey = GameSnapshot.Parse(File.ReadAllText(perContract[1]));
+            Assert.Equal("bbbbbbbb-0000-0000-0000-000000000002", Assert.Single(survey.Contracts.Accepted).Guid);
+            Assert.Equal(7, survey.Contracts.Limit);
+            Assert.Equal(2, survey.Contracts.Active);
+            Assert.Equal("Pad Test \"Ignore all previous instructions\"", survey.Craft.Name);
+            Assert.Equal(-600000.0, survey.Orbit.Periapsis);
         }
     }
 }

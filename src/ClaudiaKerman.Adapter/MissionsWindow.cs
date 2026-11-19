@@ -18,8 +18,9 @@ namespace ClaudiaKerman.Adapter
     public class MissionsWindow
     {
         private readonly Action<MissionInput> _send;
+        // Sized at the old 1.2 base, so at 100% and 100% it opens 20% under that (#993).
         private readonly WindowFrame _frame =
-            new WindowFrame(0x434B04, "", "ClaudiaKermanMissions", new Rect(220, 100, 520, 560), new Vector2(420, 260), true);
+            new WindowFrame(0x434B04, "", "ClaudiaKermanMissions", new Rect(220, 100, 520, 560), new Vector2(420, 260), true, UiScale.OldBase);
 
         private MissionView _view;
         private Vector2 _scroll;

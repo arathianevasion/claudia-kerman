@@ -23,7 +23,7 @@ namespace ClaudiaKerman.Adapter
         private readonly MissionPanel _panel;
         private readonly TypingFocus _typing = MissionPanel.NewTypingFocus();
         private readonly WindowFrame _frame =
-            new WindowFrame(0x434B03, "", LockId, DefaultRect(DefaultSizes.Mission(ClaudiaSkin.FontScale, 260, 80)),new Vector2(DefaultSizes.MissionMin(ClaudiaSkin.FontScale).Width, DefaultSizes.MissionMin(ClaudiaSkin.FontScale).Height), true);
+            new WindowFrame(0x434B03, "", LockId, DefaultRect(DefaultSizes.Mission(ClaudiaSkin.FontScale, 260, 80)),new Vector2(DefaultSizes.MissionMin(ClaudiaSkin.FontScale).Width, DefaultSizes.MissionMin(ClaudiaSkin.FontScale).Height), true, ClaudiaSkin.FontScale);
 
         public bool Visible;
         public bool UiHidden;
