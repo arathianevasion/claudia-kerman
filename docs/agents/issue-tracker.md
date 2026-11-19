@@ -13,6 +13,8 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Close**: `gh issue close <number> --comment "..."`
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+- **Who the Artisan is** (triage compares ticket authors to this): `gh api user --jq .login`, which was `arathianevasion` at setup.
+- **Tickets filed by agents** carry the `needs-triage` label (the string `docs/agents/triage-labels.md` maps it to). Tickets the Artisan writes or approves skip triage.
 
 ## The Project: every issue gets an Area
 
