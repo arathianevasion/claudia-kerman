@@ -111,6 +111,13 @@ namespace ClaudiaKerman.Core.Missions
         private bool _noSeat;
         /// <summary>What the mod saw for itself that this remote Mission's craft lacks (probe core, antenna); "" when nothing.</summary>
         private string _remoteMissing = "";
+        private string _hopsLine = "";
+
+        /// <summary>
+        /// #1241: the hop Contracts, by title, the craft could fly without the player's typed words ("" for none). Set by Mission Control before
+        /// <see cref="Run"/>; a Blocker the check raises then carries one "Without your words this craft could fly: …" line.
+        /// </summary>
+        public string HopContractsWithoutWords { get; set; }
         /// <summary>The dock block's needs for a goal that docks (#456), the mod's own findings; empty otherwise.</summary>
         private IList<MarginFinding> _docking = new List<MarginFinding>();
         /// <summary>The chute rules on the Chute Groups for the goal's air landings and return (#641), the mod's own findings.</summary>
@@ -252,6 +259,9 @@ namespace ClaudiaKerman.Core.Missions
         {
             goal = (goal ?? "").Trim();
             if (snapshot == null || goal.Length == 0 || Running) return;
+            // #1241: the line is for this run only; a later run (a Mission's own re-check) never inherits it.
+            var hopsLine = HopContractsWithoutWords ?? "";
+            HopContractsWithoutWords = "";
             // Running the same check again on the same craft doesn't make the player accept the same risks twice.
             var windowKey = window == null ? "" : new WindowPick(window.Body, window.Kind).Key;
             _keptAcknowledgements = IsCurrent(goal, snapshot, remote, target, windowKey)
@@ -298,6 +308,7 @@ namespace ClaudiaKerman.Core.Missions
             _windowKey = windowKey;
             _noSeat = !remote && !snapshot.ClaudiaAboard && snapshot.FreeSeats == 0;
             _remoteMissing = remote ? RemoteBlocker.Missing(snapshot) : "";
+            _hopsLine = hopsLine;
             // dock's needs (#456), from the goal's words: the mod's own findings, not in Claude's prompt.
             _docking = SequenceWords.Docking.IsMatch(goal ?? "") ? MarginCheck.Docking(snapshot, "The Mission Goal docks", EntryFor(snapshot, target)) : new List<MarginFinding>();
             _staging = ChildVessels.Staging(snapshot, remote, ProcessorFor(snapshot));
@@ -517,6 +528,16 @@ namespace ClaudiaKerman.Core.Missions
                 }
             }
             JudgeChildVessels(reply.ChildVesselStages);
+            // #1241: typed words that don't fit go to this Blocker, which names the hop Contracts the craft could fly without them.
+            if (_hopsLine.Length > 0)
+            {
+                var blocker = _findings.FirstOrDefault(f => f.Code == "delta_v_short");
+                if (blocker != null)
+                {
+                    var line = "Without your words this craft could fly: " + _hopsLine + ".";
+                    blocker.Explanation = blocker.Explanation.Length > 0 ? blocker.Explanation + "\n" + line : line;
+                }
+            }
             foreach (var docking in _docking)
                 _findings.Insert(0, new CraftFinding
                 {

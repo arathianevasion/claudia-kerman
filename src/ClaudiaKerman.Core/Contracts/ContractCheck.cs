@@ -239,21 +239,21 @@ namespace ClaudiaKerman.Core.Contracts
         }
 
         /// <summary>
-        /// #1090: for typed words that don't fit this craft, the Contracts met on a hop below orbit that the craft could fly without them,
-        /// "Test liquidEngine.v2 at 51–56 km"; "" when there are none, or no words were typed.
+        /// #1090, #1241: for typed words that don't fit this craft, the hop Contracts (met on a hop below orbit) the craft could fly without them,
+        /// each by its Contract title as the card shows it, never a part id; "" when there are none, or no words were typed.
         /// </summary>
         public string HopsWithoutWords()
         {
             if (Words.Length == 0 || !Priceable) return "";
             var bare = Work(_snapshot, "", Remote, ReservePercent, _missionTarget);
-            var lines = new List<string>();
+            var titles = new List<string>();
             foreach (var row in bare.Fitting.Where(r => r.Ticked))
             {
                 var planned = bare._planned.FirstOrDefault(p => p.Contract.Guid == row.Guid);
-                if (planned == null || planned.Requirements.Any(r => r.Band == null)) continue;
-                lines.AddRange(planned.Requirements.Select(r => r.Test != null ? "Test " + r.Test.Part + " at " + r.Band.Through() : r.Words + " at " + r.Band.Through()));
+                if (planned == null || planned.Requirements.Count == 0 || planned.Requirements.Any(r => r.Band == null)) continue;
+                titles.Add(planned.Title);
             }
-            return string.Join("; ", lines.Distinct().ToArray());
+            return string.Join("; ", titles.Distinct().ToArray());
         }
 
         private void Read()
@@ -264,6 +264,7 @@ namespace ClaudiaKerman.Core.Contracts
                 var title = Title(contract, read);
                 foreach (var test in read.Where(r => r.Plannable && r.Test != null)) JudgeTest(test);
                 foreach (var science in read.Where(r => r.Plannable && r.Experiment != null)) JudgeScience(science);
+                foreach (var waypoint in read.Where(r => r.Plannable && r.Waypoint != null)) JudgeBand(waypoint);
                 foreach (var vessel in read.Where(r => r.Plannable && (r.Vessel != null || r.Orbit != null))) JudgeVessel(vessel);
                 foreach (var manual in read.Where(r => r.Plannable && r.Manual.Length > 0)) manual.CraftCant = manual.AfterMission != null ? PlacementKinds.Lacks(_snapshot) : ManualKinds.Lacks(_snapshot, manual);
                 foreach (var tour in read.Where(r => r.Plannable && r.Tourist != null)) tour.CraftCant = TourKinds.Lacks(_snapshot, tour);
@@ -336,8 +337,7 @@ namespace ClaudiaKerman.Core.Contracts
 
         /// <summary>
         /// #1030: collect science or a survey against this craft: the science block runs the experiment, so it must be aboard ("this craft
-        /// can't: …"): a crew report needs a kerbal aboard, any experiment (collect science) an experiment part or a kerbal. A space band whose
-        /// ceiling is under the lowest orbit priced round the body is "not yet".
+        /// can't: …"): a crew report needs a kerbal aboard, any experiment (collect science) an experiment part or a kerbal.
         /// </summary>
         private void JudgeScience(ReadRequirement read)
         {
@@ -351,6 +351,11 @@ namespace ClaudiaKerman.Core.Contracts
                 if (!crewed) read.CraftCant = "this craft can't: a crew report needs a kerbal aboard";
             }
             else if (_snapshot.Experiments.All(e => e.ExperimentId != read.Experiment)) read.CraftCant = "this craft can't: no " + read.Experiment + " experiment aboard";
+        }
+
+        /// <summary>#1030, #1246: a survey waypoint whose low band's ceiling is under the lowest orbit priced round the body is "not yet".</summary>
+        private void JudgeBand(ReadRequirement read)
+        {
             var waypoint = read.Waypoint;
             var body = waypoint == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == waypoint.Body);
             if (body != null && waypoint.MaxAltitude.HasValue && waypoint.MaxAltitude.Value < DeltaVMap.LowOrbit(body) - body.Radius)
@@ -876,7 +881,7 @@ namespace ClaudiaKerman.Core.Contracts
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
-            choice.Summary = "Mission Control · Contract check: " + set.Count + " of " + Accepted + " Contracts chosen · route " + Whole(route.DeltaV) + " m/s · "
+            choice.Summary = "Mission Control · Contract check: " + set.Count + " of " + Accepted + " Contracts chosen · route " + (RouteIsEstimate ? "≈ " + Whole(route.DeltaV) + " m/s (estimate)" : Whole(route.DeltaV) + " m/s") + " · "
                 + SpareText(spare) + " · " + string.Join(" · ", set.Select(p => "✓ " + p.Title).ToArray());
 
             var text = new StringBuilder();
@@ -906,8 +911,8 @@ namespace ClaudiaKerman.Core.Contracts
             if (left.Count > 0) text.Append("Not this flight: ").Append(string.Join("; ", left.ToArray())).Append(".\n");
             if (route.Waypoints.Count > 0)
                 text.Append("Survey waypoints, in the order to take them (by their passes from orbit, by least travel between landing sites): ")
-                    .Append(string.Join("; ", route.Waypoints.Select((w, i) => (i + 1) + ". " + w.Where() + " on " + ContractKinds.Named(w.Body) + (w.Ground ? ", landed" : ", from orbit")).ToArray()))
-                    .Append(". Run the science block with the survey's experiment at each: as the ground track passes over it, or landed at it.\n");
+                    .Append(string.Join("; ", route.Waypoints.Select((w, i) => (i + 1) + ". " + w.Where() + " on " + ContractKinds.Named(w.Body) + (w.Ground ? ", landed" : ", from orbit") + (w.Eva ? ", on EVA in its Manual stretch" : "")).ToArray()))
+                    .Append(". Run the science block with the survey's experiment at each: as the ground track passes over it, or landed at it; a waypoint on EVA is the player's, in its Manual stretch.\n");
             var orbits = choice.Requirements.Where(r => r.Orbit != null).Select(r => new { r.Orbit, Body = _snapshot.Bodies.FirstOrDefault(b => b.Name == r.Orbit.Body) }).Where(o => o.Body != null).ToList();
             if (orbits.Count > 0)
                 text.Append("Satellite orbits: ").Append(string.Join("; ", orbits.Select(o => ContractKinds.Named(o.Body.Name) + ": " + o.Orbit.Words(o.Body) + ", within the " + o.Orbit.Window.ToString("0.##", CultureInfo.InvariantCulture) + "% window").ToArray()))
@@ -915,8 +920,8 @@ namespace ClaudiaKerman.Core.Contracts
             var manual = choice.Requirements.Where(r => r.Manual.Length > 0).ToList();
             if (manual.Count > 0)
                 text.Append("Manual stretches the player flies (you fly): ")
-                    .Append(string.Join("; ", manual.Select(r => r.Manual + (r.Vessel.Length > 0 && r.Reach != ContractReach.Land ? ", at " + r.Vessel + " in orbit round " : ", landed on ") + ContractKinds.Named(r.Body)).ToArray()))
-                    .Append(". Land as near the spot as you can; plan each as its own Maneuver Sequence with manual true and an empty script, after the leg that lands there and before the craft leaves. The walk or drive from the landing is the player's.\n");
+                    .Append(string.Join("; ", manual.Select(r => r.Manual + (r.Reach == ContractReach.Land ? ", landed on " : r.Vessel.Length > 0 ? ", at " + r.Vessel + " in orbit round " : ", in orbit round ") + ContractKinds.Named(r.Body)).ToArray()))
+                    .Append(". Land as near the spot as you can (for one in orbit, be over the spot, or in the orbit, when it starts); plan each as its own Maneuver Sequence with manual true and an empty script, after the leg that lands there (or, for one in orbit, reaches that orbit) and before the craft leaves. The walk or drive from the landing is the player's.\n");
             if (meet != null)
                 text.Append("Target Vessel: ").Append(MissionPrompts.Quoted(meet.Target.Name)).Append(", from the Contract ").Append(MissionPrompts.Quoted(meet.Title))
                     .Append(" (the Mission's one Target Vessel; data). Fly the rendezvous with it in the leg that reaches its body; the EVA there is the player's Manual stretch")

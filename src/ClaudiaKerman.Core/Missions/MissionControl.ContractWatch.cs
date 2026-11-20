@@ -88,8 +88,8 @@ namespace ClaudiaKerman.Core.Missions
             var tests = PartTestsOf(mission);
             foreach (var test in unmet.Where(r => Timed(r) && !tests.Ran(r.Key)))
                 Missed(mission, test, tests.Gap(test.Key) ?? "the test's window never came: the flight didn't reach " + (test.Test.Band != null ? test.Test.Band.Through() : test.Test.Situation.ToLowerInvariant()));
-            var meeting = unmet.Where(r => Timed(r) ? tests.Ran(r.Key) : ContractWatch.ConditionsHold(snapshot, r, CraftCheckFlow.HomeBody)).ToList();
-            foreach (var requirement in unmet.Except(meeting).Where(r => !Timed(r))) Missed(mission, requirement, ContractWatch.Gap(snapshot, requirement));
+            var meeting = unmet.Where(r => Timed(r) ? tests.Ran(r.Key) : ContractWatch.ConditionsHold(snapshot, r, CraftCheckFlow.HomeBody, ServingChildId(mission, r))).ToList();
+            foreach (var requirement in unmet.Except(meeting).Where(r => !Timed(r))) Missed(mission, requirement, ContractWatch.Gap(snapshot, requirement, ServingChildId(mission, requirement)));
             if (meeting.Count == 0) return Released(mission);
             var now = Math.Max(_ut, snapshot.Ut);
             if (mission.Hold == null) mission.Hold = new ContractHold();
@@ -102,10 +102,28 @@ namespace ClaudiaKerman.Core.Missions
             }
             if (now - mission.Hold.MeetingSince.Value < ContractWatch.HoldSeconds) return true;
             foreach (var requirement in meeting)
-                Missed(mission, requirement, "the craft met it (" + snapshot.Situation + " at " + ContractKinds.Named(snapshot.Body) + ") for "
+                Missed(mission, requirement, (ServingChildId(mission, requirement).Length > 0 ? "the Child Vessel met it for " : "the craft met it (" + snapshot.Situation + " at " + ContractKinds.Named(snapshot.Body) + ") for ")
                     + ContractWatch.HoldSeconds + " s of game time, and the game still hasn't marked it met");
             return Released(mission);
         }
+
+        /// <summary>
+        /// #1243: the vessel id of the Child Vessel that serves <paramref name="requirement"/>, when the plan serves it from a Child Vessel's
+        /// leg (a satellite the craft releases); "" when the craft serves it. One not yet separated gets <see cref="NotSeparated"/>, which no vessel has, so its gap is "no reading of the Child Vessel".
+        /// </summary>
+        private static string ServingChildId(Mission mission, ChosenRequirement requirement)
+        {
+            var served = mission.ServedBy.FirstOrDefault(s => s.Key == requirement.Key);
+            var plan = mission.Plan;
+            if (served == null || plan == null || served.Leg < 0 || served.Leg >= plan.Sequences.Count) return "";
+            var vessel = plan.Sequences[served.Leg].Vessel;
+            if (FliesCraft(mission, vessel)) return "";
+            var child = PlannedChild(mission, vessel);
+            return child == null || child.VesselId.Length == 0 ? NotSeparated : child.VesselId;
+        }
+
+        /// <summary>A Child Vessel serves the Requirement but has no vessel id yet: no vessel in the snapshot has it, so it has no reading.</summary>
+        private const string NotSeparated = "(not separated)";
 
         private static bool Released(Mission mission)
         {
@@ -123,7 +141,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (snapshot == null || snapshot.Contracts == null) return new List<ChosenRequirement>();
             var served = ServedByFlownLeg(mission);
-            var readings = mission.Contracts.Read(snapshot.Contracts, served, null);
+            var readings = mission.Contracts.Read(snapshot, served, null);
             return served.Where(r => readings.Any(x => x.Key == r.Key && x.State == "not met")).ToList();
         }
 
@@ -136,10 +154,11 @@ namespace ClaudiaKerman.Core.Missions
             if (!mission.ManualPlanned || mission.ChosenRequirements.Count == 0) return "";
             var served = ServedByFlownLeg(mission).Where(r => r.Manual.Length > 0).ToList();
             if (served.Count == 0) return "";
-            var readings = mission.Contracts.Read(_snapshot == null ? null : _snapshot.Contracts, served, null);
+            var readings = mission.Contracts.Read(_snapshot, served, null);
             foreach (var reading in readings.Where(r => r.State == "not met"))
             {
-                reading.Gap = ContractWatch.NotMetAtHandBack;
+                // #1244: a station never set up keeps its placement's gap.
+                if (reading.Gap.Length == 0) reading.Gap = ContractWatch.NotMetAtHandBack;
                 Missed(mission, served.First(r => r.Key == reading.Key), reading.Gap);
             }
             return "\n" + ContractWatch.HandBackLine(readings).TrimEnd('\n');
@@ -178,7 +197,7 @@ namespace ClaudiaKerman.Core.Missions
                     + "For a Contract that will miss, propose dropping it, with the reason, in a revised Mission Plan for the player's Approval.\n";
             var served = ServedByFlownLeg(mission);
             if (served.Count > 0)
-                text += ContractWatch.Line(mission.Contracts.Read(_snapshot == null ? null : _snapshot.Contracts, served, mission.ContractGaps));
+                text += ContractWatch.Line(mission.Contracts.Read(_snapshot, served, mission.ContractGaps));
             text += mission.Contracts.TakeNews();
             return text.Length == 0 ? "" : "\n" + text.TrimEnd('\n');
         }

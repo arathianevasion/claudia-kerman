@@ -80,7 +80,7 @@ namespace ClaudiaKerman.Core.Contracts
                 {
                     var miss = up.Item2 ?? band.Misses(up.Item1);
                     if (miss == null) return TestWindow.Ascent;
-                    misses.Add((hopAp.HasValue || (written != null && written.Suborbital(_home)) ? "on the hop: " : "on the ascent: ") + miss);
+                    misses.Add((hopAp.HasValue || (written != null && written.FliesAsHop(_home)) ? "on the hop: " : "on the ascent: ") + miss);
                 }
             }
             if (descentKg.HasValue)
@@ -133,7 +133,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (_written.TryGetValue(key, out flown)) return flown;
             string why;
             var flight = SuborbitalHop.Fly(_snapshot, written, true, out why);
-            var top = written.Suborbital(_home) ? written.TargetAp.Value : _home == null ? 0 : _home.AtmosphereHeight;
+            var top = written.FliesAsHop(_home) ? written.TargetAp.Value : _home == null ? 0 : _home.AtmosphereHeight;
             flown = Tuple.Create(flight == null ? new List<double[]>() : Path(flight, top), why);
             _written[key] = flown;
             return flown;

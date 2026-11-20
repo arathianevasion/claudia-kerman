@@ -80,6 +80,37 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Empty(CheckLegs(Requirement(TestWindow.Ascent), new[] { "Climb and fall", "Launch with target_ap " + ap + " and turn_start_speed 100000." }).Problems);
         }
 
+        private static ClaudiaKerman.Core.Missions.SnapshotBody Kerbin()
+        {
+            return ContractCheckTests.With(ContractCheckTests.BoosterTest("c-test")).Bodies.First(b => b.Name == "Kerbin");
+        }
+
+        [Fact]
+        public void ALaunchThatNeverTurnsIsAHopWhateverItsTargetAp()
+        {
+            var kerbin = Kerbin();
+            var above = kerbin.AtmosphereHeight * 1.05;
+
+            Assert.True(WrittenLaunch.Read("Launch with target_ap " + above + " and turn_start_speed 100000").IsHop(kerbin));
+            Assert.True(WrittenLaunch.Read("Launch with target_ap 80 km and turn_start_speed 100000").IsHop(kerbin));
+            Assert.True(WrittenLaunch.Read("Launch with turn_start_speed 100000").IsHop(kerbin));
+            Assert.False(WrittenLaunch.Read("Launch with target_ap 20000 and turn_start_speed 100").IsHop(kerbin));
+            Assert.False(WrittenLaunch.Read("Launch with target_ap " + above).IsHop(kerbin));
+        }
+
+        [Fact]
+        public void TheHopTheRouteWritesAboveTheAirIsJudgedAsAHopAndATurningSuborbitalLegAsAnAscent()
+        {
+            var above = System.Math.Round(Kerbin().AtmosphereHeight * 1.05);
+
+            var hop = CheckLegs(Requirement(TestWindow.Ascent), new[] { "Climb and fall", "Launch with target_ap " + above + " and turn_start_speed 100000." });
+            var turning = CheckLegs(Requirement(TestWindow.Ascent), new[] { "Climb and fall", "Launch with target_ap 20000 and turn_start_speed 100." });
+
+            Assert.DoesNotContain(hop.Problems, p => p.Contains("on the ascent: "));
+            Assert.Contains(hop.Problems, p => p.Contains("on the hop: "));
+            Assert.NotEmpty(turning.Problems);
+        }
+
         [Fact]
         public void ALegWithNoLaunchOptionsIsJudgedOnTheDefaultShapeAsBefore()
         {

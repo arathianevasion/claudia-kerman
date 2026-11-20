@@ -485,6 +485,7 @@ namespace ClaudiaKerman.Core.Missions
             TakeContracts(mission, start);
             Note(LogKind.Player, "Mission Goal: " + goal);
             TakeTarget(mission, target);
+            if (target.FromContract && start.Contracts != null) { mission.TargetContractGuid = start.Contracts.TargetGuid; mission.TargetContractTitle = start.Contracts.TargetTitle; }
             if (!window.IsNone) Note(LogKind.Player, "Transfer Window to " + window.Body + ": " + window.Kind + ".");
             RecordStart(mission);
             LogEffortProblems(mission);

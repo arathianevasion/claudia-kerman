@@ -180,9 +180,14 @@ namespace ClaudiaKerman.Core.Contracts
             return text;
         }
 
-        /// <summary>The state of each Requirement in <paramref name="served"/> as the snapshot has it, with the gaps the mod knows.</summary>
-        public List<RequirementReading> Read(SnapshotContracts contracts, IEnumerable<ChosenRequirement> served, IDictionary<string, string> gaps)
+        /// <summary>
+        /// The state of each Requirement in <paramref name="served"/> as the snapshot has it, with the gaps the mod knows. A placed one the
+        /// game hasn't marked met (#1035) "completes after the Mission" only once the snapshot shows its placement made (#1244); else it is
+        /// not met, with the placement's gap.
+        /// </summary>
+        public List<RequirementReading> Read(GameSnapshot snapshot, IEnumerable<ChosenRequirement> served, IDictionary<string, string> gaps)
         {
+            var contracts = snapshot == null ? null : snapshot.Contracts;
             var readings = new List<RequirementReading>();
             foreach (var requirement in served)
             {
@@ -194,9 +199,12 @@ namespace ClaudiaKerman.Core.Contracts
                 else
                 {
                     var found = Find(contract.Requirements, requirement.Key);
+                    var unplaced = PlacementKinds.Unplaced(snapshot, requirement);
                     reading.State = found == null ? "not found" : found.State == "Complete" ? "met" : found.State == "Failed" ? "failed"
                         // #1035: placed, it is the game's to complete after the Mission: no hold waits for it and it is no miss.
-                        : requirement.AfterMission != null ? CompletesAfter : "not met";
+                        : requirement.AfterMission != null && unplaced == null ? CompletesAfter : "not met";
+                    // #1244: a placement not made is a miss like any other, its gap the placement's.
+                    if (reading.State == "not met" && unplaced != null) reading.Gap = unplaced;
                 }
                 string gap;
                 if (reading.State == "not met" && gaps != null && gaps.TryGetValue(requirement.Key, out gap)) reading.Gap = gap;
@@ -248,35 +256,85 @@ namespace ClaudiaKerman.Core.Contracts
             return json.EndArray().ToString();
         }
 
-        /// <summary>The craft meets what <paramref name="requirement"/> asks, by the snapshot: the game should mark it met.</summary>
-        public static bool ConditionsHold(GameSnapshot snapshot, ChosenRequirement requirement, string home)
+        /// <summary>
+        /// The vessel that serves <paramref name="requirement"/> meets what it asks, by the snapshot: the game should mark it met. That is
+        /// the craft, or (#1243) the released Child Vessel whose GUID is <paramref name="childVesselId"/> when the plan serves it from that
+        /// Child Vessel's leg; "" for the craft.
+        /// </summary>
+        public static bool ConditionsHold(GameSnapshot snapshot, ChosenRequirement requirement, string home, string childVesselId = "")
         {
-            if (snapshot == null) return false;
-            var down = snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED";
-            if (requirement.Return) return snapshot.Body == home && down;
-            if (snapshot.Body != requirement.Body) return false;
+            // #1244: a placed one is met by its placement; the game marks only what completes after the Mission.
+            if (requirement.AfterMission != null) return snapshot != null && PlacementKinds.Unplaced(snapshot, requirement) == null;
+            var serving = Serving.Of(snapshot, childVesselId);
+            if (serving == null) return false;
+            var down = serving.Situation == "LANDED" || serving.Situation == "SPLASHED";
+            if (requirement.Return) return serving.Body == home && down;
+            if (serving.Body != requirement.Body) return false;
             switch (requirement.Reach)
             {
                 case ContractReach.Land: return down;
-                case ContractReach.Orbit: return snapshot.Situation == "ORBITING" && OrbitMiss(snapshot, requirement) == null;
+                case ContractReach.Orbit: return serving.Situation == "ORBITING" && OrbitMiss(snapshot, serving, requirement) == null;
                 default: return true;
             }
         }
 
-        /// <summary>Why the craft doesn't meet <paramref name="requirement"/>: where it is against what is asked.</summary>
-        public static string Gap(GameSnapshot snapshot, ChosenRequirement requirement)
+        /// <summary>Why the vessel that serves <paramref name="requirement"/> (as in <see cref="ConditionsHold"/>) doesn't meet it: where it is against what is asked.</summary>
+        public static string Gap(GameSnapshot snapshot, ChosenRequirement requirement, string childVesselId = "")
         {
-            if (snapshot == null) return "the mod has no reading of the craft";
-            var miss = snapshot.Situation == "ORBITING" && snapshot.Body == requirement.Body ? OrbitMiss(snapshot, requirement) : null;
+            if (requirement.AfterMission != null && snapshot != null) return PlacementKinds.Unplaced(snapshot, requirement) ?? "";
+            var serving = Serving.Of(snapshot, childVesselId);
+            if (serving == null) return "the mod has no reading of the " + (string.IsNullOrEmpty(childVesselId) ? "craft" : "Child Vessel");
+            var miss = serving.Situation == "ORBITING" && serving.Body == requirement.Body ? OrbitMiss(snapshot, serving, requirement) : null;
             if (miss != null) return miss;
-            return "the craft is " + snapshot.Situation + " at " + ContractKinds.Named(snapshot.Body) + ", and the Requirement asks it to " + requirement.Words;
+            return serving.Noun + " is " + serving.Situation + " at " + ContractKinds.Named(serving.Body) + ", and the Requirement asks it to " + requirement.Words;
         }
 
         /// <summary>#1031: a satellite's orbit against the Contract's window, "inclination 3.4° outside the 5% window"; null when inside, or not a satellite.</summary>
-        private static string OrbitMiss(GameSnapshot snapshot, ChosenRequirement requirement)
+        private static string OrbitMiss(GameSnapshot snapshot, Serving serving, ChosenRequirement requirement)
         {
-            var body = requirement.Orbit == null || snapshot.Orbit == null ? null : snapshot.Bodies.FirstOrDefault(b => b.Name == requirement.Orbit.Body);
-            return body == null ? null : requirement.Orbit.Miss(body, snapshot.Orbit.Apoapsis, snapshot.Orbit.Periapsis, snapshot.Orbit.Inclination);
+            // A Child Vessel's orbit not read is no reading of it, never a pass; the craft's is judged as before (#1031).
+            if (requirement.Orbit != null && !serving.HasOrbit && serving.Child) return "the mod has no reading of the Child Vessel's orbit";
+            var body = requirement.Orbit == null || !serving.HasOrbit ? null : snapshot.Bodies.FirstOrDefault(b => b.Name == requirement.Orbit.Body);
+            return body == null ? null : requirement.Orbit.Miss(body, serving.Apoapsis, serving.Periapsis, serving.Inclination);
+        }
+
+        /// <summary>
+        /// #1243: where the vessel serving a Requirement is, by the snapshot: the craft, or a released Child Vessel found by its GUID among
+        /// the snapshot's vessels (or the craft's own entry, when the player is in it). Null when the snapshot has no reading of it.
+        /// </summary>
+        private sealed class Serving
+        {
+            public bool Child;
+            public string Noun = "the craft";
+            public string Body = "";
+            public string Situation = "";
+            public bool HasOrbit;
+            public double? Apoapsis;
+            public double? Periapsis;
+            public double? Inclination;
+
+            public static Serving Of(GameSnapshot snapshot, string childVesselId)
+            {
+                if (snapshot == null) return null;
+                var child = !string.IsNullOrEmpty(childVesselId);
+                if (!child || snapshot.Craft.VesselId == childVesselId)
+                {
+                    var orbit = snapshot.Orbit;
+                    return new Serving
+                    {
+                        Child = child, Noun = child ? "the Child Vessel" : "the craft", Body = snapshot.Body ?? "", Situation = snapshot.Situation ?? "", HasOrbit = orbit != null,
+                        Apoapsis = orbit == null ? (double?)null : orbit.Apoapsis, Periapsis = orbit == null ? (double?)null : orbit.Periapsis,
+                        Inclination = orbit == null ? (double?)null : orbit.Inclination,
+                    };
+                }
+                var vessel = snapshot.Vessels.FirstOrDefault(v => v.VesselId == childVesselId);
+                if (vessel == null) return null;
+                return new Serving
+                {
+                    Child = true, Noun = "the Child Vessel", Body = vessel.Body, Situation = vessel.Situation, HasOrbit = vessel.PeriapsisM.HasValue || vessel.Inclination.HasValue,
+                    Apoapsis = vessel.ApoapsisM, Periapsis = vessel.PeriapsisM, Inclination = vessel.Inclination,
+                };
+            }
         }
 
         public static string GuidOf(string key)

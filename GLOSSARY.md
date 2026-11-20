@@ -41,7 +41,7 @@ The altitude range, and speed range where the Contract gives one, within which a
 _Avoid_: envelope, window (a Transfer Window is a time)
 
 **Hop**:
-A suborbital flight from the launch body up to a Band and back down, without reaching orbit. A Contract Requirement met on a Hop is priced as one; on a Mission that also goes to orbit, it is met on the way up.
+A suborbital flight from the launch body up to a Band and back down, without reaching orbit. The plan check recognises a Hop by a launch that never turns (a turn_start_speed at least circular speed), whatever its target_ap: a Band above the air asks for a target_ap above it. A Contract Requirement met on a Hop is priced as one; on a Mission that also goes to orbit, it is met on the way up.
 _Avoid_: suborbital flight, sounding flight
 
 **Haul**:

@@ -50,10 +50,19 @@ namespace ClaudiaKerman.Core.Contracts
             return body != null && TargetAp.HasValue && TargetAp.Value <= body.AtmosphereHeight;
         }
 
-        /// <summary>A hop: a suborbital target apoapsis and a turn speed no climb reaches, so it flies straight up and never turns.</summary>
+        /// <summary>
+        /// #1240: a hop is a launch that never turns: a turn speed at least circular speed, whatever the target apoapsis (the route's
+        /// hop over a band above the air, or with a minimum speed, aims above it). One that turns is an ascent, even when suborbital.
+        /// </summary>
         public bool IsHop(SnapshotBody body)
         {
-            return Suborbital(body) && TurnStartSpeed.HasValue && body.Radius > 0 && TurnStartSpeed.Value >= System.Math.Sqrt(body.Gm / body.Radius);
+            return body != null && TurnStartSpeed.HasValue && body.Radius > 0 && TurnStartSpeed.Value >= System.Math.Sqrt(body.Gm / body.Radius);
+        }
+
+        /// <summary>The flight the options ask for is flown as a hop to <see cref="TargetAp"/>: a hop, or a suborbital target apoapsis.</summary>
+        public bool FliesAsHop(SnapshotBody body)
+        {
+            return TargetAp.HasValue && (IsHop(body) || Suborbital(body));
         }
 
         /// <summary>One string for the options, to key a flight kept by the judge.</summary>

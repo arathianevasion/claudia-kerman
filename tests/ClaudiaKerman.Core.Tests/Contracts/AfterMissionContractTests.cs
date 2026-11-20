@@ -42,6 +42,16 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return snapshot;
         }
 
+        /// <summary>#1245: the pad craft carrying a Central Station and a deployable experiment, with the kerbal the test snapshot has aboard.</summary>
+        private static GameSnapshot WithStation(params SnapshotContract[] contracts)
+        {
+            var snapshot = ContractCheckTests.With(contracts);
+            var root = snapshot.Craft.Parts[0].Id;
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 990002, Name = "DeployedCentralStation", Tags = { PlacementKinds.DeployableTag, PlacementKinds.StationTag }, ParentId = root });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 990003, Name = "DeployedSeismicSensor", Tags = { PlacementKinds.DeployableTag, PlacementKinds.ExperimentTag }, ParentId = root });
+            return snapshot;
+        }
+
         /// <summary>Remote: the craft itself may stay in solar orbit as the telescope.</summary>
         private static ContractCheck Remote(GameSnapshot snapshot)
         {
@@ -177,7 +187,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void ADeployedScienceContractWhoseWaitRunsPastItsDeadlineLessTheSpareCompletesLater()
         {
-            var snapshot = ContractCheckTests.With();
+            var snapshot = WithStation();
             var contract = Fixture("DeployedScienceContract.json", "c-station");
             contract.DeadlineUt = snapshot.Ut + 40 * 21600;
             snapshot.Contracts.Accepted.Add(contract);
@@ -214,7 +224,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void ADeployedScienceContractIsPlannedAsALandingAndAManualStretchToSetUpTheStationThatCompletesAfterTheMission()
         {
-            var check = ContractCheck.Work(ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station")), "", false, ContractCheckTests.Margin);
+            var check = ContractCheck.Work(WithStation(Fixture("DeployedScienceContract.json", "c-station")), "", false, ContractCheckTests.Margin);
 
             var row = Assert.Single(check.Fitting);
             Assert.Equal("Mun", row.Phase);
@@ -226,12 +236,37 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void ADeployedScienceContractOnACraftWithNoDeployableExperimentReadsThisCraftCant()
+        {
+            // #1245: a kerbal aboard isn't enough; the station has to be carried there. A Central Station alone sets up no experiment.
+            var snapshot = ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station"));
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 990002, Name = "DeployedCentralStation", Tags = { PlacementKinds.DeployableTag, PlacementKinds.StationTag }, ParentId = snapshot.Craft.Parts[0].Id });
+
+            var left = Assert.Single(ContractCheck.Work(snapshot, "", false, ContractCheckTests.Margin).NotThisFlight);
+
+            Assert.Equal(LeftOutKind.CraftCant, left.Kind);
+            Assert.Equal("this craft can't: no deployable science aboard", left.Reason);
+        }
+
+        [Fact]
+        public void ADeployedScienceContractOnACraftWithExperimentsButNoCentralStationReadsThisCraftCant()
+        {
+            // #1245: the experiments report to a Central Station; without one aboard no station is set up for the game to confirm.
+            var snapshot = ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station"));
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 990003, Name = "DeployedSeismicSensor", Tags = { PlacementKinds.DeployableTag, PlacementKinds.ExperimentTag }, ParentId = snapshot.Craft.Parts[0].Id });
+
+            var left = Assert.Single(ContractCheck.Work(snapshot, "", false, ContractCheckTests.Margin).NotThisFlight);
+
+            Assert.Equal(PlacementKinds.NoDeployableScience, left.Reason);
+        }
+
+        [Fact]
         public void ADeployedScienceContractNamingNoShareOfScienceIsNotYet()
         {
             var contract = Fixture("DeployedScienceContract.json", "c-station");
             contract.Requirements[0].Settings.RemoveAll(s => s.Name == "percentage");
 
-            var left = Assert.Single(ContractCheck.Work(ContractCheckTests.With(contract), "", false, ContractCheckTests.Margin).NotThisFlight);
+            var left = Assert.Single(ContractCheck.Work(WithStation(contract), "", false, ContractCheckTests.Margin).NotThisFlight);
 
             Assert.Equal(LeftOutKind.NotYet, left.Kind);
             Assert.Contains("names no share of science to collect", left.Reason);
@@ -252,20 +287,49 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
         private static ChosenRequirement StationChosen(out GameSnapshot snapshot)
         {
-            snapshot = ContractCheckTests.With(Fixture("DeployedScienceContract.json", "c-station"));
+            snapshot = WithStation(Fixture("DeployedScienceContract.json", "c-station"));
             var check = ContractCheck.Work(snapshot, "", false, ContractCheckTests.Margin);
             return Assert.Single(check.Choose(check.TickedGuids).Requirements);
+        }
+
+        /// <summary>#1244: a Central Station and an experiment set up on <paramref name="body"/>.</summary>
+        private static void StationSetUp(GameSnapshot snapshot, string body)
+        {
+            snapshot.DeployedScience.Add(new SnapshotDeployedPart { Name = "Central Station", Body = body, Situation = "LANDED", Station = true });
+            snapshot.DeployedScience.Add(new SnapshotDeployedPart { Name = "Seismic Sensor", Body = body, Situation = "LANDED" });
         }
 
         [Fact]
         public void APlacedRequirementTheGameHasntMarkedMetReadsCompletesAfterTheMissionNotUnmet()
         {
-            // "not met" is what holds a leg, or counts a miss at Hand back; this one is left open for the game.
+            // "not met" is what holds a leg, or counts a miss at Hand back; this one is placed and left open for the game.
             var chosen = StationChosen(out var snapshot);
+            StationSetUp(snapshot, "Mun");
 
-            var reading = Assert.Single(new ContractWatch().Read(snapshot.Contracts, new[] { chosen }, null));
+            var reading = Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null));
 
             Assert.Equal("completes after the Mission", reading.State);
+        }
+
+        [Fact]
+        public void ADeployedScienceRequirementWithNoStationSetUpIsNotMetWithTheGap()
+        {
+            var chosen = StationChosen(out var snapshot);
+
+            var reading = Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null));
+
+            Assert.Equal("not met", reading.State);
+            Assert.Equal("no deployed science station is set up on the Mun", reading.Gap);
+        }
+
+        [Fact]
+        public void AStationSetUpOnAnotherBodyOrWithNoExperimentIsNoPlacement()
+        {
+            var chosen = StationChosen(out var snapshot);
+            StationSetUp(snapshot, "Minmus");
+            snapshot.DeployedScience.Add(new SnapshotDeployedPart { Name = "Central Station", Body = "Mun", Situation = "LANDED", Station = true });
+
+            Assert.Equal("not met", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
         }
 
         [Fact]
@@ -274,19 +338,131 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             var chosen = StationChosen(out var snapshot);
             snapshot.Contracts.Accepted[0].Requirements[0].State = "Complete";
 
-            Assert.Equal("met", Assert.Single(new ContractWatch().Read(snapshot.Contracts, new[] { chosen }, null)).State);
+            Assert.Equal("met", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
         }
 
         [Fact]
         public void AtHandBackAPlacedStationIsSaidToBeSetUpAndToCompleteAfterTheMissionWithNoRetryOffered()
         {
             var chosen = StationChosen(out var snapshot);
+            StationSetUp(snapshot, "Mun");
 
-            var line = ContractWatch.HandBackLine(new ContractWatch().Read(snapshot.Contracts, new[] { chosen }, null));
+            var line = ContractWatch.HandBackLine(new ContractWatch().Read(snapshot, new[] { chosen }, null));
 
             Assert.Contains("\"state\":\"completes after the Mission\"", line);
             Assert.Contains("the game completes it after the Mission once its placement is made", line);
             Assert.DoesNotContain("retry", line);
+        }
+
+        [Fact]
+        public void AtHandBackAStationNeverSetUpIsAMissWithItsGapAndARetryOffered()
+        {
+            var chosen = StationChosen(out var snapshot);
+
+            var line = ContractWatch.HandBackLine(new ContractWatch().Read(snapshot, new[] { chosen }, null));
+
+            Assert.Contains("\"state\":\"not met\",\"gap\":\"no deployed science station is set up on the Mun\"", line);
+            Assert.Contains("retry", line);
+        }
+
+        // ---- A Sentinel telescope's placement ----
+
+        private const double SunRadius = 261600000;
+        private const double KerbinOrbit = 13599840256;
+
+        private static ChosenRequirement SentinelChosen(out GameSnapshot snapshot)
+        {
+            snapshot = WithTelescope(Fixture("SentinelContract.json", "c-sentinel"));
+            var check = Remote(snapshot);
+            return Assert.Single(check.Choose(check.TickedGuids).Requirements);
+        }
+
+        /// <summary>A released telescope (a Child Vessel) at <paramref name="body"/>, its periapsis and apoapsis radii from the body's centre given.</summary>
+        private static void Released(GameSnapshot snapshot, string body, double periapsisRadius, double apoapsisRadius, bool telescope = true)
+        {
+            var radius = body == "Sun" ? SunRadius : 600000;
+            snapshot.Vessels.Add(new SnapshotVessel
+            {
+                VesselId = "telescope", Name = "Sentinel probe", Body = body, Situation = "ORBITING", CarriesTelescope = telescope,
+                PeriapsisM = periapsisRadius - radius, ApoapsisM = apoapsisRadius - radius, Inclination = 0.1,
+            });
+        }
+
+        [Fact]
+        public void ASentinelRequirementWhoseTelescopeIsInSolarOrbitNearKerbinsReadsCompletesAfterTheMission()
+        {
+            var chosen = SentinelChosen(out var snapshot);
+            Released(snapshot, "Sun", KerbinOrbit * 0.97, KerbinOrbit * 1.05);
+
+            Assert.Equal("completes after the Mission", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
+        }
+
+        [Fact]
+        public void ASentinelRequirementWhoseTelescopeIsStillRoundKerbinIsNotMetWithTheGap()
+        {
+            var chosen = SentinelChosen(out var snapshot);
+            Released(snapshot, "Kerbin", 680000, 700000);
+
+            var reading = Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null));
+
+            Assert.Equal("not met", reading.State);
+            Assert.Equal("no SENTINEL Infrared Telescope is in solar orbit near Kerbin's orbit", reading.Gap);
+        }
+
+        [Fact]
+        public void ATelescopeInSolarOrbitFarFromThePlanetsOrbitIsNoPlacement()
+        {
+            // Out past Duna's orbit (20.7 Gm): nowhere near Kerbin's 13.6 Gm.
+            var chosen = SentinelChosen(out var snapshot);
+            Released(snapshot, "Sun", 19e9, 21e9);
+
+            Assert.Equal("not met", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
+        }
+
+        [Fact]
+        public void AVesselInTheRightOrbitWithNoTelescopeIsNoPlacement()
+        {
+            var chosen = SentinelChosen(out var snapshot);
+            Released(snapshot, "Sun", KerbinOrbit * 0.97, KerbinOrbit * 1.05, telescope: false);
+
+            Assert.Equal("not met", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
+        }
+
+        [Fact]
+        public void TheCraftItselfCarryingTheTelescopeInSolarOrbitIsThePlacement()
+        {
+            var chosen = SentinelChosen(out var snapshot);
+            snapshot.Body = "Sun";
+            snapshot.Situation = "ORBITING";
+            snapshot.Orbit = new SnapshotOrbit { Body = "Sun", Periapsis = KerbinOrbit * 0.98 - SunRadius, Apoapsis = KerbinOrbit * 1.02 - SunRadius };
+
+            Assert.Equal("completes after the Mission", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
+        }
+
+        [Fact]
+        public void ACometDetectionRequirementReadsCompletesAfterTheMissionOnlyWithItsTelescopeNearKerbinsOrbit()
+        {
+            var snapshot = WithTelescope(Fixture("CometDetectionContract.json", "c-comets"));
+            var check = Remote(snapshot);
+            var chosen = Assert.Single(check.Choose(check.TickedGuids).Requirements);
+
+            Assert.Equal("not met", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
+            Released(snapshot, "Sun", KerbinOrbit * 0.97, KerbinOrbit * 1.05);
+            Assert.Equal("completes after the Mission", Assert.Single(new ContractWatch().Read(snapshot, new[] { chosen }, null)).State);
+        }
+
+        [Fact]
+        public void AnUnplacedTelescopeHoldsNoLegAndGoesToTheDebriefAsAMissWithItsGap()
+        {
+            // The hold path: the conditions don't hold, so no wait for the game; the gap is the placement's.
+            var chosen = SentinelChosen(out var snapshot);
+            Released(snapshot, "Kerbin", 680000, 700000);
+
+            Assert.False(ContractWatch.ConditionsHold(snapshot, chosen, "Kerbin"));
+            Assert.Equal("no SENTINEL Infrared Telescope is in solar orbit near Kerbin's orbit", ContractWatch.Gap(snapshot, chosen));
+            var line = ContractWatch.Line(new ContractWatch().Read(snapshot, new[] { chosen }, null));
+            Assert.Contains("\"state\":\"not met\"", line);
+            Assert.Contains("propose a trim burn or a retry leg", line);
         }
 
         [Fact]

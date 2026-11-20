@@ -235,6 +235,51 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AfterStartAMissionWhoseTargetVesselCameFromAContractShowsChooseAndClear()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.True(mission.View.TargetNeeded);
+            Assert.True(mission.View.CanChangeTarget);
+            Assert.Equal("Gusdun's Capsule", mission.View.TargetVesselName);
+        }
+
+        [Fact]
+        public void ClearAfterStartDropsTheTargetVesselContractAndSaysSo()
+        {
+            var mission = Control(ARescue());
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            mission.Send(new ChangeTarget(TargetPick.Cleared));
+
+            Assert.Null(mission.View.TargetVesselId);
+            Assert.Contains(mission.View.Log, e => e.Text == "Contract dropped from the Mission: RecoverAsset (its Target Vessel is changed).");
+            Assert.False(mission.View.TargetNeeded);
+        }
+
+        [Fact]
+        public void PickingAnotherVesselAfterStartDropsTheTargetVesselContractAndSaysSo()
+        {
+            var snapshot = ARescue();
+            var station = new SnapshotVessel { Id = 5000, Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            snapshot.Vessels.Add(station);
+            var mission = Control(snapshot);
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            mission.Send(new ChangeTarget(TargetPick.Of(station)));
+
+            Assert.Equal(5000u, mission.View.TargetVesselId);
+            Assert.Contains(mission.View.Log, e => e.Text == "Contract dropped from the Mission: RecoverAsset (its Target Vessel is changed).");
+        }
+
+        [Fact]
         public void PlanTheseSendsOneStartMissionRequestWithTheContractRouteAndThePlayersWords()
         {
             var mission = Control(TwoAtTheMunAndAHaul());
@@ -255,6 +300,26 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             // The card folds to its one line, which stays in the Mission's transcript.
             Assert.Null(mission.View.ContractCheck);
             Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void TheFoldedSummaryMarksTheRouteAsAnEstimateAfterATickButNotOtherwise()
+        {
+            var ticked = Control(TwoAtTheMunAndAHaul());
+            ticked.Send(Start(""));
+            ticked.Send(new TickContract("c-land", false));
+            ticked.Send(new TickContract("c-land", true));
+            Assert.Contains("(estimate)", ticked.View.ContractCheck.Headline);
+            ticked.Send(new PlanContracts());
+            DrainUntil(ticked, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Contains(ticked.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen · route ≈ ", StringComparison.Ordinal) && e.Text.Contains(" m/s (estimate) · "));
+
+            var untouched = Control(TwoAtTheMunAndAHaul());
+            untouched.Send(Start(""));
+            Assert.DoesNotContain("(estimate)", untouched.View.ContractCheck.Headline);
+            untouched.Send(new PlanContracts());
+            DrainUntil(untouched, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Contains(untouched.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal) && !e.Text.Contains("(estimate)"));
         }
 
         [Fact]
@@ -371,28 +436,33 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
-        public void TypedWordsThatDontFitAreRefusedAndTheRefusalNamesThePartTestTheCraftCouldFly()
+        public void TypedWordsThatDontFitGoToTheCraftCheckBlockerWhichNamesTheHopContractByTitle()
         {
-            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.BoosterTest("c-test")));
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.BoosterTest("c-test")), false, ScriptedResponse.Fixture("craft-check-fail.sse"));
 
             mission.Send(Start(WordsNeedingOrbit));
-            Settle();
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
 
+            Assert.Equal("", mission.View.StartForm.Refusal);
             Assert.Null(mission.View.ContractCheck);
-            Assert.Equal("Your words don't fit this craft with the Craft Check's reserve. Without your words this craft could fly: Test liquidEngine.v2 at 51–56 km.", mission.View.StartForm.Refusal);
-            Assert.Equal(0, Requests);
+            Assert.Equal(CraftVerdict.Fail, mission.View.CraftCheck.Verdict);
+            var blocker = Assert.Single(mission.View.CraftCheck.Findings, f => f.Code == "delta_v_short");
+            Assert.Contains("\nWithout your words this craft could fly: PartTest.", blocker.Explanation);
+            Assert.DoesNotContain("liquidEngine", blocker.Explanation);
+            Assert.Equal(1, blocker.Explanation.Split(new[] { "Without your words" }, StringSplitOptions.None).Length - 1);
         }
 
         [Fact]
-        public void TypedWordsThatDontFitWithNoHopContractAcceptedStartAsBefore()
+        public void TypedWordsThatDontFitWithNoHopContractGiveTheCraftCheckBlockerAsBefore()
         {
-            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.Exploration("c-mun", 10000, "Mun:ORBIT")));
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.Exploration("c-mun", 10000, "Mun:ORBIT")), false, ScriptedResponse.Fixture("craft-check-fail.sse"));
 
             mission.Send(Start(WordsNeedingOrbit));
-            Settle();
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
 
-            Assert.Null(mission.View.ContractCheck);
             Assert.Equal("", mission.View.StartForm.Refusal);
+            Assert.Equal(CraftVerdict.Fail, mission.View.CraftCheck.Verdict);
+            Assert.DoesNotContain(mission.View.CraftCheck.Findings, f => f.Explanation.Contains("Without your words"));
         }
 
         [Fact]

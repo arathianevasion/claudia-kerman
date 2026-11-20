@@ -64,7 +64,7 @@ namespace ClaudiaKerman.Core.Tools
                 if (written.MaxQ.HasValue) o.MaxQ = written.MaxQ.Value;
                 if (written.TargetAp.HasValue) o.TargetAp = written.TargetAp.Value;
                 shape = written.TurnShape;
-                if (written.Suborbital(setup.Body)) targetAp = written.TargetAp;
+                if (written.FliesAsHop(setup.Body)) targetAp = written.TargetAp;
             }
             if (targetAp.HasValue)
             {

@@ -142,7 +142,8 @@ namespace ClaudiaKerman.Adapter
         /// <summary>
         /// KSP's target, the Mission's Target Vessel live by its persistentId (<see cref="MissionDriver.TargetVesselId"/>, so the
         /// block calls' own snapshots read it too), and the other vessels a Mission Goal may name. The core keeps the entry only
-        /// for the Mission in play's target. A vessel is never its own target.
+        /// for the Mission in play's target. A vessel is never its own target. #1244: which of them carry a Sentinel telescope, and the
+        /// deployed science parts set up on a surface, so a placed Requirement's placement can be confirmed.
         /// </summary>
         private static void ReadTargets(GameSnapshot snapshot, Vessel vessel)
         {
@@ -158,15 +159,50 @@ namespace ClaudiaKerman.Adapter
             var here = vessel.GetWorldPos3D();
             foreach (var other in FlightGlobals.Vessels)
                 if (other != null && other != vessel && Nameable(other.vesselType))
-                    snapshot.Vessels.Add(new SnapshotVessel
+                {
+                    var entry = new SnapshotVessel
                     {
                         Id = other.persistentId,
+                        VesselId = other.id.ToString("N"),
                         Name = other.vesselName ?? "",
                         Body = other.mainBody != null ? other.mainBody.bodyName : "",
                         Situation = other.situation.ToString(),
                         // From the craft, so same-named vessels can be told apart and the list puts the nearest first (#709).
                         Distance = Vector3d.Distance(other.GetWorldPos3D(), here),
+                    };
+                    ReadLiveOrbit(entry, other);
+                    entry.CarriesTelescope = CarriesTelescope(other);
+                    snapshot.Vessels.Add(entry);
+                }
+                else if (other != null && (other.vesselType == VesselType.DeployedScienceController || other.vesselType == VesselType.DeployedSciencePart))
+                    snapshot.DeployedScience.Add(new SnapshotDeployedPart
+                    {
+                        Name = other.vesselName ?? "", Body = other.mainBody != null ? other.mainBody.bodyName : "", Situation = other.situation.ToString(),
+                        Station = other.vesselType == VesselType.DeployedScienceController,
                     });
+        }
+
+        /// <summary>#1244: whether a vessel carries a SENTINEL Infrared Telescope, from its parts when loaded and its saved parts when not.</summary>
+        private static bool CarriesTelescope(Vessel vessel)
+        {
+            if (vessel.loaded) return vessel.parts.Any(p => p != null && p.partInfo != null && p.partInfo.name == PlacementKinds.TelescopePart);
+            return vessel.protoVessel != null && vessel.protoVessel.protoPartSnapshots.Any(p => p != null && p.partName == PlacementKinds.TelescopePart);
+        }
+
+        /// <summary>
+        /// #1243: a vessel's orbit as it is now (apoapsis and periapsis altitudes, m, and inclination, degrees), so the satellite hold can
+        /// judge a released Child Vessel by its own orbit. None when it is landed or splashed.
+        /// </summary>
+        private static void ReadLiveOrbit(SnapshotVessel entry, Vessel other)
+        {
+            var orbit = other.orbit;
+            if (entry.IsDown || orbit == null || orbit.referenceBody == null) return;
+            double pe;
+            double? ap;
+            TargetVessel.OrbitAltitudes(orbit.semiMajorAxis, orbit.eccentricity, orbit.referenceBody.Radius, out pe, out ap);
+            entry.PeriapsisM = pe;
+            entry.ApoapsisM = ap;
+            entry.Inclination = orbit.inclination;
         }
 
         /// <summary>
@@ -769,6 +805,11 @@ namespace ClaudiaKerman.Adapter
             }
             // #1032: Breaking Ground's robotic scanner arm, for a surface-feature scan Contract; by class name, so the game without the expansion reads as ever.
             if (Is(module, "ModuleRobotArmScanner")) Tag(info, "arm_scanner");
+            // #1245: Breaking Ground's deployable science parts, for a deployed-science Contract: every one (the experiments, the comm hub,
+            // the ground solar panel) and which are experiments and the Central Station; by class name, as for the arm scanner.
+            if (Is(module, "ModuleGroundSciencePart") || Is(module, "ModuleGroundCommsPart")) Tag(info, PlacementKinds.DeployableTag);
+            if (Is(module, "ModuleGroundExperiment")) Tag(info, PlacementKinds.ExperimentTag);
+            if (Is(module, "ModuleGroundExpControl")) Tag(info, PlacementKinds.StationTag);
         }
 
         private static void Tag(SnapshotPart info, string tag)

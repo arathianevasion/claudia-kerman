@@ -50,6 +50,8 @@ namespace ClaudiaKerman.Core.Missions
     public sealed class SnapshotVessel
     {
         public uint Id;
+        /// <summary>#1243: its persistent GUID, as in <see cref="SnapshotCraft.VesselId"/>, so a released Child Vessel is found by it; "" when not read.</summary>
+        public string VesselId = "";
         public string Name = "";
         /// <summary>The body it is at; "" when not read.</summary>
         public string Body = "";
@@ -67,12 +69,26 @@ namespace ClaudiaKerman.Core.Missions
         public double? Inclination;
         /// <summary>#1033: the Target Vessel Contract the game spawned it for, by GUID; "" for any other vessel.</summary>
         public string ContractGuid = "";
+        /// <summary>#1244: it carries a SENTINEL Infrared Telescope, so a Sentinel Contract's placement can be confirmed by its orbit.</summary>
+        public bool CarriesTelescope;
 
         /// <summary>Whether it is landed or splashed, so its place, not its orbit, tells it apart (#710). Narrower than IsGrounded on purpose: a PRELAUNCH vessel is read by its orbit.</summary>
         public bool IsDown
         {
             get { return Situation == "LANDED" || Situation == "SPLASHED"; }
         }
+    }
+
+    /// <summary>#1244: one deployed science part, a vessel of its own once set up on the surface.</summary>
+    public sealed class SnapshotDeployedPart
+    {
+        public string Name = "";
+        /// <summary>The body it is at.</summary>
+        public string Body = "";
+        /// <summary>KSP's situation name, LANDED once set up.</summary>
+        public string Situation = "";
+        /// <summary>True for a Central Station (the controller), false for an experiment or its power source.</summary>
+        public bool Station;
     }
 
     /// <summary>The start form's Target Vessel setting: Auto (the mod's choice), Clear (none), or a vessel the player chose.</summary>
