@@ -14,7 +14,7 @@
 # A push to main whose tree already passed on its PR skips the gate and names that run (#1050); the `check` job decides and
 # the `record` job saves each green run's pass. PR runs never skip.
 # The gate jobs cache ~/.nuget/packages with actions/cache, keyed on the csproj and Directory.Build files (#1052).
-# Jobs: check (skip decision), gate (the matrix above), record (saves the pass when every gate job is green).
+# Jobs: check (skip decision and runner pick: the home-wsl PC when free, else ubuntu-latest), gate (the matrix above), record (saves the pass when every gate job is green).
 # fail-fast is off so one failing job doesn't hide the others' results; any failing job fails the run.
 name: CI
 
@@ -65,7 +65,25 @@ jobs:
     outputs:
       key: ${{ steps.look.outputs.key }}
       skip: ${{ steps.look.outputs.skip }}
+      runner: ${{ steps.pick.outputs.runner }}
     steps:
+      # The runner pick (the owner's CI policy): the home-wsl PC first, when one of its runners for this
+      # repo is online and idle; otherwise ubuntu-latest. A pull request from a fork never gets the PC.
+      # RUNNER_STATUS_TOKEN is a fine-grained token with read-only Administration access, the only way
+      # to read a repo's runner status; without it the PC is never picked.
+      - id: pick
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+          TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          FALLBACK: '"ubuntu-latest"'
+        run: |
+          free=0
+          if [ "$TRUSTED" = true ] && [ -n "$RUNNER_STATUS_TOKEN" ]; then
+            free=$(GH_TOKEN=$RUNNER_STATUS_TOKEN gh api "repos/$GITHUB_REPOSITORY/actions/runners" --jq '[.runners[] | select(.status == "online" and (.busy | not) and any(.labels[]; .name == "home-wsl"))] | length' 2>/dev/null || echo 0)
+          fi
+          if [ "${free:-0}" -gt 0 ]; then runner='["self-hosted","home-wsl"]'; else runner=$FALLBACK; fi
+          echo "runner=$runner" >> "$GITHUB_OUTPUT"
+          echo "Runner: $runner (idle home-wsl runners: ${free:-0}, trusted: $TRUSTED)" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
       - id: look
         env:
@@ -92,7 +110,9 @@ jobs:
     name: gate (${{ matrix.name }})
     needs: check
     if: needs.check.outputs.skip != 'true'
-    runs-on: ubuntu-latest
+    # The home-wsl PC when it's free (the check job picks), else GitHub-hosted. This repo is public:
+    # a pull request from a fork never gets the PC.
+    runs-on: ${{ fromJSON(needs.check.outputs.runner || '"ubuntu-latest"') }}
     strategy:
       fail-fast: false
       matrix:
@@ -106,7 +126,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Into the runner's tool cache: the default, /usr/share/dotnet, isn't writable on the home-wsl PC runner.
       - uses: actions/setup-dotnet@v4
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
         with:
           dotnet-version: 10.0.x
 
