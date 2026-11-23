@@ -598,5 +598,106 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("the player left it out", text);
             Assert.NotNull(chosen);
         }
+
+        // ---- #1262: the card's life in KSP.log, and the Contracts read saved at Start Mission ----
+
+        private static List<string> KspLog(MissionControl mission)
+        {
+            return mission.TakeCommands().OfType<LogToGame>().Select(c => c.Text).ToList();
+        }
+
+        [Fact]
+        public void PostingTheCardLogsOneBlockWithTheFiguresAndEachContractsGuidTitleVerdictReasonAndTickState()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+
+            mission.Send(Start(""));
+
+            var block = Assert.Single(KspLog(mission), l => l.StartsWith("Contract check card posted: 2 of 3 Contracts"));
+            var card = mission.View.ContractCheck;
+            Assert.Contains("craft delta-v " + Math.Round(card.CraftDeltaV) + " m/s", block);
+            Assert.Contains("route delta-v " + Math.Round(card.RouteDeltaV) + " m/s", block);
+            Assert.Contains("reserve " + Math.Round(card.Reserve) + " m/s (15%)", block);
+            foreach (var row in card.Rows) Assert.Contains(row.Guid + " | " + row.Title + " | row | ticked", block);
+            var left = card.NotThisFlight.Single();
+            Assert.Contains(left.Guid + " | " + left.Title + " | Not this flight (NotYet) | ", block);
+            Assert.Contains(left.Reason, block);
+        }
+
+        [Fact]
+        public void EachTickAndSwapLogsTheGuidOnOrOffTheResultingSetAndWhetherPlanTheseCanBePressed()
+        {
+            var mission = Control(MunAndMinmusTheCraftFliesOneOf());
+            mission.Send(Start(""));
+            mission.TakeCommands();
+
+            mission.Send(new TickContract("mun", true));
+            var tick = Assert.Single(KspLog(mission));
+            Assert.StartsWith("TickContract mun: on; ticked now [", tick);
+            Assert.EndsWith("Plan these can't be pressed (" + mission.View.ContractCheck.Shortfall + ")", tick);
+
+            mission.Send(new TickContract("mun", false));
+            Assert.EndsWith("Plan these can be pressed", Assert.Single(KspLog(mission)));
+
+            mission.Send(new SwapInContract("mun"));
+            var swap = Assert.Single(KspLog(mission));
+            Assert.StartsWith("SwapInContract mun: on; ticked now [mun]; ", swap);
+            Assert.EndsWith("Plan these can be pressed", swap);
+        }
+
+        [Fact]
+        public void PlanTheseAndPlanWithoutContractsEachLogOneLine()
+        {
+            var these = Control(TwoAtTheMunAndAHaul());
+            these.Send(Start(""));
+            var guids = these.View.ContractCheck.Rows.Select(r => r.Guid).ToArray();
+            these.TakeCommands();
+            these.Send(new PlanContracts());
+            Assert.Equal("Plan these: " + string.Join(", ", guids) + ".", Assert.Single(KspLog(these), l => l.StartsWith("Plan these")));
+            DrainUntil(these, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var without = Control(TwoAtTheMunAndAHaul());
+            without.Send(Start("Fly to Minmus and capture into orbit."));
+            without.TakeCommands();
+            without.Send(new PlanWithoutContracts());
+            Assert.Equal("Plan without Contracts: the player's words alone.", Assert.Single(KspLog(without), l => l.StartsWith("Plan without")));
+            DrainUntil(without, v => v.Stage == MissionStage.AwaitingPlanApproval);
+        }
+
+        [Fact]
+        public void ASkippedOrRefusedCardLogsOneLineSaying()
+        {
+            var none = Control(ContractCheckTests.Pad());
+            none.Send(Start("Fly to Minmus and capture into orbit."));
+            Assert.Equal("Contract check card skipped: no accepted Contracts.", Assert.Single(KspLog(none), l => l.StartsWith("Contract check card")));
+
+            var unpriced = TwoAtTheMunAndAHaul();
+            unpriced.DeltaVSimulator = false;
+            var refused = Control(unpriced);
+            refused.Send(Start("Fly to Minmus and capture into orbit."));
+            Assert.Contains("can't be priced", Assert.Single(KspLog(refused), l => l.StartsWith("Contract check card refused: ")));
+        }
+
+        [Fact]
+        public void StartMissionWithAcceptedContractsWritesEachContractsReadToTheSavesContractsFolderBeforeAnyAnswer()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+
+            mission.Send(Start(""));
+
+            var folder = System.IO.Path.Combine(_save.Sub, "contracts");
+            Assert.Equal(3, System.IO.Directory.GetFiles(folder, "*.json").Length);
+            Assert.Contains(KspLog(mission), l => l.StartsWith("Contracts read at Start Mission saved (3) to " + folder));
+        }
+
+        [Fact]
+        public void StartMissionWithNoAcceptedContractsWritesNoContractsFolder()
+        {
+            var mission = Control(ContractCheckTests.Pad());
+
+            mission.Send(Start("Fly to Minmus and capture into orbit."));
+
+            Assert.False(System.IO.Directory.Exists(System.IO.Path.Combine(_save.Sub, "contracts")));
+        }
     }
 }
