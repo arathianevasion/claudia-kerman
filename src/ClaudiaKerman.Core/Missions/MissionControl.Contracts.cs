@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using ClaudiaKerman.Core.Contracts;
 
@@ -134,12 +136,18 @@ namespace ClaudiaKerman.Core.Missions
             _folded = null;
             _contractCheck = null;
             var snapshot = _snapshot;
-            if (snapshot == null || snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0) return false;
+            if (snapshot == null || snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0)
+            {
+                LogToKsp("Contract check card skipped: " + (snapshot == null ? "no Game Snapshot yet" : snapshot.Contracts == null ? "no Contracts read (not Career, or the Contract system isn't loaded)" : "no accepted Contracts") + ".");
+                return false;
+            }
+            WriteContractsRead(snapshot);
             // #1033: a target the goal or the player's pick gives wins over a Target Vessel Contract's vessel (ADR 0013's amendment).
             var check = ContractCheck.Work(snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent, GivenTarget(start.Goal, start.Target));
             if (!check.Priceable)
             {
                 refusal = "The craft's delta-v isn't known (turn on the stock delta-v readout), so your Contracts can't be priced. Turn it on, then start again.";
+                LogToKsp("Contract check card refused: " + refusal);
                 return false;
             }
             if (!check.WordsFit)
@@ -147,11 +155,43 @@ namespace ClaudiaKerman.Core.Missions
                 if (check.Words.Length == 0) refusal = "This craft can't reach orbit with the Craft Check's reserve, so no Contract fits.";
                 // #1241: words that don't fit go on to the Craft Check, whose Blocker names the hop Contracts the craft could fly without them.
                 else _craftCheck.HopContractsWithoutWords = check.HopsWithoutWords();
+                LogToKsp(refusal.Length > 0 ? "Contract check card refused: " + refusal : "Contract check card skipped: the typed words don't fit the craft; the Craft Check goes on without Contracts.");
                 return false;
             }
             _contractCheck = check;
             _contractStart = start;
+            LogToKsp(ContractCardLog.Posted(check, Ticked()));
             return true;
+        }
+
+        /// <summary>#1262: a line for KSP.log, under the mod's prefix.</summary>
+        private void LogToKsp(string text)
+        {
+            _commands.Add(new LogToGame(text));
+        }
+
+        /// <summary>#1262: each accepted Contract's read tree, saved to the save's Claudia contracts folder as Start Mission goes, as the capture button does.</summary>
+        private void WriteContractsRead(GameSnapshot snapshot)
+        {
+            if (_saveDirectory == null) return;
+            try
+            {
+                var written = MissionFolder.WriteContractSnapshots(_saveDirectory, snapshot);
+                if (written.Count > 0) LogToKsp("Contracts read at Start Mission saved (" + written.Count + ") to " + Path.GetDirectoryName(written[0]));
+            }
+            catch (Exception e) when (IsFileError(e))
+            {
+                LogToKsp("Couldn't save the Contracts read at Start Mission: " + e.Message);
+            }
+        }
+
+        /// <summary>A tick or swap just applied: logs whether the Contract is now on (the result, not the request) and whether Plan these would go.</summary>
+        private void LogEdit(string what, string guid)
+        {
+            if (_contractCheck == null) return;
+            var ticked = Ticked();
+            var canPlan = ticked.Count > 0 && _contractCheck.SetFits && !(_form != null && TargetWins(_form));
+            LogToKsp(ContractCardLog.Edited(what, guid, ticked.Contains(guid), ticked, canPlan, _contractCheck.Problem));
         }
 
         /// <summary>The set the player has ticked: the suggestion until they edit it (#1023).</summary>
@@ -164,10 +204,19 @@ namespace ClaudiaKerman.Core.Missions
         {
             var ticked = Ticked();
             // A set that doesn't fit is never sent: "Plan these" is greyed for it.
-            if (_contractCheck == null || ticked.Count == 0 || !_contractCheck.SetFits) return;
+            if (_contractCheck == null || ticked.Count == 0 || !_contractCheck.SetFits)
+            {
+                LogToKsp("Plan these pressed and ignored: " + (_contractCheck == null ? "no card is up" : ticked.Count == 0 ? "nothing is ticked" : "the ticked set doesn't fit the craft") + ".");
+                return;
+            }
             // #1033: a Target Vessel Contract ticked again after Clear, or against another target picked, goes out rather than fly without its vessel.
-            if (_form != null && TargetWins(_form)) return;
+            if (_form != null && TargetWins(_form))
+            {
+                LogToKsp("Plan these pressed and ignored: the start form's own target wins over a Target Vessel Contract.");
+                return;
+            }
             var choice = _contractCheck.Choose(ticked);
+            LogToKsp("Plan these: " + string.Join(", ", choice.Guids.ToArray()) + ".");
             var start = _contractStart.Answered(choice.Goal, choice);
             _contractCheck = null;
             _folded = choice;
@@ -176,7 +225,12 @@ namespace ClaudiaKerman.Core.Missions
 
         private void PlannedWithoutContracts()
         {
-            if (_contractCheck == null || _contractCheck.Words.Length == 0) return;
+            if (_contractCheck == null || _contractCheck.Words.Length == 0)
+            {
+                LogToKsp("Plan without Contracts pressed and ignored: " + (_contractCheck == null ? "no card is up" : "no words were typed") + ".");
+                return;
+            }
+            LogToKsp("Plan without Contracts: the player's words alone.");
             var start = _contractStart.Answered(_contractCheck.Words, null);
             _contractCheck = null;
             Start(start);

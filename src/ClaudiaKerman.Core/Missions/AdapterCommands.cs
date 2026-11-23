@@ -127,4 +127,11 @@ namespace ClaudiaKerman.Core.Missions
         public PostScreenMessage(string text) { Text = text; }
         public PostScreenMessage(string text, bool always) : this(text) { Always = always; }
     }
+
+    /// <summary>#1262: a line for KSP.log under the mod's prefix, so a flight can be diagnosed from the logs.</summary>
+    public sealed class LogToGame : AdapterCommand
+    {
+        public readonly string Text;
+        public LogToGame(string text) { Text = text; }
+    }
 }
