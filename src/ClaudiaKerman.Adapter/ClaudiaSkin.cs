@@ -453,10 +453,10 @@ namespace ClaudiaKerman.Adapter
             var clicked = enabled && GUI.Button(row, GUIContent.none, GUIStyle.none);
             if (Event.current.type == EventType.Repaint)
             {
-                const float size = 20;
+                float size = Scaled(20);
                 var box = new Rect(row.x, row.y + (row.height - size) / 2, size, size);
                 (on ? (enabled ? _checkOn : _checkDone) : _checkOff).Draw(box, false, false, false, false);
-                if (on) DrawIcon(new Rect(box.x + 2, box.y + 2, size - 4, size - 4), IconShape.Check, enabled ? OnAccent : Text);
+                if (on) DrawIcon(new Rect(box.x + size / 10, box.y + size / 10, size * 0.8f, size * 0.8f), IconShape.Check, enabled ? OnAccent : Text);
                 _body.Draw(new Rect(box.xMax + Gap, row.y, row.width - size - Gap, row.height), new GUIContent(label), false, false, false, false);
             }
             return clicked ? !on : on;

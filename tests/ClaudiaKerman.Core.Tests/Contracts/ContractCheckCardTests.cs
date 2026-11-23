@@ -520,6 +520,20 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
             Assert.False(mission.View.ContractCheck.CanPlan);
             Assert.Equal("Pick a Contract", mission.View.ContractCheck.PlanLabel);
+            Assert.Equal("Tick a Contract to plan it.", mission.View.ContractCheck.TickNote);
+        }
+
+        /// <summary>#1261: the card says its ticks are Mission Control's suggestion and a click leaves one out.</summary>
+        [Fact]
+        public void TheCardSaysTickedRowsAreASuggestionAClickLeavesOut()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(Start(""));
+
+            var note = mission.View.ContractCheck.TickNote;
+
+            Assert.Contains("suggestion for this flight", note);
+            Assert.Contains("A click leaves one out", note);
         }
 
         [Fact]

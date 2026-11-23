@@ -323,6 +323,8 @@ namespace ClaudiaKerman.Core.Missions
         public string SearchNote = "";
         /// <summary>#1163: says the player's words give conflicting orders and the cheapest is used; "" when they don't.</summary>
         public string OrderNote = "";
+        /// <summary>#1261: under the headline, what the ticks mean: Mission Control's suggestion for this flight, a click leaves one out; with none ticked, tick a Contract to plan it.</summary>
+        public string TickNote = "";
         /// <summary>"Plan these 2"; "Pick a Contract" when none is ticked.</summary>
         public string PlanLabel = "";
         public bool CanPlan;
