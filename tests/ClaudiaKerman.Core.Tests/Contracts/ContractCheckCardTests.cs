@@ -419,6 +419,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
 
             Assert.Null(mission.View.ContractCheck);
+            Assert.StartsWith("Contract check card skipped: the typed words don't fit", Assert.Single(KspLog(mission), l => l.StartsWith("Contract check card")));
             Assert.Equal(CraftVerdict.Fail, mission.View.CraftCheck.Verdict);
             Assert.Contains(mission.View.CraftCheck.Findings, f => f.Code == "delta_v_short");
             Assert.Equal(MissionStage.None, mission.View.Stage);

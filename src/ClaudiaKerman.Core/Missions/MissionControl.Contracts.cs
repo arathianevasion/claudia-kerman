@@ -185,11 +185,13 @@ namespace ClaudiaKerman.Core.Missions
             }
         }
 
-        private void LogEdit(string what, string guid, bool on)
+        /// <summary>A tick or swap just applied: logs whether the Contract is now on (the result, not the request) and whether Plan these would go.</summary>
+        private void LogEdit(string what, string guid)
         {
             if (_contractCheck == null) return;
             var ticked = Ticked();
-            LogToKsp(ContractCardLog.Edited(what, guid, on, ticked, ticked.Count > 0 && _contractCheck.SetFits, _contractCheck.Problem));
+            var canPlan = ticked.Count > 0 && _contractCheck.SetFits && !(_form != null && TargetWins(_form));
+            LogToKsp(ContractCardLog.Edited(what, guid, ticked.Contains(guid), ticked, canPlan, _contractCheck.Problem));
         }
 
         /// <summary>The set the player has ticked: the suggestion until they edit it (#1023).</summary>
