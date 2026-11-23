@@ -2,7 +2,7 @@
 
 One Game Snapshot per accepted Contract, in the form the capture button writes them (`MissionFolder.WriteContractSnapshots`: the save's `ClaudiaKerman/contracts/<Kind>-<guid start>-ut<UT>.json`). Core tests read them as plain data; the stock type is the file name up to its first `-` or `.`.
 
-**Every fixture here is provisional.** None was recorded in game yet. Each was written by hand from the research branches (`research/contract-api`, `research/stock-contract-types`, `research/contract-lifetime`): the Contract Requirement tree and the save keys the research saw, with made-up but plausible values. The snapshots carry no craft and no body table. The player records the real ones in a 1.12 career (`docs/in-game/contracts-in-snapshot.md`); a recorded snapshot replaces the provisional file of its type, keeps its name and moves to the recorded table, with any setting that differs from the research noted.
+**The fixtures without a GUID in their name are provisional**: none of those was recorded in game. Each was written by hand from the research branches (`research/contract-api`, `research/stock-contract-types`, `research/contract-lifetime`): the Contract Requirement tree and the save keys the research saw, with made-up but plausible values. The snapshots carry no craft and no body table. The player records the real ones in a 1.12 career (`docs/in-game/contracts-in-snapshot.md`); a recorded snapshot joins the table below under the name the capture gave it, with any setting that differs from the research noted. A provisional file stays while tests read it.
 
 ## Provisional
 
@@ -34,4 +34,13 @@ No fixture yet for the types whose tree no public save shows: ISRUContract, ARMC
 
 ## Recorded in game
 
-None yet.
+Captured by the Adapter in the Career Test save (KSP 1.12, 2026-11-14), copied byte for byte from `ClaudiaKerman/contracts/`. They predate the Contract `title` field (#1260), so they carry none.
+
+| File | Type | Differs from the provisional fixture |
+|---|---|---|
+| `ExplorationContract-e087d8d1-ut789.json` | ExplorationContract, REACHSPACE over Kerbin | `targetBody` is the body's index (`1`), not its name |
+| `ExplorationContract-36a2d4f7-ut24.json` | ExplorationContract, SCIENCE over Kerbin | as above |
+| `PartTest-20ebfabe-ut789.json` | PartTest, haul of the RT-10 "Hammer" FLYING at 51–56 km, 100–260 m/s | the PartTest Requirement's `body` is the body's name (`Kerbin`); the conditions are its siblings, ReachDestination's `dest` an index |
+| `SurveyContract-9f444a7c-ut789.json` | SurveyContract, a gravity scan high over the Mun | each waypoint's `band` is the game's `FlightBand` number (`3`, HIGH; the Contract's own `targetBand` is the name); `targetBody` an index |
+
+`../contract-card/2026-11-19-career-test.json` is the whole Game Snapshot of the Artisan's flight of 2026-11-19 (build e01560f), with its four accepted Contracts: the three above, its PartTest Requirement by then `Complete` (the part aboard), and an ORBIT exploration Contract over Kerbin.

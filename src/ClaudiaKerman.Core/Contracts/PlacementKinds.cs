@@ -240,7 +240,7 @@ namespace ClaudiaKerman.Core.Contracts
         {
             var value = names.Select(n => ContractKinds.Setting(requirement, n)).FirstOrDefault(v => v.Length > 0);
             if (value == null) return null;
-            return ContractKinds.BodyAt(value) ?? ContractKinds.StockBody(value);
+            return ContractKinds.BodyAt(value);
         }
 
         private static string Whole(double value)

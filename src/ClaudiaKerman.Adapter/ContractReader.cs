@@ -65,6 +65,8 @@ namespace ClaudiaKerman.Adapter
                 Guid = guid,
                 Kind = contract.GetType().Name,
                 State = contract.ContractState.ToString(),
+                // #1260: the title the game's Contracts window shows, for the card's rows.
+                Title = contract.Title ?? "",
                 // 0: no deadline. Accepted, it is the absolute game time (#1013).
                 DeadlineUt = contract.DateDeadline > 0 ? contract.DateDeadline : (double?)null,
                 Settings = SettingsOf(saved),

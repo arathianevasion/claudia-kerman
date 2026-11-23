@@ -1,0 +1,1257 @@
+{
+ "ut": 18001.08,
+ "situation": "PRELAUNCH",
+ "body": "Kerbin",
+ "mode": "CAREER",
+ "dv_sim": true,
+ "throttle": 0,
+ "claudia_standing": "Assigned",
+ "commnet": true,
+ "link": true,
+ "altitude": 89.24860123451799,
+ "vertical_speed": 0.0028131936475546127,
+ "rcs_on": false,
+ "craft": {
+  "name": "Untitled Space Craft",
+  "mass_t": 21.085,
+  "stage": 5,
+  "seats": 1,
+  "vessel_id": "e6aa00cf156f4113bab0a453a1099987",
+  "parts": [
+   {
+    "id": 101,
+    "parent": null,
+    "name": "mk1pod.v2",
+    "title": "Mk1 Command Pod",
+    "kos": false,
+    "stage": -1,
+    "seats": 1,
+    "antenna": 5000,
+    "boot": "",
+    "mass_t": 0.8400000743567944,
+    "dry_t": 0.8000000715255737,
+    "ec_max": 50,
+    "tags": [
+     "crew_seat",
+     "command",
+     "reaction_wheel",
+     "experiment",
+     "antenna",
+     "aero_stabiliser"
+    ]
+   },
+   {
+    "name": "KAL9000",
+    "title": "KAL-9000",
+    "kos": false,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "tags": [],
+    "id": 102,
+    "parent": 101,
+    "stage": -1,
+    "mass_t": 0.25
+   },
+   {
+    "name": "kOSMachineRad",
+    "title": "KR-2042 b Scriptable Control System",
+    "kos": true,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "tags": [
+     "kos_processor"
+    ],
+    "id": 103,
+    "parent": 101,
+    "stage": -1,
+    "mass_t": 0.04,
+    "ec_max": 5
+   },
+   {
+    "name": "advSasModule",
+    "title": "Advanced Reaction Wheel Module, Large",
+    "kos": false,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "tags": [
+     "reaction_wheel"
+    ],
+    "id": 104,
+    "parent": 103,
+    "stage": -1,
+    "mass_t": 0.2
+   },
+   {
+    "id": 105,
+    "parent": 104,
+    "name": "batteryBank",
+    "title": "Z-1k Rechargeable Battery Bank",
+    "kos": false,
+    "stage": -1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.05000000074505806,
+    "ec_max": 1000,
+    "tags": []
+   },
+   {
+    "id": 106,
+    "parent": 101,
+    "name": "parachuteSingle",
+    "title": "Mk16 Parachute",
+    "kos": false,
+    "stage": 0,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.10000000149011612,
+    "tags": [
+     "parachute"
+    ]
+   },
+   {
+    "id": 107,
+    "parent": 106,
+    "name": "longAntenna",
+    "title": "Communotron 16",
+    "kos": false,
+    "stage": 0,
+    "seats": 0,
+    "antenna": 500000,
+    "boot": "",
+    "mass_t": 0.004999999888241291,
+    "tags": [
+     "antenna"
+    ]
+   },
+   {
+    "id": 108,
+    "parent": 105,
+    "name": "HeatShield1",
+    "title": "Heat Shield (1.25m)",
+    "kos": false,
+    "stage": -1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.30000000447034836,
+    "dry_t": 0.10000000149011612,
+    "tags": [
+     "heat_shield",
+     "decoupler",
+     "aero_stabiliser"
+    ]
+   },
+   {
+    "id": 109,
+    "parent": 108,
+    "name": "Decoupler.1",
+    "title": "TD-12 Decoupler",
+    "kos": false,
+    "stage": 1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.03999999910593033,
+    "tags": [
+     "decoupler"
+    ]
+   },
+   {
+    "id": 110,
+    "parent": 109,
+    "name": "fuelTank.long",
+    "title": "FL-T800 Fuel Tank",
+    "kos": false,
+    "stage": 1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 4.5,
+    "dry_t": 0.5,
+    "tags": []
+   },
+   {
+    "id": 111,
+    "parent": 110,
+    "name": "fuelTank.long",
+    "title": "FL-T800 Fuel Tank",
+    "kos": false,
+    "stage": 1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 4.5,
+    "dry_t": 0.5,
+    "tags": []
+   },
+   {
+    "id": 112,
+    "parent": 111,
+    "name": "fuelTankSmall",
+    "title": "FL-T200 Fuel Tank",
+    "kos": false,
+    "stage": 1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 1.125,
+    "dry_t": 0.125,
+    "tags": []
+   },
+   {
+    "id": 113,
+    "parent": 112,
+    "name": "liquidEngine2.v2",
+    "title": "LV-T45 \"Swivel\" Liquid Fuel Engine",
+    "kos": false,
+    "stage": 2,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 1.5,
+    "thrust_vac_kn": 215,
+    "thrust_asl_kn": 167.96875,
+    "isp_vac": 320,
+    "isp_curve": [
+     [
+      0,
+      320
+     ],
+     [
+      1,
+      250
+     ],
+     [
+      6,
+      0.0010000000474974513
+     ]
+    ],
+    "tags": [
+     "engine",
+     "gimbal"
+    ]
+   },
+   {
+    "id": 114,
+    "parent": 111,
+    "name": "radialDecoupler",
+    "title": "TT-38K Radial Decoupler",
+    "kos": false,
+    "stage": 3,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.02500000037252903,
+    "tags": [
+     "decoupler"
+    ]
+   },
+   {
+    "name": "solidBooster.v2",
+    "title": "BACC \"Thumper\"? no: RT-10? Hammer",
+    "kos": false,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "tags": [
+     "engine"
+    ],
+    "id": 115,
+    "parent": 114,
+    "stage": 4,
+    "mass_t": 3.5625,
+    "dry_t": 0.75,
+    "thrust_vac_kn": 227,
+    "thrust_asl_kn": 197.897,
+    "isp_vac": 195
+   },
+   {
+    "id": 116,
+    "parent": 115,
+    "name": "noseCone",
+    "title": "Aerodynamic Nose Cone",
+    "kos": false,
+    "stage": 4,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.029999999329447746,
+    "tags": []
+   },
+   {
+    "id": 117,
+    "parent": 111,
+    "name": "radialDecoupler",
+    "title": "TT-38K Radial Decoupler",
+    "kos": false,
+    "stage": 3,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.02500000037252903,
+    "tags": [
+     "decoupler"
+    ]
+   },
+   {
+    "name": "solidBooster.v2",
+    "title": "BACC \"Thumper\"? no: RT-10? Hammer",
+    "kos": false,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "tags": [
+     "engine"
+    ],
+    "id": 118,
+    "parent": 117,
+    "stage": 4,
+    "mass_t": 3.5625,
+    "dry_t": 0.75,
+    "thrust_vac_kn": 227,
+    "thrust_asl_kn": 197.897,
+    "isp_vac": 195
+   },
+   {
+    "id": 119,
+    "parent": 118,
+    "name": "noseCone",
+    "title": "Aerodynamic Nose Cone",
+    "kos": false,
+    "stage": 4,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.029999999329447746,
+    "tags": []
+   },
+   {
+    "id": 120,
+    "parent": 111,
+    "name": "R8winglet",
+    "title": "AV-R8 Winglet",
+    "kos": false,
+    "stage": 1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.10000000149011612,
+    "tags": [
+     "aero_stabiliser"
+    ]
+   },
+   {
+    "id": 121,
+    "parent": 111,
+    "name": "R8winglet",
+    "title": "AV-R8 Winglet",
+    "kos": false,
+    "stage": 1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.10000000149011612,
+    "tags": [
+     "aero_stabiliser"
+    ]
+   },
+   {
+    "id": 122,
+    "parent": 111,
+    "name": "R8winglet",
+    "title": "AV-R8 Winglet",
+    "kos": false,
+    "stage": 1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.10000000149011612,
+    "tags": [
+     "aero_stabiliser"
+    ]
+   },
+   {
+    "id": 123,
+    "parent": 111,
+    "name": "R8winglet",
+    "title": "AV-R8 Winglet",
+    "kos": false,
+    "stage": 1,
+    "seats": 0,
+    "antenna": 0,
+    "boot": "",
+    "mass_t": 0.10000000149011612,
+    "tags": [
+     "aero_stabiliser"
+    ]
+   }
+  ],
+  "nose_drag": [
+   [
+    0,
+    5.243192618238814
+   ],
+   [
+    0.1,
+    5.236065246329683
+   ],
+   [
+    0.2,
+    5.217543574684016
+   ],
+   [
+    0.3,
+    5.184563848891314
+   ],
+   [
+    0.4,
+    5.134436848714006
+   ],
+   [
+    0.5,
+    5.065015818774935
+   ],
+   [
+    0.6,
+    4.9748658163453
+   ],
+   [
+    0.7,
+    4.863423050208732
+   ],
+   [
+    0.8,
+    4.731135104315505
+   ],
+   [
+    0.9,
+    4.61174858080966
+   ],
+   [
+    1,
+    4.65715239105228
+   ],
+   [
+    1.1,
+    4.289422378345166
+   ],
+   [
+    1.2,
+    4.221309539923399
+   ],
+   [
+    1.3,
+    4.030349802864339
+   ],
+   [
+    1.4,
+    3.7799371596230134
+   ],
+   [
+    1.5,
+    3.4985073191240583
+   ],
+   [
+    1.75,
+    2.7652486125067597
+   ],
+   [
+    2,
+    2.365223940828426
+   ],
+   [
+    2.5,
+    2.2465449395773174
+   ],
+   [
+    3,
+    2.1727225330668127
+   ],
+   [
+    4,
+    2.120658239087119
+   ],
+   [
+    5,
+    2.1196637111735708
+   ],
+   [
+    6,
+    2.1908643701382253
+   ],
+   [
+    8,
+    2.6087502815667576
+   ],
+   [
+    10,
+    2.9549750173507254
+   ]
+  ]
+ },
+ "stages": [
+  {
+   "stage": 4,
+   "dv_vac": 593.3968570622594,
+   "dv_asl": 502.10503289883485,
+   "thrust_vac_kn": 454,
+   "start_mass_t": 21.085,
+   "end_mass_t": 15.46
+  },
+  {
+   "stage": 3,
+   "dv_vac": 0,
+   "dv_asl": 0,
+   "thrust_vac_kn": 0,
+   "start_mass_t": 13.850000000000001,
+   "end_mass_t": 13.850000000000001
+  },
+  {
+   "stage": 2,
+   "dv_vac": 3292.8581951077954,
+   "dv_asl": 2572.5454649279654,
+   "thrust_vac_kn": 215,
+   "start_mass_t": 13.850000000000001,
+   "end_mass_t": 4.850000000000001
+  },
+  {
+   "stage": 1,
+   "dv_vac": 0,
+   "dv_asl": 0,
+   "thrust_vac_kn": 0,
+   "start_mass_t": 1.7850000809505582,
+   "end_mass_t": 1.7850000809505582
+  },
+  {
+   "stage": 0,
+   "dv_vac": 0,
+   "dv_asl": 0,
+   "thrust_vac_kn": 0,
+   "start_mass_t": 1.7850000809505582,
+   "end_mass_t": 1.7850000809505582
+  }
+ ],
+ "crew": [
+  {
+   "name": "Claudia Kerman",
+   "trait": "Super Intelligence"
+  }
+ ],
+ "experiments": [
+  {
+   "part": 2708215315,
+   "id": "crewReport",
+   "title": "Crew Report",
+   "science_left": null
+  }
+ ],
+ "bodies": [
+  {
+   "name": "Sun",
+   "parent": "",
+   "gm": 1.1723327948324905e+18,
+   "radius": 261600000,
+   "atmosphere_height": 600000,
+   "sea_level_atm": 0.15790772267456205,
+   "sma": 0,
+   "inclination": 0,
+   "soi_radius": null,
+   "rotation_period": 432000,
+   "eccentricity": 0,
+   "lan": 0,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 0,
+   "epoch": 0
+  },
+  {
+   "name": "Kerbin",
+   "parent": "Sun",
+   "gm": 3531599999999.9995,
+   "radius": 600000,
+   "atmosphere_height": 70000,
+   "sea_level_atm": 0.9999999698814921,
+   "sma": 13599840256,
+   "inclination": 0,
+   "soi_radius": 84159286.47963049,
+   "rotation_period": 21549.425183089825,
+   "eccentricity": 0,
+   "lan": 0,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 3.14000010490417,
+   "epoch": 0
+  },
+  {
+   "name": "Mun",
+   "parent": "Kerbin",
+   "gm": 65138397520.78069,
+   "radius": 200000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 12000000,
+   "inclination": 0,
+   "soi_radius": 2429559.1165647474,
+   "rotation_period": 138984.37657447575,
+   "eccentricity": 0,
+   "lan": 0,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 1.70000004768372,
+   "epoch": 0
+  },
+  {
+   "name": "Minmus",
+   "parent": "Kerbin",
+   "gm": 1765800026.3124719,
+   "radius": 60000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 47000000,
+   "inclination": 6,
+   "soi_radius": 2247428.3879023045,
+   "rotation_period": 40400,
+   "eccentricity": 0,
+   "lan": 78,
+   "arg_pe": 38,
+   "mean_anomaly_at_epoch": 0.899999976158142,
+   "epoch": 0
+  },
+  {
+   "name": "Moho",
+   "parent": "Sun",
+   "gm": 168609378654.5095,
+   "radius": 250000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 5263138304,
+   "inclination": 7,
+   "soi_radius": 9646663.023328105,
+   "rotation_period": 1210000,
+   "eccentricity": 0.200000002980232,
+   "lan": 70,
+   "arg_pe": 15,
+   "mean_anomaly_at_epoch": 3.14000010490417,
+   "epoch": 0
+  },
+  {
+   "name": "Eve",
+   "parent": "Sun",
+   "gm": 8171730229210.872,
+   "radius": 700000,
+   "atmosphere_height": 90000,
+   "sea_level_atm": 5,
+   "sma": 9832684544,
+   "inclination": 2.09999990463257,
+   "soi_radius": 85109364.73824407,
+   "rotation_period": 80500,
+   "eccentricity": 0.00999999977648258,
+   "lan": 15,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 3.14000010490417,
+   "epoch": 0
+  },
+  {
+   "name": "Duna",
+   "parent": "Sun",
+   "gm": 301363211975.0977,
+   "radius": 320000,
+   "atmosphere_height": 50000,
+   "sea_level_atm": 0.0666666677961107,
+   "sma": 20726155264,
+   "inclination": 0.0599999986588955,
+   "soi_radius": 47921949.369738035,
+   "rotation_period": 65517.859375,
+   "eccentricity": 0.0509999990463257,
+   "lan": 135.5,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 3.14000010490417,
+   "epoch": 0
+  },
+  {
+   "name": "Ike",
+   "parent": "Duna",
+   "gm": 18568368573.14401,
+   "radius": 130000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 3200000,
+   "inclination": 0.200000002980232,
+   "soi_radius": 1049598.939311619,
+   "rotation_period": 65517.86213480807,
+   "eccentricity": 0.0299999993294477,
+   "lan": 0,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 1.70000004768372,
+   "epoch": 0
+  },
+  {
+   "name": "Jool",
+   "parent": "Sun",
+   "gm": 282528004209995.25,
+   "radius": 6000000,
+   "atmosphere_height": 200000,
+   "sea_level_atm": 50,
+   "sma": 68773560320,
+   "inclination": 1.30400002002716,
+   "soi_radius": 2455985185.423469,
+   "rotation_period": 36000,
+   "eccentricity": 0.0500000007450581,
+   "lan": 52,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 0.100000001490116,
+   "epoch": 0
+  },
+  {
+   "name": "Laythe",
+   "parent": "Jool",
+   "gm": 1962000029236.0781,
+   "radius": 500000,
+   "atmosphere_height": 50000,
+   "sea_level_atm": 0.5999999819288953,
+   "sma": 27184000,
+   "inclination": 0,
+   "soi_radius": 3723645.8111330215,
+   "rotation_period": 52980.87905937958,
+   "eccentricity": 0,
+   "lan": 0,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 3.14000010490417,
+   "epoch": 0
+  },
+  {
+   "name": "Vall",
+   "parent": "Jool",
+   "gm": 207481499473.75098,
+   "radius": 300000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 43152000,
+   "inclination": 0,
+   "soi_radius": 2406401.44479404,
+   "rotation_period": 105962.08889392365,
+   "eccentricity": 0,
+   "lan": 0,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 0.899999976158142,
+   "epoch": 0
+  },
+  {
+   "name": "Bop",
+   "parent": "Jool",
+   "gm": 2486834944.4149065,
+   "radius": 65000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 128500000,
+   "inclination": 15,
+   "soi_radius": 1221060.8628425281,
+   "rotation_period": 544507.4285166542,
+   "eccentricity": 0.234999999403954,
+   "lan": 10,
+   "arg_pe": 25,
+   "mean_anomaly_at_epoch": 0.899999976158142,
+   "epoch": 0
+  },
+  {
+   "name": "Tylo",
+   "parent": "Jool",
+   "gm": 2825280042099.9526,
+   "radius": 600000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 68500000,
+   "inclination": 0.025000000372529,
+   "soi_radius": 10856518.368358627,
+   "rotation_period": 211926.35802123015,
+   "eccentricity": 0,
+   "lan": 0,
+   "arg_pe": 0,
+   "mean_anomaly_at_epoch": 3.14000010490417,
+   "epoch": 0
+  },
+  {
+   "name": "Gilly",
+   "parent": "Eve",
+   "gm": 8289449.814716351,
+   "radius": 13000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 31500000,
+   "inclination": 12,
+   "soi_radius": 126123.27170456758,
+   "rotation_period": 28255,
+   "eccentricity": 0.550000011920929,
+   "lan": 80,
+   "arg_pe": 10,
+   "mean_anomaly_at_epoch": 0.899999976158142,
+   "epoch": 0
+  },
+  {
+   "name": "Pol",
+   "parent": "Jool",
+   "gm": 721702080,
+   "radius": 44000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 179890000,
+   "inclination": 4.25,
+   "soi_radius": 1042138.8923017805,
+   "rotation_period": 901902.6235311733,
+   "eccentricity": 0.17085,
+   "lan": 2,
+   "arg_pe": 15,
+   "mean_anomaly_at_epoch": 0.899999976158142,
+   "epoch": 0
+  },
+  {
+   "name": "Dres",
+   "parent": "Sun",
+   "gm": 21484488600,
+   "radius": 138000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 40839348203,
+   "inclination": 5,
+   "soi_radius": 32832839.576776203,
+   "rotation_period": 34800,
+   "eccentricity": 0.145,
+   "lan": 280,
+   "arg_pe": 90,
+   "mean_anomaly_at_epoch": 3.14000010490417,
+   "epoch": 0
+  },
+  {
+   "name": "Eeloo",
+   "parent": "Sun",
+   "gm": 74410814527.04958,
+   "radius": 210000,
+   "atmosphere_height": 0,
+   "sea_level_atm": 0,
+   "sma": 90118820000,
+   "inclination": 6.15,
+   "soi_radius": 119082941.64781189,
+   "rotation_period": 19460,
+   "eccentricity": 0.26,
+   "lan": 50,
+   "arg_pe": 260,
+   "mean_anomaly_at_epoch": 3.14000010490417,
+   "epoch": 0
+  }
+ ],
+ "orbit": {
+  "apoapsis": 79.94328082818538,
+  "periapsis": -598435.4052771392,
+  "inclination": 0.09739217713770623,
+  "eccentricity": 0.9947989398256575,
+  "period": 551.6442405675775,
+  "semi_major_axis": 300822.2690018445,
+  "lan": 39.76379553721887,
+  "arg_pe": 87.23979314906514,
+  "mean_anomaly_at_epoch": 3.141589369373058,
+  "epoch": 448441.21680318844,
+  "orbit_body": "Kerbin"
+ },
+ "resources": [
+  {
+   "name": "ElectricCharge",
+   "amount": 1060,
+   "max": 1060
+  },
+  {
+   "name": "Ablator",
+   "amount": 200,
+   "max": 200
+  },
+  {
+   "name": "LiquidFuel",
+   "amount": 810,
+   "max": 810
+  },
+  {
+   "name": "Oxidizer",
+   "amount": 990,
+   "max": 990
+  },
+  {
+   "name": "SolidFuel",
+   "amount": 750,
+   "max": 750
+  }
+ ],
+ "contracts": {
+  "limit": null,
+  "active": 4,
+  "accepted": [
+   {
+    "guid": "20ebfabe-13bf-4fd7-820b-d42504627516",
+    "kind": "PartTest",
+    "state": "Active",
+    "deadline_ut": 9202233.28426514,
+    "rewards": {
+     "funds": 16875,
+     "science": 2,
+     "reputation": 4
+    },
+    "settings": {
+     "guid": "20ebfabe-13bf-4fd7-820b-d42504627516",
+     "type": "PartTest",
+     "prestige": "0",
+     "seed": "667197210",
+     "state": "Active",
+     "viewed": "Read",
+     "agent": "Research & Development Department",
+     "agentName": "Research & Development Department",
+     "deadlineType": "Floating",
+     "expiryType": "Floating",
+     "values": "21600,9201600,6750,16875,6750,2,4,3,21969.22,633.284265136465,9202233.28426514,0",
+     "part": "solidBooster.v2",
+     "haul": "True",
+     "dest": "1",
+     "sit": "FLYING",
+     "exp": "False"
+    },
+    "requirements": [
+     {
+      "key": "20ebfabe-13bf-4fd7-820b-d42504627516/0",
+      "kind": "PartTest",
+      "state": "Complete",
+      "optional": false,
+      "settings": {
+       "name": "PartTest",
+       "state": "Complete",
+       "disableOnStateChange": "False",
+       "values": "0,0,0,0,0",
+       "part": "solidBooster.v2",
+       "body": "Kerbin",
+       "situation": "FLYING",
+       "uniqueID": "0.73363865201065304",
+       "haul": "True",
+       "repeatability": "ONCEPERPART"
+      },
+      "requirements": []
+     },
+     {
+      "key": "20ebfabe-13bf-4fd7-820b-d42504627516/1",
+      "kind": "ReachDestination",
+      "state": "Complete",
+      "optional": false,
+      "settings": {
+       "name": "ReachDestination",
+       "state": "Complete",
+       "disableOnStateChange": "False",
+       "values": "0,0,0,0,0",
+       "dest": "1",
+       "title": ""
+      },
+      "requirements": []
+     },
+     {
+      "key": "20ebfabe-13bf-4fd7-820b-d42504627516/2",
+      "kind": "ReachSituation",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "ReachSituation",
+       "state": "Incomplete",
+       "disableOnStateChange": "False",
+       "values": "0,0,0,0,0",
+       "sit": "FLYING",
+       "title": ""
+      },
+      "requirements": []
+     },
+     {
+      "key": "20ebfabe-13bf-4fd7-820b-d42504627516/3",
+      "kind": "ReachAltitudeEnvelope",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "ReachAltitudeEnvelope",
+       "state": "Incomplete",
+       "disableOnStateChange": "False",
+       "values": "0,0,0,0,0",
+       "minAlt": "51000",
+       "maxAlt": "56000"
+      },
+      "requirements": []
+     },
+     {
+      "key": "20ebfabe-13bf-4fd7-820b-d42504627516/4",
+      "kind": "ReachSpeedEnvelope",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "ReachSpeedEnvelope",
+       "state": "Incomplete",
+       "disableOnStateChange": "False",
+       "values": "0,0,0,0,0",
+       "minSpd": "100",
+       "maxSpd": "260"
+      },
+      "requirements": []
+     }
+    ]
+   },
+   {
+    "guid": "e087d8d1-f7d4-487f-bb26-e4596333dd05",
+    "kind": "ExplorationContract",
+    "state": "Active",
+    "deadline_ut": null,
+    "rewards": {
+     "funds": 20800,
+     "science": 4,
+     "reputation": 8
+    },
+    "settings": {
+     "guid": "e087d8d1-f7d4-487f-bb26-e4596333dd05",
+     "type": "ExplorationContract",
+     "prestige": "1",
+     "seed": "337346788",
+     "state": "Active",
+     "viewed": "Read",
+     "agent": "Kerbin World-Firsts Record-Keeping Society",
+     "agentName": "Kerbin World-Firsts Record-Keeping Society",
+     "deadlineType": "None",
+     "expiryType": "Floating",
+     "ignoresWeight": "True",
+     "values": "43200,0,11200,20800,11200,4,8,0,43200.06,212.600000000035,0,0",
+     "targetBody": "1",
+     "bodyRatio": "0"
+    },
+    "requirements": [
+     {
+      "key": "e087d8d1-f7d4-487f-bb26-e4596333dd05/0",
+      "kind": "ProgressTrackingParameter",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "ProgressTrackingParameter",
+       "state": "Incomplete",
+       "values": "32000,0,4,8,0",
+       "targetBody": "1",
+       "targetType": "REACHSPACE"
+      },
+      "requirements": []
+     }
+    ]
+   },
+   {
+    "guid": "9f444a7c-46f5-4693-bb4c-76439ca33876",
+    "kind": "SurveyContract",
+    "state": "Active",
+    "deadline_ut": 66957884.6600205,
+    "rewards": {
+     "funds": 204645.062793972,
+     "science": 0,
+     "reputation": 14.94823
+    },
+    "settings": {
+     "guid": "9f444a7c-46f5-4693-bb4c-76439ca33876",
+     "type": "SurveyContract",
+     "prestige": "2",
+     "seed": "950688923",
+     "state": "Active",
+     "viewed": "Read",
+     "agent": "Rockomax Conglomerate",
+     "agentName": "Rockomax Conglomerate",
+     "deadlineType": "Floating",
+     "expiryType": "Floating",
+     "values": "94305.9931771202,66957255.1557554,100727.678607064,204645.062793972,112815.001115799,0,14.94823,14,94930.6174422567,629.504265136468,66957884.6600205,0",
+     "targetBody": "2",
+     "centerLatitude": "-11.237539866360702",
+     "centerLongitude": "0.065382400092381276",
+     "dataName": "gravimetric",
+     "anomalyName": "anomalies",
+     "reportName": "readings",
+     "locationName": "The Mun^N",
+     "focusedSurvey": "False",
+     "targetBand": "HIGH",
+     "contextual": "False"
+    },
+    "requirements": [
+     {
+      "key": "9f444a7c-46f5-4693-bb4c-76439ca33876/0",
+      "kind": "SurveyWaypointParameter",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "SurveyWaypointParameter",
+       "state": "Incomplete",
+       "values": "21600,0,4,4,0",
+       "targetBody": "2",
+       "actionDescription": "Record gravitational forces",
+       "experiment": "gravityScan",
+       "flightThreshold": "9200",
+       "band": "3",
+       "clusterState": "MIXED",
+       "verified": "True",
+       "contextual": "False",
+       "wpSeed": "1480771368",
+       "wpIndex": "0",
+       "wpTexture": "gravity",
+       "wpLatitude": "9.9778485691829726",
+       "wpLongitude": "58.157770895035789",
+       "wpLandlocked": "False",
+       "wpNavigationId": "bfc46ce8-412a-433b-952d-720a7f63c3b8"
+      },
+      "requirements": []
+     },
+     {
+      "key": "9f444a7c-46f5-4693-bb4c-76439ca33876/1",
+      "kind": "SurveyWaypointParameter",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "SurveyWaypointParameter",
+       "state": "Incomplete",
+       "values": "21600,0,4,4,0",
+       "targetBody": "2",
+       "actionDescription": "Record gravitational forces",
+       "experiment": "gravityScan",
+       "flightThreshold": "8000",
+       "band": "3",
+       "clusterState": "MIXED",
+       "verified": "True",
+       "contextual": "False",
+       "wpSeed": "1480771368",
+       "wpIndex": "1",
+       "wpTexture": "gravity",
+       "wpLatitude": "12.524038897714998",
+       "wpLongitude": "12.509418155488957",
+       "wpLandlocked": "False",
+       "wpNavigationId": "e8c466a5-855e-4fcb-abab-2c4ae631754d"
+      },
+      "requirements": []
+     },
+     {
+      "key": "9f444a7c-46f5-4693-bb4c-76439ca33876/2",
+      "kind": "SurveyWaypointParameter",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "SurveyWaypointParameter",
+       "state": "Incomplete",
+       "values": "21600,0,4,4,0",
+       "targetBody": "2",
+       "actionDescription": "Record gravitational forces",
+       "experiment": "gravityScan",
+       "flightThreshold": "9400",
+       "band": "3",
+       "clusterState": "MIXED",
+       "verified": "True",
+       "contextual": "False",
+       "wpSeed": "1480771368",
+       "wpIndex": "2",
+       "wpTexture": "gravity",
+       "wpLatitude": "19.159679040236458",
+       "wpLongitude": "0.69930593070059621",
+       "wpLandlocked": "False",
+       "wpNavigationId": "7d059543-6da2-4e0a-96ff-3129c203c599"
+      },
+      "requirements": []
+     },
+     {
+      "key": "9f444a7c-46f5-4693-bb4c-76439ca33876/3",
+      "kind": "SurveyWaypointParameter",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "SurveyWaypointParameter",
+       "state": "Incomplete",
+       "values": "21600,0,4,4,0",
+       "targetBody": "2",
+       "actionDescription": "Record gravitational forces",
+       "experiment": "gravityScan",
+       "flightThreshold": "8500",
+       "band": "3",
+       "clusterState": "MIXED",
+       "verified": "True",
+       "contextual": "False",
+       "wpSeed": "1480771368",
+       "wpIndex": "3",
+       "wpTexture": "gravity",
+       "wpLatitude": "13.233683410566774",
+       "wpLongitude": "4.1931508473938921",
+       "wpLandlocked": "False",
+       "wpNavigationId": "592593bf-49f3-4e7c-bc80-eee74cf7ff72"
+      },
+      "requirements": []
+     },
+     {
+      "key": "9f444a7c-46f5-4693-bb4c-76439ca33876/4",
+      "kind": "SurveyWaypointParameter",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "SurveyWaypointParameter",
+       "state": "Incomplete",
+       "values": "21600,0,4,4,0",
+       "targetBody": "2",
+       "actionDescription": "Record gravitational forces",
+       "experiment": "gravityScan",
+       "flightThreshold": "8100",
+       "band": "3",
+       "clusterState": "MIXED",
+       "verified": "True",
+       "contextual": "False",
+       "wpSeed": "1480771368",
+       "wpIndex": "4",
+       "wpTexture": "gravity",
+       "wpLatitude": "7.0645421543187297",
+       "wpLongitude": "5.961670256596852",
+       "wpLandlocked": "False",
+       "wpNavigationId": "4f05d4f5-e9ce-4887-b629-7b0af9a1f46e"
+      },
+      "requirements": []
+     }
+    ]
+   },
+   {
+    "guid": "3d6a6efb-37c9-41ca-977d-16dae6b5b279",
+    "kind": "ExplorationContract",
+    "state": "Active",
+    "deadline_ut": null,
+    "rewards": {
+     "funds": 31200,
+     "science": 6,
+     "reputation": 10
+    },
+    "settings": {
+     "guid": "3d6a6efb-37c9-41ca-977d-16dae6b5b279",
+     "type": "ExplorationContract",
+     "prestige": "2",
+     "seed": "337346838",
+     "state": "Active",
+     "viewed": "Read",
+     "agent": "Kerbin World-Firsts Record-Keeping Society",
+     "agentName": "Kerbin World-Firsts Record-Keeping Society",
+     "deadlineType": "None",
+     "expiryType": "Floating",
+     "ignoresWeight": "True",
+     "values": "64800,0,16800,31200,16800,6,10,0,64800.06,17787.3401775202,0,0",
+     "targetBody": "1",
+     "bodyRatio": "0"
+    },
+    "requirements": [
+     {
+      "key": "3d6a6efb-37c9-41ca-977d-16dae6b5b279/0",
+      "kind": "ProgressTrackingParameter",
+      "state": "Incomplete",
+      "optional": false,
+      "settings": {
+       "name": "ProgressTrackingParameter",
+       "state": "Incomplete",
+       "values": "48000,0,6,10,0",
+       "targetBody": "1",
+       "targetType": "ORBIT"
+      },
+      "requirements": []
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -501,6 +501,11 @@ namespace ClaudiaKerman.Adapter
                     CraftSafety.SasOff((TurnSasOff)command);
                     continue;
                 }
+                if (command is LogToGame)
+                {
+                    Debug.Log(ModInfo.LogTag + " " + ((LogToGame)command).Text);
+                    continue;
+                }
                 if (command is SeatClaudia)
                 {
                     SeatClaudia();
