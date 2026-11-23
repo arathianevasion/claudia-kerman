@@ -407,8 +407,10 @@ namespace ClaudiaKerman.Core.Contracts
             return Title(contract, ContractKinds.Read(contract, home));
         }
 
+        /// <summary>#1260: the game's own title; the composed one only when the snapshot carries none.</summary>
         private static string Title(SnapshotContract contract, List<ReadRequirement> read)
         {
+            if (contract.Title.Length > 0) return contract.Title;
             if (contract.Kind != ContractKinds.Exploration) return contract.Kind;
             var bodies = read.Where(r => r.Body.Length > 0).Select(r => ContractKinds.Named(r.Body)).Distinct().ToList();
             return bodies.Count == 0 ? "Exploration" : "Explore " + string.Join(" and ", bodies.ToArray());
