@@ -33,6 +33,7 @@ namespace ClaudiaKerman.Core.Contracts
             foreach (var contract in Accepted)
             {
                 json.BeginObject().Field("guid", contract.Guid).Field("kind", contract.Kind).Field("state", contract.State);
+                if (contract.Title.Length > 0) json.Field("title", contract.Title);
                 if (contract.DeadlineUt.HasValue) json.Field("deadline_ut", contract.DeadlineUt.Value);
                 json.Name("rewards").BeginObject().Field("funds", contract.Funds).Field("science", contract.Science)
                     .Field("reputation", contract.Reputation).EndObject();
@@ -91,6 +92,7 @@ namespace ClaudiaKerman.Core.Contracts
                     Guid = JsonNode.Str(item["guid"]) ?? "",
                     Kind = JsonNode.Str(item["kind"]) ?? "",
                     State = JsonNode.Str(item["state"]) ?? "",
+                    Title = JsonNode.Str(item["title"]) ?? "",
                     DeadlineUt = JsonNode.Double(item["deadline_ut"]),
                     Funds = rewards != null ? JsonNode.Double(rewards["funds"]) ?? 0 : 0,
                     Science = rewards != null ? JsonNode.Double(rewards["science"]) ?? 0 : 0,
@@ -139,6 +141,8 @@ namespace ClaudiaKerman.Core.Contracts
         public string Kind = "";
         /// <summary>The game's state name: Active for an accepted Contract.</summary>
         public string State = "";
+        /// <summary>#1260: the Contract's title as the game's Contracts window shows it; "" when the recording has none.</summary>
+        public string Title = "";
         /// <summary>The game time (UT, seconds) the Contract fails at; null: no deadline.</summary>
         public double? DeadlineUt;
         /// <summary>What completing it pays, after the player's Strategies: funds, science and reputation.</summary>

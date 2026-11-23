@@ -155,10 +155,14 @@ namespace ClaudiaKerman.Core.Contracts
         {
             foreach (var requirement in requirements)
             {
-                if (requirement.State == "Complete") continue;
+                // #1260: a part test whose part is already aboard has its PartTest Requirement met, but not its envelopes beside it.
+                if (requirement.State == "Complete" && !(contract.Kind == PartTest && requirement.Kind == PartTest && ConditionsLeft(requirements))) continue;
                 if (contract.Kind == PartTest && requirement.Kind == PartTest)
                 {
-                    read.Add(ReadPartTest(requirement, requirements.Where(r => TestConditions.Contains(r.Kind)), home));
+                    var test = ReadPartTest(requirement, requirements.Where(r => TestConditions.Contains(r.Kind)), home);
+                    // Already met, it would read as met at once: key it on the first condition still to meet instead.
+                    if (requirement.State == "Complete") test.Requirement = requirements.First(r => TestConditions.Contains(r.Kind) && r.State != "Complete");
+                    read.Add(test);
                     continue;
                 }
                 // A haul's conditions sit beside its PartTest Requirement: read with it.
@@ -177,6 +181,12 @@ namespace ClaudiaKerman.Core.Contracts
             }
         }
 
+        /// <summary>#1260: a condition beside a part test's PartTest Requirement (destination, situation, altitude or speed envelope) is still to meet.</summary>
+        private static bool ConditionsLeft(List<ContractRequirement> requirements)
+        {
+            return requirements.Any(r => TestConditions.Contains(r.Kind) && r.State != "Complete");
+        }
+
         private static ReadRequirement ReadOne(SnapshotContract contract, ContractRequirement requirement, string home)
         {
             var one = new ReadRequirement { Requirement = requirement };
@@ -192,7 +202,9 @@ namespace ClaudiaKerman.Core.Contracts
                 return one;
             }
             var type = Setting(requirement, "targetType").ToUpperInvariant();
-            var body = Setting(requirement, "targetBody");
+            // #1260: the game saves the body by its index ("1"); a name passes through as it is.
+            var saved = Setting(requirement, "targetBody");
+            var body = saved.Length == 0 ? "" : BodyAt(saved) ?? saved;
             ContractReach reach;
             string reason;
             if (type == "REACHSPACE") return body != home ? NotYet(one, AwayHopNotYet) : Hop(one, home, new HopBand { AboveAir = true });
@@ -257,7 +269,7 @@ namespace ClaudiaKerman.Core.Contracts
             return one;
         }
 
-        /// <summary>The stock system's bodies by their index in the game's body list, as a part test's <c>body</c> setting names them.</summary>
+        /// <summary>The stock system's bodies by their index in the game's body list, as a Contract's saved settings name them.</summary>
         private static readonly string[] StockBodies =
             { "Sun", "Kerbin", "Mun", "Minmus", "Moho", "Eve", "Duna", "Ike", "Jool", "Laythe", "Vall", "Bop", "Tylo", "Gilly", "Pol", "Dres", "Eeloo" };
 
@@ -332,11 +344,16 @@ namespace ClaudiaKerman.Core.Contracts
             return one;
         }
 
-        /// <summary>The body a part test's <c>body</c> index names in the stock system; null when unknown.</summary>
-        internal static string BodyAt(string index)
+        /// <summary>
+        /// #1260: the stock body a saved setting names, by its index in the game's body list ("1", as Exploration and Survey Requirements
+        /// save <c>targetBody</c>) or by its name ("Kerbin", as a part test's <c>body</c>); null when unknown.
+        /// </summary>
+        internal static string BodyAt(string saved)
         {
             int at;
-            return int.TryParse(index, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out at) && at >= 0 && at < StockBodies.Length ? StockBodies[at] : null;
+            if (int.TryParse(saved, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out at))
+                return at >= 0 && at < StockBodies.Length ? StockBodies[at] : null;
+            return StockBody(saved);
         }
 
         /// <summary>#1035: the stock body named <paramref name="name"/>, as the save may name one; null when it isn't one.</summary>

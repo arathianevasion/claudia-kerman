@@ -86,10 +86,26 @@ namespace ClaudiaKerman.Core.Contracts
             return one;
         }
 
+        /// <summary>
+        /// #1260: a waypoint's flight band, as the game saves it: a number, the value of KSP's <c>FinePrint.Utilities.FlightBand</c>
+        /// enum (NONE 0, GROUND 1, LOW 2, HIGH 3; the Career Test capture of 2026-11-14 saves a HIGH survey's waypoints as <c>band = 3</c>),
+        /// or its name. An unknown number stays as written, for the "not yet" line.
+        /// </summary>
+        private static string Band(string saved)
+        {
+            switch (saved)
+            {
+                case "1": return "GROUND";
+                case "2": return "LOW";
+                case "3": return "HIGH";
+                default: return saved.ToUpperInvariant();
+            }
+        }
+
         private static ReadRequirement ReadWaypoint(ReadRequirement one, ContractRequirement requirement, string home)
         {
             var body = ContractKinds.BodyAt(ContractKinds.Setting(requirement, "targetBody"));
-            var band = ContractKinds.Setting(requirement, "band").ToUpperInvariant();
+            var band = Band(ContractKinds.Setting(requirement, "band"));
             var experiment = ContractKinds.Setting(requirement, "experiment");
             var latitude = ContractKinds.Number(requirement, "wpLatitude");
             var longitude = ContractKinds.Number(requirement, "wpLongitude");
