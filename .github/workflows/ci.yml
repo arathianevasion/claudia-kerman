@@ -68,7 +68,7 @@ jobs:
       runner: ${{ steps.pick.outputs.runner }}
     steps:
       # The runner pick (the owner's CI policy): the home-wsl PC first, when one of its runners for this
-      # repo is online and idle; otherwise ubuntu-latest. A pull request from a fork never gets the PC.
+      # repo is online (busy ones queue the job); otherwise ubuntu-latest. A pull request from a fork never gets the PC.
       # RUNNER_STATUS_TOKEN is a fine-grained token with read-only Administration access, the only way
       # to read a repo's runner status; without it the PC is never picked.
       - id: pick
@@ -79,11 +79,11 @@ jobs:
         run: |
           free=0
           if [ "$TRUSTED" = true ] && [ -n "$RUNNER_STATUS_TOKEN" ]; then
-            free=$(GH_TOKEN=$RUNNER_STATUS_TOKEN gh api "repos/$GITHUB_REPOSITORY/actions/runners" --jq '[.runners[] | select(.status == "online" and (.busy | not) and any(.labels[]; .name == "home-wsl"))] | length' 2>/dev/null || echo 0)
+            free=$(GH_TOKEN=$RUNNER_STATUS_TOKEN gh api "repos/$GITHUB_REPOSITORY/actions/runners" --jq '[.runners[] | select(.status == "online" and any(.labels[]; .name == "home-wsl"))] | length' 2>/dev/null || echo 0)
           fi
           if [ "${free:-0}" -gt 0 ]; then runner='["self-hosted","home-wsl"]'; else runner=$FALLBACK; fi
           echo "runner=$runner" >> "$GITHUB_OUTPUT"
-          echo "Runner: $runner (idle home-wsl runners: ${free:-0}, trusted: $TRUSTED)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Runner: $runner (online home-wsl runners: ${free:-0}, trusted: $TRUSTED)" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
       - id: look
         env:
