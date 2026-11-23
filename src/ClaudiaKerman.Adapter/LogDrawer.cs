@@ -525,7 +525,8 @@ namespace ClaudiaKerman.Adapter
             foreach (var row in card.Rows)
             {
                 // #1023: a click ticks or unticks, and the card re-prices at once (the mod's own pricing: no search, no request).
-                if (ClaudiaSkin.Checkbox(row.Ticked, row.Title)) _send(new TickContract(row.Guid, !row.Ticked));
+                // #1277: Checkbox returns the new value, not "clicked", so only a change is a click.
+                if (ClaudiaSkin.Checkbox(row.Ticked, row.Title) != row.Ticked) _send(new TickContract(row.Guid, !row.Ticked));
                 GUILayout.Label(row.Detail(now), ClaudiaSkin.Secondary);
                 if (row.Note.Length > 0) GUILayout.Label(row.Note, ClaudiaSkin.Secondary);
                 if (row.Swap != null) DrawSwap(row.Swap);
@@ -535,7 +536,7 @@ namespace ClaudiaKerman.Adapter
                 GUILayout.Label("Not this flight", _bold);
                 foreach (var left in card.NotThisFlight)
                 {
-                    if (left.Tickable && ClaudiaSkin.Checkbox(left.Ticked, left.Title)) _send(new TickContract(left.Guid, !left.Ticked));
+                    if (left.Tickable && ClaudiaSkin.Checkbox(left.Ticked, left.Title) != left.Ticked) _send(new TickContract(left.Guid, !left.Ticked));
                     GUILayout.BeginHorizontal();
                     if (!left.Ticked) ClaudiaSkin.Chip(ChipText(left.Kind), left.Kind == LeftOutKind.NotYet ? ClaudiaSkin.ChipKind.Danger : ClaudiaSkin.ChipKind.Attention);
                     GUILayout.Label((left.Tickable ? "" : left.Title + " — ") + left.Reason, ClaudiaSkin.Secondary);
