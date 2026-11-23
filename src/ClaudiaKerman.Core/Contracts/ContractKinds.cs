@@ -91,9 +91,8 @@ namespace ClaudiaKerman.Core.Contracts
         public const string PartTest = "PartTest";
         public const string DepthNotYet = "not yet: depth records (underwater) aren't planned yet";
         public const string RecordAwayNotYet = "not yet: records over other bodies aren't planned yet";
+        public const string UnknownBodyNotYet = "not yet: the Contract's body isn't one Claudia knows";
         public const string AwayHopNotYet = "not yet: hops over other bodies aren't planned yet";
-        /// <summary>The launch body's index in the game's body list, as a part test's <c>body</c> setting names it: Kerbin, in the stock system.</summary>
-        public const string HomeIndex = "1";
 
         private static readonly Dictionary<string, ContractReach> Reaches = new Dictionary<string, ContractReach>
         {
@@ -205,6 +204,9 @@ namespace ClaudiaKerman.Core.Contracts
             // #1260: the game saves the body by its index ("1"); a name passes through as it is.
             var saved = Setting(requirement, "targetBody");
             var body = saved.Length == 0 ? "" : BodyAt(saved) ?? saved;
+            int index;
+            if (body == saved && int.TryParse(saved, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out index))
+                return NotYet(one, UnknownBodyNotYet);
             ContractReach reach;
             string reason;
             if (type == "REACHSPACE") return body != home ? NotYet(one, AwayHopNotYet) : Hop(one, home, new HopBand { AboveAir = true });

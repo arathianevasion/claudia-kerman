@@ -88,8 +88,9 @@ namespace ClaudiaKerman.Core.Contracts
 
         /// <summary>
         /// #1260: a waypoint's flight band, as the game saves it: a number, the value of KSP's <c>FinePrint.Utilities.FlightBand</c>
-        /// enum (NONE 0, GROUND 1, LOW 2, HIGH 3; the Career Test capture of 2026-11-14 saves a HIGH survey's waypoints as <c>band = 3</c>),
-        /// or its name. An unknown number stays as written, for the "not yet" line.
+        /// enum in its declared order (NONE 0, GROUND 1, LOW 2, HIGH 3), or its name. Only HIGH = 3 is confirmed in game so far: the Career
+        /// Test capture of 2026-11-14 saves a HIGH survey's waypoints as <c>band = 3</c>. Any other number stays as written, for the
+        /// "not yet" line.
         /// </summary>
         private static string Band(string saved)
         {

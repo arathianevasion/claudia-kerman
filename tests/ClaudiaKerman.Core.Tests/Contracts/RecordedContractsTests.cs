@@ -47,6 +47,18 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("orbit Kerbin", read.Words);
         }
 
+        [Fact]
+        public void AnExplorationBodyIndexBeyondTheStockSystemIsNotYet()
+        {
+            var contract = Recorded("ExplorationContract-e087d8d1-ut789.json");
+            contract.Requirements[0].Settings = contract.Requirements[0].Settings
+                .Select(s => s.Name == "targetBody" ? new ContractSetting("targetBody", "17") : s).ToList();
+
+            var read = Assert.Single(ContractKinds.Read(contract, "Kerbin"));
+
+            Assert.Equal("not yet: the Contract's body isn't one Claudia knows", read.NotYet);
+        }
+
         [Theory]
         [InlineData("1")]
         [InlineData("Kerbin")]
