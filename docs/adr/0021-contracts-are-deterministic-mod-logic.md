@@ -13,3 +13,9 @@ We rejected letting Claudia read the Contracts and plan them herself: the settin
 ## Claudia's copy of the snapshot
 
 Claudia's per-turn Game Snapshot does not carry raw accepted Contracts; she gets the Contract Route section instead (#1022). Only the recording form carries them. Reversing it is a one-line change in the snapshot's non-recording form.
+
+## Who changes the Chosen Contracts, and when
+
+The player changes the Chosen Contracts only before the Mission starts, and the Mission starts at Approval of its first Mission Plan. Until then the folded Contract Check reopens with "Change Contracts", from the card and beside a Craft Check finding of a delta-v shortfall (not while the Craft Check's request is out). It reopens on the player's current ticks, with the Contracts and the craft read afresh. Reopening sets aside the Craft Check result and any proposed Mission Plan for the old set, and Plan these checks the new set. Once the Mission has started, only Claudia's revised Mission Plans drop a Contract, and only one the watch found can't complete (#1025). A player who wants a different set in flight takes control or ends the Mission and starts a new one, whose Contract Check is priced from where the craft is. Decided in grilling on 2026-11-23, after the player couldn't drop a Contract that made the Craft Check fail.
+
+We rejected letting the player untick a Chosen Contract in flight, with the drop taken at the next Debrief: that changes the Mission Goal of a running Mission from a card, and the player already has a deliberate way to do that (a new Mission). We rejected fixing the set when the Craft Check passes: the proposed Mission Plan is where the player first sees what the set costs, and nothing has flown before Approval.
