@@ -1,0 +1,186 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Question: where does "Change Contracts" sit on the folded Contract Check, and what does it say?
+  Three variants (?variant=A|B|C), each stepped through five states (?state=1..5). Colours are ClaudiaSkin's.
+  Data: the 2026-11-23 Career Test flight. Decisions behind it: ADR 0021, "Who changes the Chosen Contracts, and when".
+  Open by double-clicking. Not product code; lives on branch prototype/contract-check-reopen only.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contract Check reopen</title>
+<style>
+  :root {
+    --win:#1b2024; --raised:#20262b; --bar:#252b30; --card:#232a2f; --cardhead:#2a3238; --input:#15191c;
+    --border:#3d464e; --borderstrong:#4a545c; --text:#dfe4e8; --text2:#98a3ad; --muted:#8a96a0;
+    --accent:#b8d94a; --onaccent:#1a1f10; --claudia:#6cbcf0; --infofill:#1f3342; --infotext:#8fcdf4;
+    --att:#f2b04e; --attfill:#2a2720; --attborder:#5a4a2c; --ok:#c9e66a; --danger:#f19a8e; --dangerborder:#6a3b36;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#0e1113; color:var(--text); font:14px/1.45 -apple-system, "Segoe UI", sans-serif; padding:24px 16px 120px; }
+  .window { max-width:620px; margin:0 auto; background:var(--win); border:1px solid var(--borderstrong); border-radius:6px; overflow:hidden; }
+  .title { background:var(--bar); padding:8px 12px; font-weight:600; display:flex; justify-content:space-between; align-items:center; }
+  .title small { color:var(--muted); font-weight:400; }
+  .log { padding:12px; display:flex; flex-direction:column; gap:10px; }
+  .kind { font-size:11px; letter-spacing:.06em; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:5px; padding:10px 12px; }
+  .card.claudia { border-left:3px solid var(--claudia); }
+  .card.blocker { border-color:var(--dangerborder); }
+  .card.warn { border-color:var(--attborder); background:var(--attfill); }
+  .row { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .secondary { color:var(--text2); }
+  .muted { color:var(--muted); font-size:12px; }
+  .bold { font-weight:600; }
+  button { font:inherit; border-radius:4px; cursor:pointer; padding:5px 12px; }
+  .btn-primary { background:var(--accent); color:var(--onaccent); border:1px solid var(--accent); font-weight:600; }
+  .btn-secondary { background:var(--raised); color:var(--text); border:1px solid var(--borderstrong); }
+  .btn-link { background:none; border:none; color:var(--claudia); padding:0; text-decoration:underline; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .chip { display:inline-block; font-size:11px; padding:1px 7px; border-radius:9px; border:1px solid var(--attborder); color:var(--att); }
+  .chip.ok { border-color:#5e7a2a; color:var(--ok); }
+  .chip.danger { border-color:var(--dangerborder); color:var(--danger); }
+  .tick { display:flex; gap:8px; align-items:flex-start; padding:5px 0; }
+  .box { width:18px; height:18px; flex:none; border:1px solid var(--borderstrong); border-radius:3px; background:var(--input); margin-top:1px; display:grid; place-items:center; font-size:12px; }
+  .box.on { background:var(--accent); border-color:var(--accent); color:var(--onaccent); }
+  .tick label { cursor:pointer; }
+  .plans { display:flex; gap:8px; margin-top:10px; }
+  .strip { background:var(--bar); border-bottom:1px solid var(--border); padding:7px 12px; display:flex; align-items:center; gap:10px; }
+  .strip .grow { flex:1; }
+  .finding-fix { margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .chev { display:inline-block; width:12px; color:var(--muted); }
+  .clickable { cursor:pointer; }
+  .clickable:hover { background:var(--cardhead); }
+  .note { max-width:620px; margin:14px auto 0; color:var(--muted); font-size:12px; }
+  .state { max-width:620px; margin:10px auto 0; font:12px/1.4 ui-monospace, Menlo, monospace; color:var(--text2); background:var(--input); border:1px solid var(--border); border-radius:4px; padding:8px 10px; white-space:pre-wrap; }
+  .switcher { position:fixed; left:50%; bottom:14px; transform:translateX(-50%); background:#0b0d0f; border:1px solid var(--borderstrong); border-radius:8px; padding:8px 10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:center; max-width:calc(100vw - 32px); box-shadow:0 6px 24px #0008; }
+  .switcher .grp { display:flex; gap:4px; align-items:center; }
+  .switcher button { padding:3px 9px; font-size:12px; background:var(--raised); color:var(--text); border:1px solid var(--border); }
+  .switcher button.cur { background:var(--accent); color:var(--onaccent); border-color:var(--accent); }
+  .switcher span { color:var(--muted); font-size:11px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="note" id="note"></div>
+<div class="state" id="state"></div>
+<div class="switcher" id="switcher"></div>
+<script>
+const CONTRACTS = [
+  { guid:"e087d8d1", title:"Escape the atmosphere!", detail:"Kerbin hop · met on the way up" },
+  { guid:"9f444a7c", title:"Conduct gravimetric surveys of The Mun.", detail:"Mun · 3 waypoints from orbit" },
+  { guid:"3d6a6efb", title:"Orbit Kerbin!", detail:"Kerbin orbit" },
+];
+const LEFT_OUT = { title:'Haul RT-10 "Hammer" Solid Fuel Booster into flight above Kerbin.', reason:"this craft can't: the part solidBooster.v2 isn't on the craft" };
+const NEW_SINCE = { guid:"7b21c0aa", title:"Plant a flag on Minmus.", detail:"Minmus · accepted since Plan these" };
+
+const STATES = {
+  1:"Plan these pressed · Craft Check running",
+  2:"Craft Check failed: delta-v short",
+  3:"Change Contracts pressed · card reopened on current ticks",
+  4:"Craft Check passed · Mission Plan proposed, awaiting Approval",
+  5:"Approval given · Mission started (in flight)",
+};
+const params = new URLSearchParams(location.search);
+let variant = params.get("variant") || "A";
+let state = +(params.get("state") || 1);
+let ticks = { e087d8d1:true, "9f444a7c":true, "3d6a6efb":true, "7b21c0aa":false };
+
+function go(v, s) {
+  variant = v; state = s;
+  const p = new URLSearchParams({ variant, state }); history.replaceState(null, "", "?" + p);
+  render();
+}
+
+const chosen = () => CONTRACTS.filter(c => ticks[c.guid]).length;
+const changeLabel = { A:"Change Contracts", B:"Change", C:"Change Contracts" };
+const reopenEnabled = () => state === 2 || state === 4;
+const running = () => state === 1;
+const flying = () => state === 5;
+
+function folded(v) {
+  const summary = `${chosen()} of 4 Contracts · route 4,974 m/s of 7,848 · reserve 746 (15%)`;
+  if (flying()) {
+    const fixed = `<div class="muted">The Contracts are fixed for this Mission; start a new Mission to change them.</div>`;
+    if (v === "C") return "";
+    return card(`<div class="kind">Contract Check (the mod, no Claude)</div><div class="secondary">${summary}</div>${fixed}`);
+  }
+  const btn = `<button class="${v==='A'?'btn-secondary':'btn-link'}" ${running()?'disabled title="Waiting for the Craft Check"':''} onclick="go('${v}',3)">${changeLabel[v]}</button>`;
+  if (v === "A") return card(`<div class="kind">Contract Check (the mod, no Claude)</div>
+      <div class="row"><span class="secondary">${summary}</span>${btn}</div>
+      ${running()?'<div class="muted">Change Contracts is back once the Craft Check ends.</div>':''}`);
+  if (v === "B") return `<div class="card clickable" ${running()?'':`onclick="go('B',3)"`}>
+      <div class="kind">Contract Check (the mod, no Claude)</div>
+      <div class="row"><span class="secondary"><span class="chev">▸</span>${summary}</span>
+      <span class="muted">${running()?'locked while checking':'Change ▸'}</span></div></div>`;
+  return "";
+}
+
+function strip(v) {
+  if (v !== "C") return "";
+  if (flying()) return `<div class="strip"><span class="chip ok">Contracts 3 · fixed</span><span class="grow muted">Start a new Mission to change them.</span></div>`;
+  return `<div class="strip"><span class="chip">Contracts ${chosen()}/4</span><span class="grow muted">${CONTRACTS.filter(c=>ticks[c.guid]).map(c=>c.title.split(/[.!]/)[0]).join(" · ")}</span>
+    <button class="btn-secondary" ${running()?'disabled':''} onclick="go('C',3)">${changeLabel.C}</button></div>`;
+}
+
+function craftCheck(v) {
+  if (state === 1) return card(`<div class="kind">Craft Check · Claudia</div><div class="secondary">Checking the craft against Escape the atmosphere!, the Mun surveys and Orbit Kerbin… <span class="muted">(about 30 s)</span></div>`, "claudia");
+  if (state === 2) {
+    const fixBtn = v === "A" ? `<button class="btn-secondary" onclick="go('A',3)">Change Contracts</button>`
+      : v === "B" ? `<button class="btn-link" onclick="go('B',3)">Drop a Contract →</button>`
+      : `<span class="muted">Use Change Contracts above.</span>`;
+    return card(`<div class="kind">Craft Check · Claudia</div>
+      <div class="row"><span class="bold">Blocker</span><span class="chip danger">delta_v_short</span></div>
+      <div class="secondary">Route 7,220 m/s, 8,303 with the 15% margin, against 7,848 on the craft: about 455 m/s short. The Mun surveys' three passes need 1,240 of it.</div>
+      <div class="finding-fix"><span class="muted">Fix: add ~460 m/s of stages, or plan fewer Contracts.</span>${fixBtn}</div>`, "blocker");
+  }
+  if (state === 4) return card(`<div class="kind">Mission Plan · Claudia</div><div class="secondary">Ascent to 80 km, through space on the way up (Escape the atmosphere!), orbit Kerbin, transfer to the Mun, three gravimetric passes, return. 6 sequences, 4,974 m/s.</div>
+      <div class="plans"><button class="btn-primary">Approve</button><button class="btn-secondary">Ask for changes</button></div>`, "claudia");
+  if (state === 5) return card(`<div class="kind">Mission · Running</div><div class="secondary">Sequence 1 of 6: ascent. Escape the atmosphere! met at 70 km.</div>`, "claudia");
+  return "";
+}
+
+function openCard(v) {
+  const rows = CONTRACTS.map(c => tickRow(c)).join("");
+  const set = Object.values(ticks).filter(Boolean).length;
+  return card(`<div class="kind">Contract Check (the mod, no Claude)</div>
+    <div class="bold">${set} of 5 Contracts · route ${set===3?'4,974':set===2?'3,734':'—'} m/s of 7,848</div>
+    <div class="muted">Your ticks from last time; the Contracts and the craft were read again just now. The Craft Check and the plan for the old set are set aside.</div>
+    ${rows}${tickRow(NEW_SINCE)}
+    <div class="bold" style="margin-top:8px">Not this flight</div>
+    <div class="secondary"><span class="chip">craft can't</span> ${LEFT_OUT.title} — ${LEFT_OUT.reason}</div>
+    <div class="plans"><button class="btn-primary" ${set?'':'disabled'} onclick="go('${v}',4)">${set?'Plan these '+set:'Pick a Contract'}</button><button class="btn-secondary" disabled title="No words typed">Plan without Contracts</button></div>`);
+}
+
+function tickRow(c) {
+  return `<div class="tick"><div class="box ${ticks[c.guid]?'on':''}" onclick="flip('${c.guid}')">${ticks[c.guid]?'✓':''}</div>
+    <label onclick="flip('${c.guid}')"><div>${c.title}</div><div class="muted">${c.detail}</div></label></div>`;
+}
+function flip(g){ ticks[g] = !ticks[g]; render(); }
+function card(inner, cls="") { return `<div class="card ${cls}">${inner}</div>`; }
+
+const NOTES = {
+  A:"A · Secondary button on the folded line, and the same button inside the shortfall finding's Fix row. Most explicit; two buttons with one name.",
+  B:"B · The folded card itself is the control (disclosure ▸), and the finding gets a link that says what you'd do: “Drop a Contract →”. Least chrome; easy to miss that it's clickable.",
+  C:"C · A Contracts strip pinned above the log, always visible until the Mission starts; the finding points to it. One place, always there; costs a permanent row.",
+};
+
+function render() {
+  const v = variant;
+  let html = `<div class="window"><div class="title">Claudia · Mission <small>Career Test · Mun survey craft</small></div>${strip(v)}<div class="log">`;
+  html += card(`<div class="kind">You</div><div>complete as many contract as possible and then return to KSC</div>`);
+  if (state === 3) html += openCard(v);
+  else { html += folded(v); html += craftCheck(v); }
+  html += `</div></div>`;
+  document.getElementById("app").innerHTML = html;
+  document.getElementById("note").textContent = NOTES[v];
+  document.getElementById("state").textContent =
+    `variant ${v} · state ${state}: ${STATES[state]}\nChange Contracts: ${flying()?'gone (Mission started)':running()?'greyed (Craft Check running)':state===3?'(card is open)':'enabled'}\nChosen Contracts: ${Object.entries(ticks).filter(e=>e[1]).map(e=>e[0]).join(', ')||'none'}`;
+  document.getElementById("switcher").innerHTML =
+    `<div class="grp"><span>Variant</span>${["A","B","C"].map(x=>`<button class="${x===v?'cur':''}" onclick="go('${x}',${state})">${x}</button>`).join("")}</div>
+     <div class="grp"><span>State</span>${[1,2,3,4,5].map(s=>`<button class="${s===state?'cur':''}" title="${STATES[s]}" onclick="go('${v}',${s})">${s}</button>`).join("")}</div>`;
+}
+render();
+</script>
+</body>
+</html>
