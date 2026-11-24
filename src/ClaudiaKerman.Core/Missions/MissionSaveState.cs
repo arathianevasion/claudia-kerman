@@ -108,6 +108,8 @@ namespace ClaudiaKerman.Core.Missions
         public string RunEvents = "";
         /// <summary>Game time the current or last run began, s of UT; 0 in older saves.</summary>
         public double RunStartUt;
+        /// <summary>#1343: the UT of the survey's first Sequence Plan at its body; 0 before it.</summary>
+        public double SurveyStartUt;
         /// <summary>#867: the bodies the current or last run's <c>transfer_to</c> calls aimed at, comma-separated; "" for none and in older saves.</summary>
         public string RunTransfers = "";
         /// <summary>#871: the current or last run's Sequence Plan name and intent; "" for none and in older saves.</summary>
@@ -226,6 +228,7 @@ namespace ClaudiaKerman.Core.Missions
             if (Crossings.Length > 0) values["crossings"] = Crossings;
             if (RunEvents.Length > 0) values["runEvents"] = RunEvents;
             if (RunStartUt != 0) values["runStartUt"] = RunStartUt.ToString("R", CultureInfo.InvariantCulture);
+            if (SurveyStartUt != 0) values["surveyStartUt"] = SurveyStartUt.ToString("R", CultureInfo.InvariantCulture);
             if (RunTransfers.Length > 0) values["runTransfers"] = RunTransfers;
             if (RunWords.Length > 0) values["runWords"] = RunWords;
             if (CrewDeaths.Length > 0) values["crewDeaths"] = CrewDeaths;
@@ -349,6 +352,8 @@ namespace ClaudiaKerman.Core.Missions
             };
             double runStart;
             if (double.TryParse(Get(values, "runStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out runStart)) state.RunStartUt = runStart;
+            double surveyStart;
+            if (double.TryParse(Get(values, "surveyStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out surveyStart)) state.SurveyStartUt = surveyStart;
             state.RunTransfers = Get(values, "runTransfers");
             state.RunWords = Get(values, "runWords");
             state.CrewDeaths = Get(values, "crewDeaths");

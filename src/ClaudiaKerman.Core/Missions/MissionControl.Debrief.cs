@@ -609,6 +609,13 @@ namespace ClaudiaKerman.Core.Missions
                 });
                 return;
             }
+            // #1343: orbital survey waypoints still open: the next Survey Plane, or the Contract dropped when no window fits the cap.
+            var survey = SurveyTurn(mission, debrief.Outcome == "Off-Nominal");
+            if (survey != null)
+            {
+                Begin(survey);
+                return;
+            }
             // #1306: a Requirement open at the craft's body is retried first, or its Contract dropped once a stop says so.
             var retry = RetryTurn(mission, debrief.Outcome == "Off-Nominal");
             if (retry != null)
@@ -648,6 +655,11 @@ namespace ClaudiaKerman.Core.Missions
         public const string RevisedPlanAfterOffNominal =
             "The Debrief was Off-Nominal and you proposed a revised Mission Plan. Write it now, with the sequences already flown first, "
             + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs.";
+
+        /// <summary>#1343: no other Survey Plane fits the survey's cap.</summary>
+        public const string RevisedPlanDroppingSurvey =
+            "No room for another Survey Plane: revise the Mission Plan now to drop the survey's Contract, with the sequences already flown first, "
+            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs, under Auto Mode too.";
 
         /// <summary>#1306: a stop ended the retries of an open Contract Requirement.</summary>
         public const string RevisedPlanDroppingContract =
