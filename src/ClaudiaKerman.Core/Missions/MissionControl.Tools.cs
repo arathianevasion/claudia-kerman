@@ -68,10 +68,10 @@ namespace ClaudiaKerman.Core.Missions
             return tools;
         }
 
-        /// <summary>#1308: the orbital survey waypoints of the Mission's Chosen Contracts; empty with none chosen or none surveyed from orbit.</summary>
+        /// <summary>#1308: the orbital and ground survey waypoints of the Mission's Chosen Contracts; empty with none chosen or none surveyed.</summary>
         private static List<ClaudiaKerman.Core.Contracts.SurveyWaypoint> SurveyWaypointsOf(Mission mission)
         {
-            return mission.ChosenRequirements.Select(r => r.Waypoint).Where(SurveyScheduleTool.IsOrbital).ToList();
+            return mission.ChosenRequirements.Select(r => r.Waypoint).Where(w => SurveyScheduleTool.IsOrbital(w) || SurveyScheduleTool.IsGround(w)).ToList();
         }
 
         /// <summary>
@@ -94,7 +94,7 @@ namespace ClaudiaKerman.Core.Missions
                     ? "not available during an Alert; propose_mission_plan is only for a request that asks for a Mission Plan"
                     : "not available during an Alert";
             if (tool == SurveyScheduleTool.ToolName && (snapshot == null || snapshot.SurveyWaypoints.Count == 0))
-                return "not offered: no Chosen Contract is a survey with a waypoint to take from orbit";
+                return "not offered: no Chosen Contract is a survey with a waypoint to take from orbit or landed";
             if (tool == ProposedPlans.ToolName && !TakesMissionPlan(purpose))
                 return "this request doesn't ask for a Mission Plan; propose_mission_plan is only for a request that asks for a Mission Plan, so reply with the kind the mod asked for";
             var where = snapshot != null ? Grounded(snapshot.Situation) : null;

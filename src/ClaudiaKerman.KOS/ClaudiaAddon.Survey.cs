@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System.Linq;
 using ClaudiaKerman.Adapter;
 using ClaudiaKerman.Core.Contracts;
 using kOS.Safe.Encapsulation;
@@ -19,7 +20,7 @@ namespace ClaudiaKerman.KOS
         private void AddSurveySuffixes()
         {
             AddSuffix("SURVEYSCHEDULE", new NoArgsSuffix<ListValue>(SurveyScheduleNow,
-                "The Survey Schedule: a list in flying order of lexicons waypoint, lat, lng, ut, altitude, out_of_band, unreachable, reaching_inclination"));
+                "The Survey Schedule: a list in flying order of lexicons waypoint, lat, lng, ut, altitude, out_of_band, unreachable, reaching_inclination; then a ground survey's sites in landing order with landing, needs_precision"));
         }
 
         private ListValue SurveyScheduleNow()
@@ -42,7 +43,9 @@ namespace ClaudiaKerman.KOS
                 new SurveyOrbit { Track = track, Period = orbit.period, Inclination = orbit.inclination }, now,
                 SurveyWaypointReader.Orbital(body.bodyName), SurveyWaypointReader.TriggerRange());
             var list = new ListValue();
-            foreach (var pass in schedule)
+            // #1311: a ground survey's sites follow the passes, in landing order: landing (1 is landed on with land, each next flown to with site_hop) and needs_precision.
+            var sites = SurveySchedule.Ground(new SurveyBody { Radius = body.Radius }, SurveyWaypointReader.Ground(body.bodyName));
+            foreach (var pass in schedule.Concat(sites))
             {
                 var line = new Lexicon();
                 line.Add(new StringValue("waypoint"), new StringValue(pass.Waypoint.Where()));
@@ -53,6 +56,11 @@ namespace ClaudiaKerman.KOS
                 line.Add(new StringValue("out_of_band"), new StringValue(pass.OutOfBand));
                 line.Add(new StringValue("unreachable"), new BooleanValue(pass.Unreachable));
                 if (pass.ReachingInclination.HasValue) line.Add(new StringValue("reaching_inclination"), ScalarValue.Create(pass.ReachingInclination.Value));
+                if (pass.Landing > 0)
+                {
+                    line.Add(new StringValue("landing"), ScalarValue.Create(pass.Landing));
+                    line.Add(new StringValue("needs_precision"), new BooleanValue(pass.NeedsPrecision));
+                }
                 list.Add(line);
             }
             return list;

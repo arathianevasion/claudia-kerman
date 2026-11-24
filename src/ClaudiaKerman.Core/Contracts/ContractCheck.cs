@@ -931,6 +931,7 @@ namespace ClaudiaKerman.Core.Contracts
                 text.Append('\n');
             }
             if (route.Waypoints.Any(w => !w.Ground)) text.Append(MissionPrompts.SurveyScheduleNote).Append('\n');
+            if (route.Waypoints.Any(w => w.Ground)) text.Append(MissionPrompts.SurveyLandingNote).Append('\n');
             text.Append("The Contracts:\n");
             foreach (var planned in set)
             {

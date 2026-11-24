@@ -131,6 +131,46 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AGroundSurveysSitesComeBackInLandingOrderWithNeedsPrecisionMarked()
+        {
+            var a = Waypoint("a", 0, 0); a.Ground = true; a.Radius = 2000;
+            var b = Waypoint("b", 0, 40); b.Ground = true; b.Radius = 9000;
+            var c = Waypoint("c", 0, 10); c.Ground = true;
+            var snapshot = Snapshot(a, b, c);
+
+            var answer = Run(snapshot);
+
+            var landings = answer.GetProperty("landings").EnumerateArray().ToList();
+            Assert.Equal(new[] { "0.0° N 0.0° E", "0.0° N 10.0° E", "0.0° N 40.0° E" }, landings.Select(l => l.GetProperty("waypoint").GetString()).ToArray());
+            Assert.Equal(new[] { 1, 2, 3 }, landings.Select(l => l.GetProperty("landing").GetInt32()).ToArray());
+            Assert.Equal(new[] { true, false, false }, landings.Select(l => l.GetProperty("needs_precision").GetBoolean()).ToArray());
+            Assert.Equal(0, answer.GetProperty("passes").GetArrayLength());
+        }
+
+        [Fact]
+        public void AMixedSurveyStillGivesItsLandingsWhenTheCraftHasNoOrbit()
+        {
+            var ground = Waypoint("g", 1, 5); ground.Ground = true;
+            var snapshot = Snapshot(Waypoint("a", 3, 10), ground);
+            snapshot.Orbit = null;
+
+            var answer = Run(snapshot);
+
+            Assert.Equal(1, answer.GetProperty("landings").GetArrayLength());
+            Assert.Equal(0, answer.GetProperty("passes").GetArrayLength());
+        }
+
+        [Fact]
+        public void AGroundSurveyAlongsideAnOrbitalOneGivesBothInTheSameAnswer()
+        {
+            var ground = Waypoint("g", 1, 5); ground.Ground = true;
+            var answer = Run(Snapshot(Waypoint("a", 3, 10), ground));
+
+            Assert.Equal(1, answer.GetProperty("passes").GetArrayLength());
+            Assert.Equal(1, answer.GetProperty("landings").GetArrayLength());
+        }
+
+        [Fact]
         public void TheToolSaysSoWhenNoChosenSurveyHasAWaypointFromOrbitOverTheBody()
         {
             var outcome = PlanningTools.Default().Run("survey_schedule", "{}", Snapshot(), new Game());
@@ -213,12 +253,12 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void AGroundSurveyGetsARequestWithoutTheTool()
+        public void AGroundSurveyGetsARequestWithTheTool()
         {
             var ground = Waypoint("g", 3, 10);
             ground.Ground = true;
 
-            Assert.DoesNotContain("survey_schedule", RequestToolNames(Requirement(ground)));
+            Assert.Contains("survey_schedule", RequestToolNames(Requirement(ground)));
         }
 
         // ---- the docs ----
@@ -232,6 +272,18 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("quote the pass times, the total wait", note);
             Assert.Contains("each unreachable waypoint", note);
             Assert.Contains("set its expected duration from them", note);
+        }
+
+        [Fact]
+        public void ClaudiasDocsTellHerToLandAtTheFirstSiteThenSiteHopToEachNextInOrderWithScienceAtEach()
+        {
+            var note = MissionPrompts.SurveyLandingNote;
+
+            Assert.Contains("land at the first site with land", note);
+            Assert.Contains("site_hop", note);
+            Assert.Contains("in landing order", note);
+            Assert.Contains("science", note);
+            Assert.Contains("needs_precision", note);
         }
     }
 }

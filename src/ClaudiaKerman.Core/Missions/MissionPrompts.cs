@@ -349,11 +349,20 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public const string SurveyScheduleNote = "Survey passes: in the survey leg's script, once in the survey orbit, ADDONS:CLAUDIA:SURVEYSCHEDULE() "
             + "gives the mod's Survey Schedule for the craft's orbit: a list, in flying order, of lexicons with waypoint (\"3.0° N 10.0° E\"), ut, "
-            + "altitude, out_of_band (the Band the pass is outside, e.g. \"below 10 km\" for a pass higher than that; \"\" if inside) and unreachable (with reaching_inclination); a line with no ut has no pass. Coast to each "
+            + "altitude, out_of_band (the Band the pass is outside, e.g. \"below 10 km\" for a pass higher than that; \"\" if inside) and unreachable (with reaching_inclination); a line with no ut has no pass, unless it has a landing number (see Survey landings). Coast to each "
             + "pass's ut and run science there; don't work out the ground track yourself. Put each pass in the Script Result, and report each "
             + "waypoint you skip: each \"unreachable\" one with the inclination that would reach it, and any with no ut. "
             + "While you write the survey's Sequence Plan, the survey_schedule tool gives you the same schedule: quote the pass times, the total wait "
             + "(total_wait_s) and each unreachable waypoint in the plan, and set its expected duration from them (the wait plus the passes' own time).";
+
+        /// <summary>
+        /// #1311: in the Contract Route when a chosen survey has waypoints taken landed: the Survey Schedule gives their landing order, and the
+        /// leg lands at the first with <c>land</c> and flies <c>site_hop</c> to each next.
+        /// </summary>
+        public const string SurveyLandingNote = "Survey landings: the survey_schedule tool (and ADDONS:CLAUDIA:SURVEYSCHEDULE() in a script; its lines with a landing number) "
+            + "gives the landed sites in landing order, each with needs_precision. Plan the leg to land at the first site with land, then fly site_hop to each next site in landing order, "
+            + "running the science block with the survey's experiment at each (a site on EVA is the player's Manual stretch there). "
+            + "A site marked needs_precision has a Contract radius tighter than land's aim of about 5 km: say so in the plan; don't promise it.";
 
         /// <summary>Added to the Debrief notice when a science call kept data on board (#612): steers the next leg to a transmit-only call.</summary>
         public const string ScienceKeptNoticeLine = " The data is aboard; sending it needs no new landing.";
