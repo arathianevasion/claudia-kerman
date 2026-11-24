@@ -94,7 +94,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void APassIsMeasuredAlongTheGroundSoAFiveWaypointSurveyFrom30KmCountsEveryPass()
         {
-            // #1340: the 24 Nov playtest: a 30 km orbit at 20° got "0 passes"; a slant distance is never under the altitude, the 15 km range is.
+            // #1340: the 24 Nov playtest: a 30 km orbit at 20° got "0 passes"; a straight-line distance is never under the 30 km altitude, so it never came within the 15 km range.
             var orbit = new CircularOrbit(30000, 20, 30, 0);
             var waypoints = new[] { "10.0,58.2", "12.5,12.5", "7.1,6.0", "13.2,4.2", "19.2,0.7" }.Select((w, i) => Waypoint(i, w)).ToList();
 
