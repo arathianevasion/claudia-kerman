@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Config;
+using ClaudiaKerman.Core.Contracts;
 using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Ui;
@@ -2198,6 +2199,14 @@ namespace ClaudiaKerman.Core.Missions
             {
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, LandingLine.NoCorrectionNotice);
+            }
+            // #1305: so does a Requirement the leg was meant to meet that the game shows unmet; the rebuilt log finds the rule in the request.
+            var missed = mission.RequirementMissed;
+            mission.RequirementMissed = false;
+            if (missed && nominal)
+            {
+                debrief.Outcome = "Off-Nominal";
+                Note(LogKind.Notice, ContractWatch.OffNominalNotice);
             }
             SaveRating(mission, messages, telemetryRated, noCorrection && nominal);
             // Ticking twice is harmless: a Debrief already in a log rebuilt from the transcript has ticked them once.
