@@ -30,6 +30,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             /// <summary>#1022: the player's own words of a Mission started from the Contract check card; "" when it wasn't.</summary>
             public string ContractWords = "";
+            /// <summary>#1285: the Chosen Contracts the Mission started on, kept until its first Mission Plan is approved so Change Contracts can reopen them; null when none were chosen (not saved).</summary>
+            public ContractChoice Chosen;
             /// <summary>#1022: the Contract Route section of its first request; "" with no Contracts chosen.</summary>
             public string ContractRoute = "";
             /// <summary>#1024: the Contract Requirements the player chose; the plan proposal is checked against them. Empty with none chosen.</summary>
@@ -239,6 +241,16 @@ namespace ClaudiaKerman.Core.Missions
             Start(start);
         }
 
+        /// <summary>#1285: the Mission hasn't had its first Approval (the player's, or any Auto Mode gives): its Contracts can still change.</summary>
+        private static bool BeforeFirstApproval(Mission mission)
+        {
+            return !mission.MissionPlanApproved && mission.SequencesProposed == 0
+                && (mission.Stage == MissionStage.WaitingForFlight || mission.Stage == MissionStage.Planning || mission.Stage == MissionStage.AwaitingPlanApproval);
+        }
+
+        /// <summary>#1285: what the folded line says once the Mission's first Mission Plan is approved.</summary>
+        private const string FixedLine = "The Contracts are fixed for this Mission; start a new Mission to change them.";
+
         /// <summary>#1284: why "Change Contracts" is greyed while the Craft Check's request is out.</summary>
         private const string ChangeWaits = "The Craft Check's request is out; Change Contracts waits for its verdict.";
 
@@ -249,7 +261,11 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private void ContractsChanged()
         {
-            var refusal = !MissionOver ? "the Mission has started" : _folded == null ? "no Contracts are chosen"
+            var mission = _mission;
+            var onMission = !MissionOver;
+            // #1285: the Contracts are fixed from the first Approval on; until then a Mission's proposed plan can still be withdrawn.
+            var chosen = onMission ? (BeforeFirstApproval(mission) ? mission.Chosen : null) : _folded;
+            var refusal = onMission && !BeforeFirstApproval(mission) ? "the Mission has started" : chosen == null ? "no Contracts are chosen"
                 : _craftCheck.Running ? "the Craft Check's request is out; wait for its verdict"
                 : _snapshot == null || _snapshot.Contracts == null || _snapshot.Contracts.Accepted.Count == 0 ? "no accepted Contracts are read now"
                 : "";
@@ -267,21 +283,39 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             var accepted = new HashSet<string>(_snapshot.Contracts.Accepted.Select(c => c.Guid));
-            var kept = _folded.Guids.Where(accepted.Contains).ToList();
+            var kept = chosen.Guids.Where(accepted.Contains).ToList();
             check.TickOnly(kept);
             var ticked = check.TickedGuids;
-            var gone = _folded.Guids.Where(g => !ticked.Contains(g)).ToList();
+            var gone = chosen.Guids.Where(g => !ticked.Contains(g)).ToList();
             LogToKsp("Change Contracts: the Contract Check reopens on the Chosen Contracts still accepted [" + string.Join(", ", ticked.ToArray()) + "]"
                 + (gone.Count > 0 ? "; chosen but not ticked now [" + string.Join(", ", gone.ToArray()) + "]" : "") + "; " + check.Headline(ticked.Count));
+            if (onMission) WithdrawMission(mission);
             _contractCheck = check;
             _reopened = true;
             _folded = null;
+        }
+
+        /// <summary>#1285: Change Contracts before the first Approval: the Mission and its proposed (or coming) Mission Plan are withdrawn, so a plan for the old set can't be approved. Its folder stays as history, marked ended.</summary>
+        private void WithdrawMission(Mission mission)
+        {
+            mission.Stage = MissionStage.Ended;
+            try
+            {
+                MissionFolder.WriteEnded(mission.Folder, mission.Id, "Withdrawn");
+            }
+            catch (Exception e) when (IsFileError(e))
+            {
+                // Withdrawn in memory all the same; the folder just lacks the marker.
+            }
+            DropFinished(mission);
+            LogToKsp("Change Contracts: Mission " + mission.Id + " withdrawn before its first Approval.");
         }
 
         /// <summary>A Mission starting from the card: its words, its Contract Route and the card's line in its transcript.</summary>
         private void TakeContracts(Mission mission, StartMission start)
         {
             if (start.Contracts == null || start.Contracts.Guids.Count == 0) return;
+            mission.Chosen = start.Contracts;
             mission.ContractWords = start.Contracts.Words;
             mission.ContractRoute = start.Contracts.Section;
             mission.ChosenRequirements = start.Contracts.Requirements;
@@ -300,6 +334,11 @@ namespace ClaudiaKerman.Core.Missions
 
         private ContractCheckView ContractCheckView()
         {
+            // #1285: once the Mission is approved the Contracts are fixed: the line says so, in place of the button.
+            if (!MissionOver && !BeforeFirstApproval(_mission) && (_mission.Chosen != null || _mission.ChosenRequirements.Count > 0))
+                return new ContractCheckView { Folded = true, Summary = _mission.Chosen != null ? _mission.Chosen.Summary : "", FixedNote = FixedLine };
+            if (!MissionOver && _mission.Chosen != null)
+                return new ContractCheckView { Folded = true, Summary = _mission.Chosen.Summary, ChangeOffered = true, CanChange = !_craftCheck.Running, ChangeNote = _craftCheck.Running ? ChangeWaits : "" };
             if (_folded != null && MissionOver)
                 return new ContractCheckView { Folded = true, Summary = _folded.Summary, ChangeOffered = true, CanChange = !_craftCheck.Running, ChangeNote = _craftCheck.Running ? ChangeWaits : "" };
             var check = _contractCheck;

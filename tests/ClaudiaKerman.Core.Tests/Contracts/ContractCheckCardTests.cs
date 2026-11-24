@@ -298,7 +298,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("(phase: Mun)", text);
             Assert.Contains("not yet: low-flying surveys need an aircraft over the waypoint", text);
             // The card folds to its one line, which stays in the Mission's transcript.
-            Assert.Null(mission.View.ContractCheck);
+            Assert.True(mission.View.ContractCheck.Folded);
             Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal));
         }
 
@@ -840,18 +840,74 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("Ticked Contracts are the ones you chose. A click leaves one out, or adds it back.", mission.View.ContractCheck.TickNote);
         }
 
-        [Fact]
-        public void APressAfterTheMissionHasStartedIsRefusedSayingSo()
+        // ---- #1285: the Contracts are fixed once the Mission starts; until then reopening withdraws a proposed Mission Plan ----
+
+        private MissionControl ProposedOnTheChosenContracts()
         {
             var mission = Control(TwoAtTheMunAndAHaul());
             mission.Send(Start(""));
             mission.Send(new PlanContracts());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.TakeCommands();
+            return mission;
+        }
+
+        [Fact]
+        public void WithTheFirstMissionPlanProposedChangeContractsIsOfferedAndPressingItWithdrawsThePlanSoItCantBeApproved()
+        {
+            var mission = ProposedOnTheChosenContracts();
+            var line = mission.View.ContractCheck;
+            Assert.True(line.Folded);
+            Assert.True(line.ChangeOffered);
+            Assert.Equal("", line.FixedNote);
+            var requests = Requests;
+
+            mission.Send(new ChangeContracts());
+
+            Assert.Equal(MissionStage.None, mission.View.Stage);
+            Assert.False(mission.View.ContractCheck.Folded);
+            Assert.NotEmpty(mission.View.ContractCheck.Rows);
+            Assert.Equal("Ticked Contracts are the ones you chose. A click leaves one out, or adds it back.", mission.View.ContractCheck.TickNote);
+            mission.Send(new Approve());
+            Assert.Equal(MissionStage.None, mission.View.Stage);
+            Assert.Equal(requests, Requests);
+        }
+
+        [Fact]
+        public void AfterThePlayersApprovalTheViewDropsChangeContractsAndSaysTheContractsAreFixed()
+        {
+            var mission = ProposedOnTheChosenContracts();
+            mission.Send(new Approve());
+
+            var line = mission.View.ContractCheck;
+            Assert.False(line.ChangeOffered);
+            Assert.Equal("The Contracts are fixed for this Mission; start a new Mission to change them.", line.FixedNote);
+        }
+
+        [Fact]
+        public void AutoModeNeverApprovesTheFirstMissionPlanSoChangeContractsIsStillOfferedUnderIt()
+        {
+            var mission = ProposedOnTheChosenContracts();
+            mission.Send(new SetAutoMode(true));
+
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            Assert.True(mission.View.ContractCheck.ChangeOffered);
+            Assert.Equal("", mission.View.ContractCheck.FixedNote);
+        }
+
+        [Fact]
+        public void APressAfterTheMissionHasStartedIsRefusedChangesNothingAndLogsItsReason()
+        {
+            var mission = ProposedOnTheChosenContracts();
+            mission.Send(new Approve());
+            var stage = mission.View.Stage;
+            mission.TakeCommands();
 
             mission.Send(new ChangeContracts());
 
             Assert.Equal("Change Contracts pressed and refused: the Mission has started.", Assert.Single(KspLog(mission), l => l.StartsWith("Change Contracts")));
+            Assert.Equal(stage, mission.View.Stage);
+            Assert.False(mission.View.ContractCheck.ChangeOffered);
         }
 
         [Fact]
