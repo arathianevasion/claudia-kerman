@@ -883,7 +883,7 @@ namespace ClaudiaKerman.Core.Contracts
             TestProblem(set, route, windows);
             choice.Requirements = set.SelectMany(p => p.Requirements.Select(r => new ChosenRequirement
                 { Key = r.Requirement.Key, Title = p.Title, Words = r.Words, Body = r.Body, Reach = r.Reach, Return = r.Return, Test = TestOf(r, windows), Experiment = r.Experiment, Orbit = r.Orbit, ChildMay = r.ChildMay, Manual = r.Manual,
-                  AfterMission = r.AfterMission, Placement = r.Placement, Vessel = r.Target == null ? "" : r.Target.Name, RendezvousOrbit = r.RendezvousOrbit })).ToList();
+                  AfterMission = r.AfterMission, Placement = r.Placement, Vessel = r.Target == null ? "" : r.Target.Name, RendezvousOrbit = r.RendezvousOrbit, Waypoint = r.Waypoint })).ToList();
             var meet = set.FirstOrDefault(p => p.Target != null);
             if (meet != null)
             {

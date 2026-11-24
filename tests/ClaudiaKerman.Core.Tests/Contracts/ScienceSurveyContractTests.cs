@@ -269,7 +269,24 @@ namespace ClaudiaKerman.Core.Tests.Contracts
                 "Run science over the survey waypoint", "Return to Kerbin");
 
             Assert.Empty(served.Problems);
-            Assert.All(served.Record, r => Assert.Equal(1, r.Leg));
+            // #1304: the waypoint is tied to the leg that flies it, the science run; collect science near the Mun to the capture.
+            Assert.Equal(2, served.Record.Single(r => r.Key.StartsWith("c-s/", StringComparison.Ordinal)).Leg);
+            Assert.Equal(1, served.Record.Single(r => r.Key.StartsWith("c-sci/", StringComparison.Ordinal)).Leg);
+        }
+
+        [Fact]
+        public void EachSurveyWaypointIsTiedToTheLegThatFliesIt()
+        {
+            var snapshot = ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "3,10", "-5,60", "8,120"));
+
+            var served = PlanCheck(snapshot, "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit",
+                "Survey: take a crewReport over each waypoint", "Return to Kerbin");
+
+            Assert.Empty(served.Problems);
+            Assert.Equal(3, served.Record.Count);
+            Assert.All(served.Record, r => Assert.Equal(2, r.Leg));
+            Assert.NotEmpty(served.Legs[2]);
+            Assert.Empty(served.Legs[1]);
         }
 
         [Fact]
