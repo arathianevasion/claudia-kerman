@@ -1209,6 +1209,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             "local b is addons:claudia:deorbitburn(lexicon(\"lat\", 0, \"lng\", -74)).",
             "local t is addons:claudia:entrytrim(lexicon(\"to_air\", 3000)).",
             "print addons:claudia:falleta(lexicon(\"ecc\", 1.07)).",
+            "print addons:claudia:landstart(lexicon(\"situation\", \"SUB_ORBITAL\")):start.",
             "print addons:claudia:reentryimpact(lexicon()):lat.",
             "local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).",
             "print addons:claudia:predictionmiss(lexicon(\"lat\", 0, \"lng\", 0)):km.",

@@ -114,6 +114,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): at most one late trim toward the Mission's landing target, from to_air, home, dv_left, isp and has_node; lexicon as CORRECTIONBURN's, dv 0 and aim_note when none flies"));
             AddSuffix("FALLETA", new OneArgsSuffix<ScalarValue, Lexicon>(FallEtaCall,
                 "Core Library only (reentry): seconds until a closed orbit or an inbound hyperbolic path falls to r_fall, from ecc, sma, mu, r_fall, ta (degrees); 0 under it now, -1 never"));
+            AddSuffix("LANDSTART", new OneArgsSuffix<Lexicon, Lexicon>(LandStartCall,
+                "Core Library only (land, once): where land starts from (orbit, arc or fail), from situation, ecc, sma, mu, r_fall, radius, day, fall_s, end_lat, end_lng, now, descent_shape and target; lexicon start, why, end_m and an arc's plan"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
                 "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, core, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
             AddSuffix("SCIENCECHOICE", new OneArgsSuffix<Lexicon, Lexicon>(ScienceChoiceCall,
@@ -830,6 +832,16 @@ namespace ClaudiaKerman.KOS
             var answer = Guarded("FALLETA", () => ScalarValue.Create(eta = BlockCalls.FallEta(KosValues.ToDictionary(input))),
                 () => eta < 0 ? "never" : string.Format(CultureInfo.InvariantCulture, "{0:0} s", eta));
             return answer as ScalarValue ?? ScalarValue.Create(-1);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:LANDSTART</c> (#1309, ADR 0014): <see cref="BlockCalls.LandStart"/>, pure; the log line is the decision.</summary>
+        private Lexicon LandStartCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> start = null;
+            return (Lexicon)Guarded("LANDSTART", () => KosValues.FromPlain(start = BlockCalls.LandStart(KosValues.ToDictionary(input))),
+                () => (string)start["start"] == "fail" ? "fail: " + start["why"]
+                    : (string)start["start"] == "orbit" ? "orbit"
+                    : string.Format(CultureInfo.InvariantCulture, "arc ending {0:0} m from the aim", start["end_m"]));
         }
 
         /// <summary><c>ADDONS:CLAUDIA:ENTRYTRIM</c> (#892): <see cref="BlockCalls.EntryTrim"/> with this planet's air and the craft reentry flies; the log line is the decision.</summary>
