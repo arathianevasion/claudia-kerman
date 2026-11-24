@@ -464,6 +464,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (_routes.Reading.Needs.ContainsKey(body)) serves.Add(WordsTag);
                 serves.AddRange(set.Where(p => p.Requirements.Any(r => !r.Return && r.Body == body)).Select(p => p.Title));
                 legs.Add(new RouteLeg { Text = Step(body, needs[body]), Serves = serves.Distinct().ToArray() });
+                legs.AddRange(SurveyLegs(set, route, body));
             }
             if (route.HomeUt.HasValue && route.Order.Count > 0)
             {
@@ -474,6 +475,26 @@ namespace ClaudiaKerman.Core.Contracts
             }
             if (legs.Count == 0) legs.Add(new RouteLeg { Text = route.Hop.Length > 0 ? route.Hop : "reach low " + _home + " orbit", Serves = set.Select(p => p.Title).Distinct().ToArray() });
             return legs;
+        }
+
+        /// <summary>
+        /// #1304: the survey waypoints taken at <paramref name="body"/>, from orbit and then landed, each in the order flown, as route legs:
+        /// so the Mission Goal names every waypoint a chosen survey asks for.
+        /// </summary>
+        private static IEnumerable<RouteLeg> SurveyLegs(IList<Planned> set, PricedRoute route, string body)
+        {
+            foreach (var ground in new[] { false, true })
+            {
+                var at = route.Waypoints.Where(w => w.Body == body && w.Ground == ground).ToList();
+                if (at.Count == 0) continue;
+                var keys = new HashSet<string>(at.Select(w => w.Key));
+                yield return new RouteLeg
+                {
+                    Text = "survey " + at.Count + (at.Count == 1 ? " waypoint " : " waypoints ") + (ground ? "landed on " : "over ") + ContractKinds.Named(body) + " in this order: "
+                        + string.Join("; ", at.Select(w => w.Where() + (w.Eva ? " on EVA" : "")).ToArray()),
+                    Serves = set.Where(p => p.Requirements.Any(r => r.Waypoint != null && keys.Contains(r.Waypoint.Key))).Select(p => p.Title).Distinct().ToArray(),
+                };
+            }
         }
 
         private static string Step(string body, ContractReach reach)

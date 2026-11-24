@@ -169,6 +169,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AChosenSurveyYieldsOneRequirementPerWaypointAndTheRouteWordsNameEach()
+        {
+            var check = Check(ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "0,10", "0,100", "0,-170")));
+
+            var choice = check.Choose(check.TickedGuids);
+
+            Assert.Equal(3, choice.Requirements.Count);
+            Assert.All(choice.Requirements, r => Assert.NotNull(r.Waypoint));
+            Assert.Equal("orbit the Mun; survey 3 waypoints over the Mun in this order: 0.0° N 170.0° W; 0.0° N 100.0° E; 0.0° N 10.0° E; return to Kerbin", choice.RouteWords);
+            Assert.Contains("- survey 3 waypoints over the Mun in this order: 0.0° N 170.0° W; 0.0° N 100.0° E; 0.0° N 10.0° E [serves: ", choice.Section);
+        }
+
+        [Fact]
         public void TheWaitForThePassCountsAgainstTheDeadline()
         {
             // About 29,000 s to low Mun orbit; the first pass is up to half a turn of the Mun (69,492 s) later. A deadline 60,000 s out
