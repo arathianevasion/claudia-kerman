@@ -62,6 +62,18 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void TheReachingInclinationForThePlaytestsWaypointAllowsForTheTriggerRange()
+        {
+            // #1346: the 24 Nov playtest's waypoint at 19.2° N asked for 19.2° though 15 km of ground is about 4.3° of arc.
+            var orbit = new CircularOrbit(12500, 0.9, 30, 0);
+            var waypoint = Waypoint(0, "19.2,10", maxAltitude: 30000);
+
+            var schedule = SurveySchedule.For(Mun(), orbit.Survey(), Now, new List<SurveyWaypoint> { waypoint }, Range);
+
+            Assert.InRange(schedule.Single().ReachingInclination.Value, 14.8, 15.0);
+        }
+
+        [Fact]
         public void AWaypointTheOrbitCantReachIsUnreachableWithTheInclinationThatReachesIt()
         {
             var orbit = new CircularOrbit(12500, 20, 30, 0);
@@ -75,7 +87,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.True(skipped.Unreachable);
             Assert.Null(skipped.Ut);
             Assert.Null(skipped.Altitude);
-            Assert.Equal(35.5, skipped.ReachingInclination.Value, 1);
+            // #1346: a pass counts within the trigger range along the ground, so the inclination that reaches it is the latitude less that range's arc (15 km of the Mun's 200 km radius).
+            Assert.Equal(35.5 - Range / 200000 * 180 / Math.PI, skipped.ReachingInclination.Value, 3);
             Assert.False(schedule.First().Unreachable);
         }
 

@@ -69,7 +69,7 @@ namespace ClaudiaKerman.Core.Contracts
     /// #1307: the Survey Schedule of an orbital survey. Looking up to one turn of the body ahead, but listing only the passes within <see cref="PlaneWindow"/> of <c>now</c>, each waypoint's first pass: the
     /// ground track's nearest approach to it, where that comes within the survey's trigger range. The range is measured along the ground, from
     /// the point under the craft to the waypoint, so a pass counts from any orbital altitude. Passes
-    /// come in flying order; a waypoint with none follows them, "unreachable" with the inclination that reaches it where the orbit's
+    /// come in flying order; a waypoint with none follows them, "unreachable" with the inclination that reaches it (the latitude less the trigger range's arc) where the orbit's
     /// tilt can't take the track to its latitude.
     /// </summary>
     public static partial class SurveySchedule
@@ -163,9 +163,15 @@ namespace ClaudiaKerman.Core.Contracts
                 }
                 var latitude = Math.Abs(waypoint.Latitude);
                 var unreachable = latitude > reach;
-                missed.Add(new SurveyPass { Waypoint = waypoint, Unreachable = unreachable, ReachingInclination = unreachable ? latitude : (double?)null });
+                missed.Add(new SurveyPass { Waypoint = waypoint, Unreachable = unreachable, ReachingInclination = unreachable ? ReachingInclination(body.Radius, latitude, triggerRange) : (double?)null });
             }
             return passes.OrderBy(p => p.Ut.Value).Concat(missed).ToList();
+        }
+
+        /// <summary>#1346: the smallest inclination whose ground track comes within the trigger range, along the ground, of a waypoint at this latitude (degrees, north or south): the latitude less the range's arc.</summary>
+        private static double ReachingInclination(double radius, double latitude, double triggerRange)
+        {
+            return Math.Max(0, latitude - triggerRange / radius * 180 / Math.PI);
         }
 
         /// <summary>The Band a pass at this altitude misses, in words; "" inside it.</summary>

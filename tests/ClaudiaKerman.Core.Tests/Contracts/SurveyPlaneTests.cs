@@ -160,6 +160,17 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void TheSurveyPlaneForThePlaytestsWaypointAt19DegreesAllowsForTheTriggerRange()
+        {
+            // #1346: 15 km of ground is about 4.3° of arc, so a plane under 19.2° passes within the trigger range of a waypoint at 19.2° N.
+            var plane = Pick(Circular(30000, 0.9, 0, 200), Waypoints("19.2,0.7"));
+
+            Assert.NotNull(plane.Node);
+            Assert.Single(plane.Passed);
+            Assert.True(plane.Inclination < 19.2, "the Survey Plane is at " + plane.Inclination + "°");
+        }
+
+        [Fact]
         public void TheNodesOneBurnReachesTheSurveyPlane()
         {
             var orbit = Circular(30000, 0.9, 40, 200);
