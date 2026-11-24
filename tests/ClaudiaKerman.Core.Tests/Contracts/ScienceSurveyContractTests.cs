@@ -182,6 +182,26 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AChosenOrbitalSurveyTellsClaudiaToFlyTheSurveyScheduleFromOneAddonCall()
+        {
+            var check = Check(ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "0,10", "0,100", "0,-170")));
+
+            var section = check.Choose(check.TickedGuids).Section;
+
+            Assert.Contains("ADDONS:CLAUDIA:SURVEYSCHEDULE()", section);
+            Assert.Contains("Coast to each pass's ut and run science there", section);
+            Assert.Contains("report each \"unreachable\" waypoint you skip", section);
+        }
+
+        [Fact]
+        public void AGroundSurveyGetsNoSurveyScheduleCall()
+        {
+            var check = Check(ContractCheckTests.With(Survey("c-g", "2", "GROUND", "crewReport", 0, "0,0", "0,0.5729578")));
+
+            Assert.DoesNotContain("SURVEYSCHEDULE", check.Choose(check.TickedGuids).Section);
+        }
+
+        [Fact]
         public void TheWaitForThePassCountsAgainstTheDeadline()
         {
             // About 29,000 s to low Mun orbit; the first pass is up to half a turn of the Mun (69,492 s) later. A deadline 60,000 s out

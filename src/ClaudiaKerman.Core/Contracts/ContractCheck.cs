@@ -930,6 +930,7 @@ namespace ClaudiaKerman.Core.Contracts
                 if (leg.Serves.Length > 0) text.Append(" [serves: ").Append(string.Join("; ", leg.Serves.Select(t => t == WordsTag ? t : MissionPrompts.Quoted(t)).ToArray())).Append(']');
                 text.Append('\n');
             }
+            if (route.Waypoints.Any(w => !w.Ground)) text.Append(MissionPrompts.SurveyScheduleNote).Append('\n');
             text.Append("The Contracts:\n");
             foreach (var planned in set)
             {
