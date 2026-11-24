@@ -1,5 +1,5 @@
-site_hop(options): from landed, flies an arc to a site on the same body and lands there, touching down in Daylight.
-It waits on the ground, warping, until a liftoff gives a touchdown with Daylight at the site (no wait if one now would), then
+site_hop(options): from landed, flies an arc to a site on the same body and lands there.
+It waits on the ground, warping, until a liftoff gives a touchdown in Daylight at the site (no wait if one now would), then
 one burn onto the least-speed arc that comes down on the site, then land's powered descent from it; aims for about 5 km of it.
 Options: target [required]: the site, a LATLNG or lexicon("lat", …, "lng", …), at least 1 km away; and land's descent
 options (max_slope, max_divert, max_overshoot, touchdown_speed, gear_alt, burn_margin, descent_shape), passed on to it, plus the common ones.
