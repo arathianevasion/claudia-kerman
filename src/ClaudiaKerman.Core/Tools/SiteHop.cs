@@ -35,7 +35,7 @@ namespace ClaudiaKerman.Core.Tools
         /// too little delta-v), <c>km</c> (along the ground to the site), <c>need</c> (m/s: the burn times <see cref="BurnMargin"/> plus the descent from the arc by
         /// <c>land</c>'s rule, 1.2 times the speed at the ground plus 100), the wanted orbital velocity as <c>speed</c>, <c>heading</c> and <c>pitch</c> (degrees),
         /// its <c>tof</c> (s), and the tick: <c>steer_heading</c>, <c>steer_pitch</c>, <c>throttle</c> (straight up at full under <see cref="RiseM"/>, then along the velocity
-        /// still to gain, easing off to end it in half a second), <c>err</c> (m/s still to gain) and <c>done</c>.
+        /// still to gain, easing off to end it in half a second), <c>err</c> (m/s still to gain) and <c>done</c> (under <see cref="CutMps"/> to gain, or past the wanted velocity).
         /// </summary>
         public static IDictionary<string, object> Call(IDictionary<string, object> input)
         {
@@ -94,7 +94,8 @@ namespace ClaudiaKerman.Core.Tools
             {
                 steerHeading = Compass(Math.Atan2(gain[2], gain[1]));
                 steerPitch = Deg(Math.Atan2(gain[0], Math.Sqrt(gain[1] * gain[1] + gain[2] * gain[2])));
-                done = err < CutMps;
+                // Under CutMps, or past the wanted velocity (what is left points back against it): ends, never turning back to chase a residual.
+                done = err < CutMps || Dot(gain, want) < 0;
                 throttle = done ? 0 : Math.Max(0.05, Math.Min(1, err / (Math.Max(accel, 0.1) * 0.5)));
             }
             return new Dictionary<string, object>

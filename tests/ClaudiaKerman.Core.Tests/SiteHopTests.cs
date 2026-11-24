@@ -201,5 +201,36 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False((bool)tick["done"]);
             Assert.InRange((double)tick["throttle"], 0.3, 0.5); // 1 m/s left at 5 m/s^2: 0.4 of full thrust ends it in half a second
         }
+
+        [Fact]
+        public void APassedWantedVelocityEndsTheBurnRatherThanTurningBack()
+        {
+            // 0.8 m/s beyond the wanted velocity along it: the velocity still to gain points back, so the burn ends there.
+            var ask = Landed(0, 6, day: 0);
+            ask.Remove("dv");
+            ask["agl"] = 100.0;
+            var plan = SiteHop.Call(ask);
+            var v = (double)plan["speed"] + 0.8;
+            var p = (double)plan["pitch"] * Math.PI / 180;
+            ask["vel_up"] = v * Math.Sin(p);
+            ask["vel_east"] = v * Math.Cos(p);
+            var tick = SiteHop.Call(ask);
+            Assert.True((bool)tick["done"]);
+            Assert.Equal(0.0, (double)tick["throttle"]);
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void A_thousand_ticks_take_under_50_ms()
+        {
+            // ADR 0014 guardrail 6: SITEHOP is called every tick of the burn; 1,000 ticks (about 20 s of burn at 50 Hz) in 50 ms.
+            var ask = Landed(2, 6);
+            ask.Remove("dv");
+            ask["agl"] = 100.0;
+            Timing.Within(50, () =>
+            {
+                for (var i = 0; i < 1000; i++) SiteHop.Call(ask);
+            });
+        }
     }
 }
