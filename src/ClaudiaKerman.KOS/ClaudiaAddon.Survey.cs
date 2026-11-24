@@ -28,8 +28,12 @@ namespace ClaudiaKerman.KOS
             var vessel = shared.Vessel;
             if (vessel == null || vessel.orbit == null) throw new KOSException("SURVEYSCHEDULE needs a craft in orbit");
             var orbit = vessel.orbit;
-            if (orbit.eccentricity >= 1) throw new KOSException("SURVEYSCHEDULE needs a closed orbit");
             var body = orbit.referenceBody;
+            var orbital = SurveyWaypointReader.Orbital(body.bodyName);
+            var ground = SurveyWaypointReader.Ground(body.bodyName);
+            // #1327: a ground survey's landing order needs no orbit, as in the Planning Tool; only the passes do.
+            var closed = orbit.eccentricity < 1;
+            if (!closed && ground.Count == 0) throw new KOSException("SURVEYSCHEDULE needs a closed orbit");
             var now = Planetarium.GetUniversalTime();
             var turn = body.rotates ? body.rotationPeriod : 0;
             GroundTrack track = ut =>
@@ -39,13 +43,11 @@ namespace ClaudiaKerman.KOS
                 var turned = turn > 0 ? (ut - now) * 360 / turn : 0;
                 return new TrackPoint { Latitude = body.GetLatitude(at), Longitude = body.GetLongitude(at) - turned, Altitude = body.GetAltitude(at) };
             };
-            var schedule = SurveySchedule.For(new SurveyBody { Radius = body.Radius, RotationPeriod = turn },
-                new SurveyOrbit { Track = track, Period = orbit.period, Inclination = orbit.inclination }, now,
-                SurveyWaypointReader.Orbital(body.bodyName), SurveyWaypointReader.TriggerRange());
+            var entries = SurveySchedule.Entries(new SurveyBody { Radius = body.Radius, RotationPeriod = turn },
+                closed ? new SurveyOrbit { Track = track, Period = orbit.period, Inclination = orbit.inclination } : null, now, orbital, ground,
+                SurveyWaypointReader.TriggerRange());
             var list = new ListValue();
-            // #1311: a ground survey's sites follow the passes, in landing order: landing (1 is landed on with land, each next flown to with site_hop) and needs_precision.
-            var sites = SurveySchedule.Ground(new SurveyBody { Radius = body.Radius }, SurveyWaypointReader.Ground(body.bodyName));
-            foreach (var pass in schedule.Concat(sites))
+            foreach (var pass in entries)
             {
                 var line = new Lexicon();
                 line.Add(new StringValue("waypoint"), new StringValue(pass.Waypoint.Where()));
