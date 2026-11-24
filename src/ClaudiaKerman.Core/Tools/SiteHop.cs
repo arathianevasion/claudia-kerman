@@ -28,6 +28,12 @@ namespace ClaudiaKerman.Core.Tools
         public const double BurnMargin = 1.1;
 
         /// <summary>
+        /// #1322: the touchdown's estimate (liftoff, the burn at full thrust, then the arc's time of flight) may be off by <c>land</c>'s descent;
+        /// a liftoff counts as a daylight touchdown only with Daylight at the site this long (s) either side of it.
+        /// </summary>
+        public const double TouchdownSlackS = 300;
+
+        /// <summary>
         /// One look. From <c>mu</c>, <c>day</c> (s, the body's rotation period; 0 still), the craft's <c>lat</c>, <c>lng</c>, <c>r</c> (m from the body's centre), <c>agl</c> (m),
         /// its orbital velocity as <c>vel_up</c>, <c>vel_north</c>, <c>vel_east</c> (m/s), <c>accel</c> (m/s^2 at full thrust), the site's <c>target_lat</c>, <c>target_lng</c> and
         /// <c>target_r</c> (m, its ground's radius), and, for the check before liftoff only, <c>dv</c> (m/s, the craft's).
@@ -38,6 +44,18 @@ namespace ClaudiaKerman.Core.Tools
         /// still to gain, easing off to end it in half a second), <c>err</c> (m/s still to gain) and <c>done</c> (under <see cref="CutMps"/> to gain, or past the wanted velocity).
         /// </summary>
         public static IDictionary<string, object> Call(IDictionary<string, object> input)
+        {
+            return Call(input, null);
+        }
+
+        /// <summary>
+        /// The same, and (#1322, ADR 0011's daylight touchdown) for the look before liftoff (with <c>dv</c> and <c>now</c>, UT) the liftoff: <paramref name="sunAt"/>
+        /// gives the sun's elevation at a point of the body (latitude, longitude, UT; degrees, NaN where it can't be read, which holds nothing up), asked at the site. Adds <c>wait</c> (s) and <c>liftoff_ut</c>:
+        /// the first liftoff, now or within <see cref="LandingPass.DaylightTurns"/> of the body's day, whose touchdown has Daylight
+        /// (<see cref="LandingSiteSearch.MinSunElevationDeg"/>) <see cref="TouchdownSlackS"/> either side; with none, <c>why</c> says so. The ticks of the burn
+        /// (no <c>dv</c>) never ask the sun: <c>wait</c> 0.
+        /// </summary>
+        public static IDictionary<string, object> Call(IDictionary<string, object> input, Func<double, double, double, double> sunAt)
         {
             var mu = Number(input, "mu", 0);
             var day = Number(input, "day", 0);
@@ -86,6 +104,16 @@ namespace ClaudiaKerman.Core.Tools
                 why = string.Format(CultureInfo.InvariantCulture, "the target is {0:0.0} km away: a Site Hop there needs about {1:0} m/s and the craft has {2:0} m/s",
                     km, need, Number(input, "dv", 0));
 
+            var now = Number(input, "now", 0);
+            var wait = 0.0;
+            if (why == "" && sunAt != null && input != null && input.ContainsKey("dv") && input.ContainsKey("now"))
+            {
+                wait = DaylightWait(ut => sunAt(tLat, tLng, ut), now + speed / Math.Max(accel, 0.1) + tof, day);
+                if (wait < 0)
+                    why = string.Format(CultureInfo.InvariantCulture, "no daylight touchdown at the site in the next {0:0.0} h: the sun never gets over {1:0} degrees there in that time",
+                        LandingPass.DaylightTurns * Math.Abs(day) / 3600, LandingSiteSearch.MinSunElevationDeg);
+            }
+
             double steerHeading, steerPitch, throttle;
             var done = false;
             if (why != "") { steerHeading = Compass(heading); steerPitch = 90; throttle = 0; }
@@ -102,7 +130,36 @@ namespace ClaudiaKerman.Core.Tools
             {
                 { "why", why }, { "km", km }, { "need", need }, { "speed", speed }, { "heading", Compass(heading) }, { "pitch", Deg(gamma) }, { "tof", tof },
                 { "steer_heading", steerHeading }, { "steer_pitch", steerPitch }, { "throttle", throttle }, { "err", err }, { "done", done },
+                { "wait", Math.Max(0, wait) }, { "liftoff_ut", now + Math.Max(0, wait) },
             };
+        }
+
+        /// <summary>
+        /// The least wait (s) before liftoff that puts a touchdown, <paramref name="touchdown"/> UT with no wait, in Daylight <see cref="TouchdownSlackS"/> either side:
+        /// stepped a degree of the body's turn at a time over <see cref="LandingPass.DaylightTurns"/> days, then halved down to the second. -1 when none does.
+        /// </summary>
+        private static double DaylightWait(Func<double, double> sunAt, double touchdown, double day)
+        {
+            Func<double, bool> lit = w =>
+            {
+                double before = sunAt(touchdown + w - TouchdownSlackS), after = sunAt(touchdown + w + TouchdownSlackS);
+                return (double.IsNaN(before) || before > LandingSiteSearch.MinSunElevationDeg) && (double.IsNaN(after) || after > LandingSiteSearch.MinSunElevationDeg);
+            };
+            if (lit(0)) return 0;
+            var step = Math.Abs(day) / 360;
+            if (step <= 0) return -1;
+            for (var w = step; w <= LandingPass.DaylightTurns * Math.Abs(day); w += step)
+            {
+                if (!lit(w)) continue;
+                double dark = w - step, light = w;
+                while (light - dark > 1)
+                {
+                    var mid = (dark + light) / 2;
+                    if (lit(mid)) light = mid; else dark = mid;
+                }
+                return light;
+            }
+            return -1;
         }
 
         /// <summary>The flight path angle (rad) of the least-speed arc from r0 to r1 across theta, and that speed (0 when none reaches).</summary>

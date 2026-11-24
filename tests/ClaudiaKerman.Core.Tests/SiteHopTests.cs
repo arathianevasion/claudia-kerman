@@ -219,6 +219,87 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(0.0, (double)tick["throttle"]);
         }
 
+        /// <summary>The sun at the site: 60 degrees up at noon, a cosine over the Mun's day; Daylight (over 20 degrees) while within acos(1/3) of noon.</summary>
+        private static Func<double, double> SunWithNoonAt(double noonUt)
+        {
+            return ut => 60 * Math.Cos(2 * Math.PI * (ut - noonUt) / MunDay);
+        }
+
+        /// <summary>The first time after the night before <paramref name="noonUt"/> that the sun is over 20 degrees, from the cosine model's own geometry.</summary>
+        private static double Sunrise(double noonUt)
+        {
+            return noonUt - Math.Acos(1.0 / 3) / (2 * Math.PI) * MunDay;
+        }
+
+        /// <summary>The sun by UT, read only at the target LandedAt aims for (0, 6): asked anywhere else, the sun is down.</summary>
+        private static Func<double, double, double, double> AtTheSite(Func<double, double> sun)
+        {
+            return (lat, lng, ut) => lat == 0 && lng == 6 ? sun(ut) : -90;
+        }
+
+        private static Dictionary<string, object> LandedAt(double now)
+        {
+            var ask = Landed(0, 6);
+            ask["now"] = now;
+            return ask;
+        }
+
+        [Fact]
+        public void A_hop_that_would_touch_down_at_night_waits_on_the_ground_for_a_daylight_touchdown()
+        {
+            // Midnight at the site now: noon is half a Mun day off.
+            const double now = 1000;
+            var noon = now + MunDay / 2;
+            var sun = SunWithNoonAt(noon);
+            var hop = SiteHop.Call(LandedAt(now), AtTheSite(sun));
+            Assert.Equal("", (string)hop["why"]);
+            var liftoff = (double)hop["liftoff_ut"];
+            var touchdown = liftoff + (double)hop["tof"];
+            Assert.True((double)hop["wait"] > 0);
+            Assert.Equal(now + (double)hop["wait"], liftoff, 6);
+            Assert.True(sun(touchdown) > 20, "touches down in daylight: sun " + sun(touchdown));
+            // It waits for the sunrise, not for a later, higher sun: within the touchdown's slack of the first daylight there.
+            Assert.InRange(touchdown, Sunrise(noon), Sunrise(noon) + 2 * SiteHop.TouchdownSlackS);
+        }
+
+        [Fact]
+        public void A_hop_that_would_touch_down_in_daylight_lifts_off_with_no_wait()
+        {
+            const double now = 1000;
+            var hop = SiteHop.Call(LandedAt(now), AtTheSite(SunWithNoonAt(now)));
+            Assert.Equal("", (string)hop["why"]);
+            Assert.Equal(0.0, (double)hop["wait"]);
+            Assert.Equal(now, (double)hop["liftoff_ut"]);
+        }
+
+        [Fact]
+        public void A_site_the_sun_never_lights_fails_before_liftoff()
+        {
+            var hop = SiteHop.Call(LandedAt(1000), AtTheSite(ut => 5.0));
+            Assert.Contains("no daylight touchdown", (string)hop["why"]);
+            Assert.Equal(0.0, (double)hop["throttle"]);
+        }
+
+        [Fact]
+        public void A_sun_that_can_not_be_read_does_not_hold_the_hop()
+        {
+            var hop = SiteHop.Call(LandedAt(1000), AtTheSite(ut => double.NaN));
+            Assert.Equal("", (string)hop["why"]);
+            Assert.Equal(0.0, (double)hop["wait"]);
+        }
+
+        [Fact]
+        public void The_ticks_of_the_burn_do_not_look_at_the_sun()
+        {
+            // Only the look before liftoff (with dv) times the liftoff; a tick asking the sun would cost a game read every frame.
+            var ask = LandedAt(1000);
+            ask.Remove("dv");
+            var asked = 0;
+            var tick = SiteHop.Call(ask, (la, lo, ut) => { asked++; return -90.0; });
+            Assert.Equal(0, asked);
+            Assert.Equal("", (string)tick["why"]);
+        }
+
         [Fact]
         [Trait("Category", "Timing")]
         public void A_thousand_ticks_take_under_50_ms()

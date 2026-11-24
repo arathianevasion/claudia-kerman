@@ -1189,12 +1189,6 @@ function land_daylight_sun_deg {
   return 20.
 }
 
-// True if the sun sun_deg up is Daylight: more than land_daylight_sun_deg up. Pure.
-function land_is_daylight {
-  parameter sun_deg.
-  return sun_deg > land_daylight_sun_deg().
-}
-
 // ---- The pass search over a site (#510): ADDONS:CLAUDIA:LANDINGPASS, the one find_landing_site keeps its sites by ----
 
 // What land asks ADDONS:CLAUDIA:LANDINGPASS for: the first pass over site (lat, lng) whose deorbit burn is
@@ -1360,7 +1354,7 @@ function land_plan_any {
     local here is positionat(ship, burn_ut) - body:position.
     local arrive_ut is burn_ut + land_transfer_time(mu, here:mag, body:radius + approach).
     local arrival is -here:normalized * body:radius.
-    if not opt:daylight or land_is_daylight(land_sun_elevation(arrival, arrive_ut)) {
+    if not opt:daylight or land_sun_elevation(arrival, arrive_ut) > land_daylight_sun_deg() {
       local now_geo is body:geopositionof(body:position + arrival).
       local lng is land_site_lng(now_geo:lng, -(arrive_ut - time:seconds), body:rotationperiod).
       local chosen is lexicon("lat", now_geo:lat, "lng", lng).
