@@ -241,7 +241,6 @@ namespace ClaudiaKerman.Core.Missions
             Start(start);
         }
 
-        /// <summary>#1284: why "Change Contracts" is greyed while the Craft Check's request is out.</summary>
         /// <summary>#1285: the Mission hasn't had its first Approval (the player's, or any Auto Mode gives): its Contracts can still change.</summary>
         private static bool BeforeFirstApproval(Mission mission)
         {
@@ -252,6 +251,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>#1285: what the folded line says once the Mission's first Mission Plan is approved.</summary>
         private const string FixedLine = "The Contracts are fixed for this Mission; start a new Mission to change them.";
 
+        /// <summary>#1284: why "Change Contracts" is greyed while the Craft Check's request is out.</summary>
         private const string ChangeWaits = "The Craft Check's request is out; Change Contracts waits for its verdict.";
 
         /// <summary>
@@ -338,7 +338,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!MissionOver && !BeforeFirstApproval(_mission) && (_mission.Chosen != null || _mission.ChosenRequirements.Count > 0))
                 return new ContractCheckView { Folded = true, Summary = _mission.Chosen != null ? _mission.Chosen.Summary : "", FixedNote = FixedLine };
             if (!MissionOver && _mission.Chosen != null)
-                return new ContractCheckView { Folded = true, Summary = _mission.Chosen.Summary, ChangeOffered = true, CanChange = true };
+                return new ContractCheckView { Folded = true, Summary = _mission.Chosen.Summary, ChangeOffered = true, CanChange = !_craftCheck.Running, ChangeNote = _craftCheck.Running ? ChangeWaits : "" };
             if (_folded != null && MissionOver)
                 return new ContractCheckView { Folded = true, Summary = _folded.Summary, ChangeOffered = true, CanChange = !_craftCheck.Running, ChangeNote = _craftCheck.Running ? ChangeWaits : "" };
             var check = _contractCheck;
