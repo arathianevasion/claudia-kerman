@@ -116,6 +116,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): seconds until a closed orbit or an inbound hyperbolic path falls to r_fall, from ecc, sma, mu, r_fall, ta (degrees); 0 under it now, -1 never"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
                 "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, core, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
+            AddSuffix("SCIENCECHOICE", new OneArgsSuffix<Lexicon, Lexicon>(ScienceChoiceCall,
+                "Core Library only (science, once per experiment): which part runs and what is sent, from mode, explicit, available, tracked, left, can_send, ec_pct, min_ec_pct, parts (named, has_data, inoperable, rerunnable); lexicon error, missed, steps (do, why, then)"));
             AddSuffix("LIFTOFFCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(LiftoffClearCall,
                 "Core Library only (launch, ascend): the decouplers under the engines that give thrust, from core and home; lexicon error, decouplers, gone, stuck"));
             AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
@@ -986,6 +988,18 @@ namespace ClaudiaKerman.KOS
                 return KosValues.FromPlain(low);
             }, () => string.Format(CultureInfo.InvariantCulture, "carry on {0}, step {1}", low["carry_on"], low["step"]), 1);
             return low != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.LowCharge(null));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:SCIENCECHOICE</c> (#1297, ADR 0014): <see cref="BlockCalls.ScienceChoiceOf"/>, once per experiment per call of the block. A failure skips every part, so nothing runs on a choice not made.</summary>
+        private Lexicon ScienceChoiceCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> choice = null;
+            var answer = Guarded("SCIENCECHOICE", () =>
+            {
+                choice = BlockCalls.ScienceChoiceOf(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(choice);
+            }, () => string.Format(CultureInfo.InvariantCulture, "missed '{0}'", choice["missed"]), 1);
+            return choice != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.ScienceChoiceOf(KosValues.ToDictionary(input), true));
         }
 
         /// <summary><c>ADDONS:CLAUDIA:BRAKEHEIGHTS</c> (#954, ADR 0014): <see cref="BlockCalls.BrakeHeights"/>, sampled 4 times a second, so its time is logged at most once a second (guardrail 6). A failure answers -1 for both heights, as the block reads both.</summary>
