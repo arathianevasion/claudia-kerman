@@ -190,7 +190,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
             Assert.Contains("ADDONS:CLAUDIA:SURVEYSCHEDULE()", section);
             Assert.Contains("Coast to each pass's ut and run science there", section);
-            Assert.Contains("report each \"unreachable\" waypoint you skip", section);
+            Assert.Contains("report each waypoint you skip: each \"unreachable\" one with the inclination that would reach it", section);
+            Assert.Contains("\"below 10 km\" for a pass higher than that", section);
         }
 
         [Fact]

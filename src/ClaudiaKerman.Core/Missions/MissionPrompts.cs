@@ -349,9 +349,9 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public const string SurveyScheduleNote = "Survey passes: in the survey leg's script, once in the survey orbit, ADDONS:CLAUDIA:SURVEYSCHEDULE() "
             + "gives the mod's Survey Schedule for the craft's orbit: a list, in flying order, of lexicons with waypoint (\"3.0° N 10.0° E\"), ut, "
-            + "altitude, out_of_band (the Band the pass misses, \"\" if inside) and unreachable (with reaching_inclination); a line with no ut has no pass. Coast to each "
+            + "altitude, out_of_band (the Band the pass is outside, e.g. \"below 10 km\" for a pass higher than that; \"\" if inside) and unreachable (with reaching_inclination); a line with no ut has no pass. Coast to each "
             + "pass's ut and run science there; don't work out the ground track yourself. Put each pass in the Script Result, and report each "
-            + "\"unreachable\" waypoint you skip, with the inclination that would reach it.";
+            + "waypoint you skip: each \"unreachable\" one with the inclination that would reach it, and any with no ut.";
 
         /// <summary>Added to the Debrief notice when a science call kept data on board (#612): steers the next leg to a transmit-only call.</summary>
         public const string ScienceKeptNoticeLine = " The data is aboard; sending it needs no new landing.";
