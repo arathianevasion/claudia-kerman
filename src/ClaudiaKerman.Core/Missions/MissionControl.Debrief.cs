@@ -656,11 +656,12 @@ namespace ClaudiaKerman.Core.Missions
             "The Debrief was Off-Nominal and you proposed a revised Mission Plan. Write it now, with the sequences already flown first, "
             + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs.";
 
-        /// <summary>#1306: a stop ended the retries of an open Contract Requirement.</summary>
+        /// <summary>#1343: no other Survey Plane fits the survey's cap.</summary>
         public const string RevisedPlanDroppingSurvey =
             "No room for another Survey Plane: revise the Mission Plan now to drop the survey's Contract, with the sequences already flown first, "
             + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs, under Auto Mode too.";
 
+        /// <summary>#1306: a stop ended the retries of an open Contract Requirement.</summary>
         public const string RevisedPlanDroppingContract =
             "No more retries of the open Contract Requirement: revise the Mission Plan now to drop its Contract, with the sequences already flown first, "
             + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs, under Auto Mode too.";
