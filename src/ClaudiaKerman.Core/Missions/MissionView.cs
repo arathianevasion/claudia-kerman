@@ -174,6 +174,10 @@ namespace ClaudiaKerman.Core.Missions
         public string Title = "";
         public string Explanation = "";
         public string Fix = "";
+        /// <summary>#1286: a delta-v shortfall offers "Change Contracts" in its Fix row, while the folded Contract Check line does.</summary>
+        public bool ChangeOffered;
+        /// <summary>#1286: that button can be pressed, as on the folded line.</summary>
+        public bool CanChange;
         /// <summary>Only Warnings can be acknowledged.</summary>
         public bool Acknowledged;
     }
