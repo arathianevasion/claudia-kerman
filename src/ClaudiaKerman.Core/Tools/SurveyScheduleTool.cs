@@ -139,7 +139,7 @@ namespace ClaudiaKerman.Core.Tools
                 {
                     json.BeginObject().Field("landing", site.Landing).Field("waypoint", site.Waypoint.Where());
                     if (site.Waypoint.Radius.HasValue) json.Field("radius", PlanningJson.Round(site.Waypoint.Radius.Value, 0));
-                    json.Field("needs_precision", site.NeedsPrecision).EndObject();
+                    json.Field("needs_precision", site.NeedsPrecision).Field("radius_unknown", site.RadiusUnknown).EndObject();
                 }
                 json.EndArray();
             }
@@ -151,7 +151,7 @@ namespace ClaudiaKerman.Core.Tools
             json.EndObject();
             var passes = schedule.Count(p => p.Ut.HasValue);
             var summary = passes + (passes == 1 ? " pass" : " passes") + (unreachable > 0 ? ", " + unreachable + " unreachable" : "");
-            if (sites.Count > 0) summary = (schedule.Count > 0 ? summary + ", " : "") + sites.Count + (sites.Count == 1 ? " landing" : " landings") + (sites.Any(x => x.NeedsPrecision) ? ", " + sites.Count(x => x.NeedsPrecision) + " needing precision" : "");
+            if (sites.Count > 0) summary = (schedule.Count > 0 ? summary + ", " : "") + sites.Count + (sites.Count == 1 ? " landing" : " landings") + (sites.Any(x => x.NeedsPrecision) ? ", " + sites.Count(x => x.NeedsPrecision) + " needing precision" : "") + (sites.Any(x => x.RadiusUnknown) ? ", " + sites.Count(x => x.RadiusUnknown) + " radius unknown" : "");
             return new ToolOutcome { Json = json.ToString(), Summary = summary };
         }
     }

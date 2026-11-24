@@ -57,6 +57,8 @@ namespace ClaudiaKerman.Core.Contracts
         public int Landing;
         /// <summary>#1311: the Contract's radius is tighter than <c>land</c>'s aim, <see cref="SurveySchedule.LandAim"/>.</summary>
         public bool NeedsPrecision;
+        /// <summary>#1326: the Contract's radius couldn't be read, so whether the site needs precision isn't known; treat it as needing it.</summary>
+        public bool RadiusUnknown;
     }
 
     /// <summary>
@@ -77,12 +79,12 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>
         /// #1311: a ground survey's sites in landing order: the least travel between them, the order the route prices. The first is landed on
         /// from orbit with <c>land</c>; each next is a <c>site_hop</c> from the one before. Each is marked "needs precision" where its Contract
-        /// radius is tighter than <see cref="LandAim"/>; a site whose radius isn't known is not marked.
+        /// radius is tighter than <see cref="LandAim"/>; a site whose radius can't be read is marked <see cref="SurveyPass.RadiusUnknown"/> instead.
         /// </summary>
         public static List<SurveyPass> Ground(SurveyBody body, IList<SurveyWaypoint> waypoints)
         {
             return SurveyPasses.LandingOrder(body.Radius, waypoints)
-                .Select((w, i) => new SurveyPass { Waypoint = w, Landing = i + 1, NeedsPrecision = w.Radius.HasValue && w.Radius.Value < LandAim })
+                .Select((w, i) => new SurveyPass { Waypoint = w, Landing = i + 1, NeedsPrecision = w.Radius.HasValue && w.Radius.Value < LandAim, RadiusUnknown = !w.Radius.HasValue })
                 .ToList();
         }
 

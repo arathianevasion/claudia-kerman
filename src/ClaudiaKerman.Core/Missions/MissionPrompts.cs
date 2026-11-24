@@ -360,9 +360,10 @@ namespace ClaudiaKerman.Core.Missions
         /// leg lands at the first with <c>land</c> and flies <c>site_hop</c> to each next.
         /// </summary>
         public const string SurveyLandingNote = "Survey landings: the survey_schedule tool (and ADDONS:CLAUDIA:SURVEYSCHEDULE() in a script; its lines with a landing number) "
-            + "gives the landed sites in landing order, each with needs_precision. Plan the leg to land at the first site with land, then fly site_hop to each next site in landing order, "
+            + "gives the landed sites in landing order, each with needs_precision and radius_unknown. Plan the leg to land at the first site with land, then fly site_hop to each next site in landing order, "
             + "running the science block with the survey's experiment at each (a site on EVA is the player's Manual stretch there). "
-            + "A site marked needs_precision has a Contract radius tighter than land's aim of about 5 km: say so in the plan; don't promise it.";
+            + "A site marked needs_precision has a Contract radius tighter than land's aim of about 5 km: say so in the plan; don't promise it. "
+            + "A site marked radius_unknown has a Contract radius the mod couldn't read: treat it as needing precision, the same way.";
 
         /// <summary>Added to the Debrief notice when a science call kept data on board (#612): steers the next leg to a transmit-only call.</summary>
         public const string ScienceKeptNoticeLine = " The data is aboard; sending it needs no new landing.";
