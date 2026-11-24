@@ -513,7 +513,16 @@ namespace ClaudiaKerman.Adapter
             GUILayout.EndVertical();
             if (card.Folded)
             {
+                GUILayout.BeginHorizontal();
                 GUILayout.Label(card.Summary, ClaudiaSkin.Secondary);
+                // #1284: the prototype's variant A, a secondary button on the folded line; greyed while the Craft Check's request is out.
+                if (card.ChangeOffered)
+                {
+                    if (!card.CanChange) ClaudiaSkin.DisabledButton("Change Contracts", GUILayout.ExpandWidth(false));
+                    else if (ClaudiaSkin.SecondaryButton("Change Contracts", GUILayout.ExpandWidth(false))) _send(new ChangeContracts());
+                }
+                GUILayout.EndHorizontal();
+                if (card.ChangeNote.Length > 0) GUILayout.Label(card.ChangeNote, ClaudiaSkin.Secondary);
                 ClaudiaSkin.EndCard();
                 return;
             }

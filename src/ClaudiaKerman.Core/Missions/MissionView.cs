@@ -303,6 +303,12 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>"Plan these" was pressed: the card is its one-line <see cref="Summary"/> until the Mission starts.</summary>
         public bool Folded;
         public string Summary = "";
+        /// <summary>#1284: the folded line offers "Change Contracts", which reopens the card on the Chosen Contracts.</summary>
+        public bool ChangeOffered;
+        /// <summary>#1284: "Change Contracts" can be pressed: false while the Craft Check's request is out.</summary>
+        public bool CanChange;
+        /// <summary>#1284: why "Change Contracts" can't be pressed now, shown beside it greyed; "" when it can.</summary>
+        public string ChangeNote = "";
         /// <summary>How many Contracts are accepted.</summary>
         public int Accepted;
         /// <summary>The player's typed words, "" when none.</summary>
