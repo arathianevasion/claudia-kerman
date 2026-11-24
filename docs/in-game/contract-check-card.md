@@ -10,7 +10,7 @@ With accepted exploration (world-first) Contracts, Start Mission now posts Missi
 4. The card's first line reads "N of 3 Contracts · route … m/s of … · reserve … (15%) · … m/s to spare", with a bar under it: green for the route, amber for the reserve.
 5. Each Contract that fits has a ticked box with its phase (the body, e.g. "Mun"), "+… m/s" and its deadline (or "no deadline").
 6. "Not this flight" lists the part test as "not yet: part tests aren't planned yet". A Contract the craft can't reach says "this craft can't: … m/s short"; one whose deadline is too near says "completes later: …".
-7. The buttons read "Plan these N" and "Plan without Contracts" (greyed, with "Type your own words to plan without Contracts.").
+7. The buttons read "Plan these N" and "Plan without Contracts" (greyed, with "Type the goal below and press Enter to plan without Contracts.").
 
 ## Check 2: Plan these
 

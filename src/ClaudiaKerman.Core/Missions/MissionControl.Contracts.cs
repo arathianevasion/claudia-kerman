@@ -231,6 +231,27 @@ namespace ClaudiaKerman.Core.Missions
             Start(start);
         }
 
+        /// <summary>
+        /// #1333: words sent from the prompt while the card is up become the card's words: the card is worked again on them, keeping the ticks
+        /// it had. Words that alone don't fit the craft leave the card as it was (Start Mission then gives the Craft Check's Blocker).
+        /// </summary>
+        private void ContractWordsGiven(string words)
+        {
+            words = (words ?? "").Trim();
+            if (_contractCheck == null || words.Length == 0) return;
+            var start = _contractStart.WithGoal(words);
+            var check = ContractCheck.Work(_snapshot, words, start.Remote, _config.CraftCheckMarginPercent, GivenTarget(words, start.Target));
+            if (!check.Priceable || !check.WordsFit)
+            {
+                LogToKsp("Words given at the prompt not taken onto the Contract check card: " + (!check.Priceable ? "the craft's delta-v isn't known." : "they don't fit the craft."));
+                return;
+            }
+            check.TickOnly(Ticked());
+            _contractCheck = check;
+            _contractStart = start;
+            LogToKsp("Words given at the prompt are now the Contract check card's words.");
+        }
+
         private void PlannedWithoutContracts()
         {
             if (_contractCheck == null || _contractCheck.Words.Length == 0)

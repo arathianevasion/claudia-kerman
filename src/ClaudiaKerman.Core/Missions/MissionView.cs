@@ -344,6 +344,8 @@ namespace ClaudiaKerman.Core.Missions
         public string Shortfall = "";
         /// <summary>"Plan without Contracts" needs words of the player's to plan.</summary>
         public bool CanPlanWithout;
+        /// <summary>#1333: under a greyed "Plan without Contracts", how to give it words.</summary>
+        public const string PlanWithoutHint = "Type the goal below and press Enter to plan without Contracts.";
     }
 
     /// <summary>
