@@ -710,6 +710,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 Notice("Mission Plan approved.");
                 mission.MissionPlanApproved = true;
+                _changeRefusal = "";
                 ApplyContractChanges(mission);
                 var newGoal = ApplyGoalChange(mission);
                 mission.Stage = MissionStage.Sequencing;

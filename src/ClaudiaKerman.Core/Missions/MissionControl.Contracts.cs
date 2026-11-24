@@ -25,6 +25,8 @@ namespace ClaudiaKerman.Core.Missions
         private ContractChoice _folded;
         /// <summary>#1284: the card up was reopened by Change Contracts, so its ticks are the player's Chosen Contracts, not the suggestion.</summary>
         private bool _reopened;
+        /// <summary>#1292: why the last Change Contracts press did nothing, said on the folded line; "" when it wasn't refused, or once it succeeded or the Contracts are fixed.</summary>
+        private string _changeRefusal = "";
 
         private sealed partial class Mission
         {
@@ -139,6 +141,7 @@ namespace ClaudiaKerman.Core.Missions
             if (start.ContractsAnswered) return false;
             _folded = null;
             _contractCheck = null;
+            _changeRefusal = "";
             var snapshot = _snapshot;
             if (snapshot == null || snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0)
             {
@@ -271,19 +274,25 @@ namespace ClaudiaKerman.Core.Missions
                 : "";
             var start = _contractStart;
             ContractCheck check = null;
+            // #1292: the three refusals that leave the player pressing a button that seems broken each say why on the folded line.
+            var said = refusal.StartsWith("no accepted") ? "no accepted Contracts are read now." : "";
             if (refusal.Length == 0)
             {
                 check = ContractCheck.Work(_snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent, GivenTarget(start.Goal, start.Target));
                 refusal = !check.Priceable ? "the craft's delta-v isn't known (turn on the stock delta-v readout), so the Contracts can't be priced"
                     : !check.WordsFit ? "the typed words alone no longer fit the craft" : "";
+                said = !check.Priceable ? "Mission Control can't read this craft's delta-v (turn on the stock delta-v readout)."
+                    : !check.WordsFit ? "the words you typed no longer fit this craft." : "";
             }
             if (refusal.Length > 0)
             {
+                _changeRefusal = said.Length > 0 ? "Can't change Contracts: " + said : "";
                 LogToKsp("Change Contracts pressed and refused: " + refusal + ".");
                 return;
             }
             var accepted = new HashSet<string>(_snapshot.Contracts.Accepted.Select(c => c.Guid));
             var kept = chosen.Guids.Where(accepted.Contains).ToList();
+            _changeRefusal = "";
             check.TickOnly(kept);
             var ticked = check.TickedGuids;
             var gone = chosen.Guids.Where(g => !ticked.Contains(g)).ToList();
@@ -338,9 +347,9 @@ namespace ClaudiaKerman.Core.Missions
             if (!MissionOver && !BeforeFirstApproval(_mission) && (_mission.Chosen != null || _mission.ChosenRequirements.Count > 0))
                 return new ContractCheckView { Folded = true, Summary = _mission.Chosen != null ? _mission.Chosen.Summary : "", FixedNote = FixedLine };
             if (!MissionOver && _mission.Chosen != null)
-                return new ContractCheckView { Folded = true, Summary = _mission.Chosen.Summary, ChangeOffered = true, CanChange = !_craftCheck.Running, ChangeNote = _craftCheck.Running ? ChangeWaits : "" };
+                return new ContractCheckView { Folded = true, Summary = _mission.Chosen.Summary, ChangeOffered = true, CanChange = !_craftCheck.Running, ChangeNote = _craftCheck.Running ? ChangeWaits : _changeRefusal };
             if (_folded != null && MissionOver)
-                return new ContractCheckView { Folded = true, Summary = _folded.Summary, ChangeOffered = true, CanChange = !_craftCheck.Running, ChangeNote = _craftCheck.Running ? ChangeWaits : "" };
+                return new ContractCheckView { Folded = true, Summary = _folded.Summary, ChangeOffered = true, CanChange = !_craftCheck.Running, ChangeNote = _craftCheck.Running ? ChangeWaits : _changeRefusal };
             var check = _contractCheck;
             if (check == null || !MissionOver) return null;
             var ticked = Ticked();
