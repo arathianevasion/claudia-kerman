@@ -63,8 +63,8 @@ namespace ClaudiaKerman.Core.Contracts
 
     /// <summary>
     /// #1307: the Survey Schedule of an orbital survey. Looking up to one turn of the body ahead, each waypoint's first pass: the
-    /// ground track's nearest approach to it, where that comes within the survey's trigger range. The range is a slant distance from
-    /// the craft to the waypoint at sea level, so it holds whether the game measures it along the ground or through space. Passes
+    /// ground track's nearest approach to it, where that comes within the survey's trigger range. The range is measured along the ground, from
+    /// the point under the craft to the waypoint, so a pass counts from any orbital altitude. Passes
     /// come in flying order; a waypoint with none follows them, "unreachable" with the inclination that reaches it where the orbit's
     /// tilt can't take the track to its latitude.
     /// </summary>
@@ -123,11 +123,11 @@ namespace ClaudiaKerman.Core.Contracts
                 for (var w = 0; w < waypoints.Count; w++)
                 {
                     if (found[w].HasValue) continue;
-                    var next = Slant(body.Radius, point, waypoints[w]);
+                    var next = Ground(body.Radius, point, waypoints[w]);
                     if (k >= 1 && at[w] <= next && (k == 1 || at[w] <= before[w]))
                     {
                         var nearest = Nearest(body.Radius, orbit.Track, waypoints[w], Math.Max(now, ut - 2 * step), ut);
-                        if (Slant(body.Radius, orbit.Track(nearest), waypoints[w]) <= triggerRange)
+                        if (Ground(body.Radius, orbit.Track(nearest), waypoints[w]) <= triggerRange)
                         {
                             found[w] = nearest;
                             left--;
@@ -179,20 +179,19 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 var c = b - golden * (b - a);
                 var d = a + golden * (b - a);
-                if (Slant(radius, track(c), waypoint) <= Slant(radius, track(d), waypoint)) b = d;
+                if (Ground(radius, track(c), waypoint) <= Ground(radius, track(d), waypoint)) b = d;
                 else a = c;
             }
             return (a + b) / 2;
         }
 
-        /// <summary>The straight-line distance from the craft to the waypoint at sea level, m.</summary>
-        private static double Slant(double radius, TrackPoint point, SurveyWaypoint waypoint)
+        /// <summary>The great-circle distance along the ground from the point under the craft to the waypoint, m; the craft's altitude doesn't enter it.</summary>
+        private static double Ground(double radius, TrackPoint point, SurveyWaypoint waypoint)
         {
             var lat1 = point.Latitude * Math.PI / 180;
             var lat2 = waypoint.Latitude * Math.PI / 180;
             var cos = Math.Sin(lat1) * Math.Sin(lat2) + Math.Cos(lat1) * Math.Cos(lat2) * Math.Cos((point.Longitude - waypoint.Longitude) * Math.PI / 180);
-            var r = radius + point.Altitude;
-            return Math.Sqrt(Math.Max(0, radius * radius + r * r - 2 * radius * r * Math.Max(-1, Math.Min(1, cos))));
+            return radius * Math.Acos(Math.Max(-1, Math.Min(1, cos)));
         }
     }
 }

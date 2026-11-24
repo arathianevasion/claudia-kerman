@@ -38,7 +38,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             foreach (var pass in schedule)
             {
                 Assert.InRange(pass.Ut.Value, Now, Now + MunTurn);
-                Assert.True(orbit.SlantTo(pass.Waypoint, pass.Ut.Value) <= Range, pass.Waypoint.Where() + " is passed too far off");
+                Assert.True(orbit.GroundDistanceTo(pass.Waypoint, pass.Ut.Value) <= Range, pass.Waypoint.Where() + " is passed too far off");
                 Assert.InRange(pass.Altitude.Value, 12499, 12501);
                 Assert.Equal("", pass.OutOfBand);
                 Assert.False(pass.Unreachable);
@@ -88,7 +88,26 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             var pass = Assert.Single(SurveySchedule.For(Mun(), orbit.Survey(), Now, new List<SurveyWaypoint> { reached }, Range));
 
             Assert.False(pass.Unreachable);
-            Assert.True(orbit.SlantTo(reached, pass.Ut.Value) <= Range);
+            Assert.True(orbit.GroundDistanceTo(reached, pass.Ut.Value) <= Range);
+        }
+
+        [Fact]
+        public void APassIsMeasuredAlongTheGroundSoAFiveWaypointSurveyFrom30KmCountsEveryPass()
+        {
+            // #1340: the 24 Nov playtest: a 30 km orbit at 20° got "0 passes"; a slant distance is never under the altitude, the 15 km range is.
+            var orbit = new CircularOrbit(30000, 20, 30, 0);
+            var waypoints = new[] { "10.0,58.2", "12.5,12.5", "7.1,6.0", "13.2,4.2", "19.2,0.7" }.Select((w, i) => Waypoint(i, w)).ToList();
+
+            var schedule = SurveySchedule.For(Mun(), orbit.Survey(), Now, waypoints, Range);
+
+            Assert.Equal(5, schedule.Count);
+            Assert.All(schedule, p =>
+            {
+                Assert.True(p.Ut.HasValue, p.Waypoint.Where() + " has no pass");
+                var track = orbit.At(p.Ut.Value);
+                Assert.True(orbit.GroundDistanceTo(p.Waypoint, p.Ut.Value) <= Range, p.Waypoint.Where() + " is passed too far off along the ground");
+                Assert.InRange(track.Altitude, 29999, 30001);
+            });
         }
 
         // ---- #1311: a ground survey ----
@@ -216,11 +235,13 @@ namespace ClaudiaKerman.Core.Tests.Contracts
                 return new TrackPoint { Latitude = latitude * 180 / Math.PI, Longitude = longitude * 180 / Math.PI, Altitude = _altitude };
             }
 
-            public double SlantTo(SurveyWaypoint waypoint, double ut)
+            /// <summary>The great-circle distance along the surface from the point under the craft to the waypoint, m.</summary>
+            public double GroundDistanceTo(SurveyWaypoint waypoint, double ut)
             {
-                var craft = Cartesian(At(ut).Latitude, At(ut).Longitude, MunRadius + _altitude);
-                var ground = Cartesian(waypoint.Latitude, waypoint.Longitude, MunRadius);
-                return Math.Sqrt(Enumerable.Range(0, 3).Sum(i => (craft[i] - ground[i]) * (craft[i] - ground[i])));
+                var under = Cartesian(At(ut).Latitude, At(ut).Longitude, 1);
+                var ground = Cartesian(waypoint.Latitude, waypoint.Longitude, 1);
+                var dot = Enumerable.Range(0, 3).Sum(i => under[i] * ground[i]);
+                return MunRadius * Math.Acos(Math.Max(-1, Math.Min(1, dot)));
             }
 
             private static double[] Cartesian(double latitude, double longitude, double r)
