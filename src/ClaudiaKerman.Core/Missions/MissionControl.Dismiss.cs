@@ -45,7 +45,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>A saved finished Mission the player dismissed: its folder is marked ended, so a load doesn't bring it back.</summary>
         private bool Dismissed(MissionSaveState state)
         {
-            if (state.Stage != MissionStage.Succeeded && state.Stage != MissionStage.Ended && state.Stage != MissionStage.Lost) return false;
+            // #1285: a Mission withdrawn by Change Contracts carries the marker at any stage.
             return File.Exists(Path.Combine(MissionFolder.For(_saveDirectory, state.Id), MissionFolder.EndedFile));
         }
     }
