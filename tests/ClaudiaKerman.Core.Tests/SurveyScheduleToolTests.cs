@@ -139,6 +139,15 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("no chosen survey Contract", outcome.Json);
         }
 
+        [Fact]
+        public void WithNoPassAtAllTheToolGivesNoTotalWaitRatherThanZero()
+        {
+            var answer = Run(Snapshot(Waypoint("far", 60, 50)));
+
+            Assert.False(answer.TryGetProperty("total_wait_s", out _));
+            Assert.Equal(1, answer.GetProperty("unreachable_count").GetInt32());
+        }
+
         // ---- offered only for a survey ----
 
         [Fact]

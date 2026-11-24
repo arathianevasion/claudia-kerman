@@ -110,8 +110,9 @@ namespace ClaudiaKerman.Core.Tools
                 json.EndObject();
             }
             json.EndArray();
-            var last = schedule.Where(p => p.Ut.HasValue).Select(p => p.Ut.Value).DefaultIfEmpty(now).Max();
-            json.Field("total_wait_s", PlanningJson.Round(Math.Max(0, last - now), 0));
+            // With no pass at all there is no wait to quote: a zero would tell Claudia the survey costs nothing.
+            var passed = schedule.Where(p => p.Ut.HasValue).Select(p => p.Ut.Value).ToList();
+            if (passed.Count > 0) json.Field("total_wait_s", PlanningJson.Round(Math.Max(0, passed.Max() - now), 0));
             var unreachable = schedule.Count(p => p.Unreachable);
             json.Field("unreachable_count", unreachable);
             json.EndObject();
