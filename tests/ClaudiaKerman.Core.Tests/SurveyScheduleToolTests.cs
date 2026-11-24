@@ -149,6 +149,25 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void TheToolsLandingOrderWithNoClosedOrbitIsTheOneTheScriptCallGives()
+        {
+            // #1327: the script call (SurveySchedule.Entries, what ADDONS:CLAUDIA:SURVEYSCHEDULE runs) with no closed orbit, against the tool on the same sites.
+            var sites = new List<SurveyWaypoint>();
+            foreach (var at in new[] { new[] { 0.0, 0.0 }, new[] { 0.0, 40.0 }, new[] { 0.0, 10.0 } })
+            {
+                var site = Waypoint("g" + at[1], at[0], at[1]); site.Ground = true; sites.Add(site);
+            }
+            var snapshot = Snapshot(sites.ToArray());
+            snapshot.Orbit.Eccentricity = 1.5;
+
+            var answer = Run(snapshot);
+            var script = SurveySchedule.Entries(new SurveyBody { Radius = MunRadius }, null, snapshot.Ut, new List<SurveyWaypoint>(), sites, 15000);
+
+            Assert.Equal(script.Select(x => x.Waypoint.Key), answer.GetProperty("landings").EnumerateArray().Select(x => x.GetProperty("waypoint").GetString()).Select(w => sites.First(y => y.Where() == w).Key));
+            Assert.Equal(3, script.Count);
+        }
+
+        [Fact]
         public void AMixedSurveyStillGivesItsLandingsWhenTheCraftHasNoOrbit()
         {
             var ground = Waypoint("g", 1, 5); ground.Ground = true;

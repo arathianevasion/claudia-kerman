@@ -88,6 +88,18 @@ namespace ClaudiaKerman.Core.Contracts
                 .ToList();
         }
 
+        /// <summary>
+        /// #1327: the schedule the script call returns: the orbital passes in flying order, then the ground survey's sites in landing order.
+        /// A ground survey's order needs no orbit, as in the Planning Tool: with <paramref name="orbit"/> null (no closed orbit) or no orbital
+        /// waypoint to pass, the sites alone come back.
+        /// </summary>
+        public static List<SurveyPass> Entries(SurveyBody body, SurveyOrbit orbit, double now, IList<SurveyWaypoint> orbital, IList<SurveyWaypoint> ground, double triggerRange)
+        {
+            var entries = orbit == null || orbital.Count == 0 ? new List<SurveyPass>() : For(body, orbit, now, orbital, triggerRange);
+            entries.AddRange(Ground(body, ground));
+            return entries;
+        }
+
         /// <summary>Samples of the ground track per orbit: a Mun orbit's track moves about 0.5° between them.</summary>
         private const int SamplesPerOrbit = 720;
         /// <summary>A pass's UT is refined to this, s.</summary>

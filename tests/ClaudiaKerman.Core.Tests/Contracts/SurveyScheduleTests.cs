@@ -144,6 +144,29 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.True(schedule.Single(p => p.Waypoint == unknown).RadiusUnknown);
         }
 
+        [Fact]
+        public void AGroundSurveyGetsItsLandingOrderWithNoClosedOrbitToSchedulePassesFrom()
+        {
+            var sites = new[] { Ground(0, "0,0"), Ground(1, "0,40"), Ground(2, "0,10") };
+            var pass = Waypoint(3, "0,100", maxAltitude: 30000);
+
+            // #1327: the script call has no closed orbit on the ground or a suborbital path; the Planning Tool's order needs none.
+            var entries = SurveySchedule.Entries(Mun(), null, Now, new[] { pass }, sites, Range);
+
+            Assert.Equal(SurveySchedule.Ground(Mun(), sites).Select(p => p.Waypoint.Key), entries.Select(p => p.Waypoint.Key));
+            Assert.Equal(new[] { 1, 2, 3 }, entries.Select(p => p.Landing));
+        }
+
+        [Fact]
+        public void AGroundSurveyAloneNeedsNoOrbitEvenWithOneGiven()
+        {
+            var sites = new[] { Ground(0, "0,0"), Ground(1, "0,40") };
+
+            var entries = SurveySchedule.Entries(Mun(), new CircularOrbit(12500, 20, 30, 0).Survey(), Now, new List<SurveyWaypoint>(), sites, Range);
+
+            Assert.Equal(new[] { 1, 2 }, entries.Select(p => p.Landing));
+        }
+
         private static SurveyBody Mun()
         {
             return new SurveyBody { Radius = MunRadius, RotationPeriod = MunTurn };
