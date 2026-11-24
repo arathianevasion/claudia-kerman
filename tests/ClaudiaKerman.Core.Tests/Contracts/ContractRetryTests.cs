@@ -112,7 +112,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void FromTheSecondMissTheChatNamesTheRequirementAndAutoModeCarriesOn()
         {
-            var transport = Transport(ScriptedResponse.Fixture("mission-sequence-plan.sse"), ScriptedResponse.Fixture("mission-debrief-next.sse"));
+            // The retry's Sequence Plan and Debrief, and a reply for the request after it, so no failure Pauses the Mission meanwhile.
+            var transport = Transport(ScriptedResponse.Fixture("mission-sequence-plan.sse"), ScriptedResponse.Fixture("mission-debrief-next.sse"), ScriptedResponse.Fixture("mission-sequence-plan.sse"));
             var mission = Running(transport, out var start);
             mission.Send(new SetAutoMode(true));
 
