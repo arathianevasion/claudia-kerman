@@ -117,7 +117,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("LANDSTART", new OneArgsSuffix<Lexicon, Lexicon>(LandStartCall,
                 "Core Library only (land, once): where land starts from (orbit, arc or fail), from situation, ecc, sma, mu, r_fall, radius, day, fall_s, end_lat, end_lng, now, descent_shape and target; lexicon start, why, end_m and an arc's plan"));
             AddSuffix("SITEHOP", new OneArgsSuffix<Lexicon, Lexicon>(SiteHopCall,
-                "Core Library only (site_hop, before liftoff and each tick of its burn): the arc to the site, from mu, day, lat, lng, r, agl, vel_up, vel_north, vel_east, accel, target_lat, target_lng, target_r and (before liftoff) dv; lexicon why, km, need, speed, heading, pitch, tof, steer_heading, steer_pitch, throttle, err, done"));
+                "Core Library only (site_hop, before liftoff and each tick of its burn): the arc to the site, from mu, day, lat, lng, r, agl, vel_up, vel_north, vel_east, accel, target_lat, target_lng, target_r and (before liftoff) dv and now; lexicon why, km, need, speed, heading, pitch, tof, steer_heading, steer_pitch, throttle, err, done, wait, liftoff_ut (a daylight touchdown, #1322)"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
                 "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, core, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
             AddSuffix("SCIENCECHOICE", new OneArgsSuffix<Lexicon, Lexicon>(ScienceChoiceCall,
@@ -847,14 +847,25 @@ namespace ClaudiaKerman.KOS
         }
 
         /// <summary>
-        /// <c>ADDONS:CLAUDIA:SITEHOP</c> (#1310, ADR 0014): <see cref="SiteHop.Call"/>, pure. Called every tick of the burn, so its time is logged at most once a second (guardrail 6).
+        /// <c>ADDONS:CLAUDIA:SITEHOP</c> (#1310, ADR 0014): <see cref="SiteHop.Call(System.Collections.Generic.IDictionary{string, object}, System.Func{double, double})"/>,
+        /// with the sun at the site read from the game for the look before liftoff (#1322: Core asks it only then). Called every tick of the burn, so its time is logged
+        /// at most once a second (guardrail 6).
         /// </summary>
         private Lexicon SiteHopCall(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> hop = null;
-            return (Lexicon)Guarded("SITEHOP", () => KosValues.FromPlain(hop = SiteHop.Call(KosValues.ToDictionary(input))),
+            return (Lexicon)Guarded("SITEHOP", () =>
+            {
+                var ask = KosValues.ToDictionary(input);
+                var body = shared.Vessel.mainBody.bodyName;
+                var sky = new PlanningBody();
+                double lat = Convert.ToDouble(ask.ContainsKey("target_lat") ? ask["target_lat"] : 0.0, CultureInfo.InvariantCulture);
+                double lng = Convert.ToDouble(ask.ContainsKey("target_lng") ? ask["target_lng"] : 0.0, CultureInfo.InvariantCulture);
+                return KosValues.FromPlain(hop = SiteHop.Call(ask, ut => sky.SunElevation(body, lat, lng, ut)));
+            },
                 () => (string)hop["why"] != "" ? "fail: " + hop["why"]
-                    : string.Format(CultureInfo.InvariantCulture, "{0:0.0} km, {1:0} m/s at {2:0.0} deg, throttle {3:0.00}, {4:0.0} m/s to gain", hop["km"], hop["speed"], hop["pitch"], hop["throttle"], hop["err"]), 1);
+                    : string.Format(CultureInfo.InvariantCulture, "{0:0.0} km, {1:0} m/s at {2:0.0} deg, throttle {3:0.00}, {4:0.0} m/s to gain{5}", hop["km"], hop["speed"], hop["pitch"], hop["throttle"], hop["err"],
+                        (double)hop["wait"] > 0 ? string.Format(CultureInfo.InvariantCulture, "; waits {0:0} s on the ground for a daylight touchdown", hop["wait"]) : ""), 1);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:ENTRYTRIM</c> (#892): <see cref="BlockCalls.EntryTrim"/> with this planet's air and the craft reentry flies; the log line is the decision.</summary>
