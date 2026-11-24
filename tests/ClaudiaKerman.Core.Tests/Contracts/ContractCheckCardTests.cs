@@ -900,6 +900,15 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AfterThePlayersApprovalADeltaVShortFindingNoLongerOffersChangeContracts()
+        {
+            var mission = ProposedOnTheChosenContracts();
+            mission.Send(new Approve());
+
+            Assert.All(mission.View.CraftCheck.Findings, f => Assert.False(f.ChangeOffered));
+        }
+
+        [Fact]
         public void AfterThePlayersApprovalTheViewDropsChangeContractsAndSaysTheContractsAreFixed()
         {
             var mission = ProposedOnTheChosenContracts();
