@@ -343,6 +343,16 @@ namespace ClaudiaKerman.Core.Missions
             + "corrective_sequence or revised_plan; for Failed reduced_goal (follow_up_text is the reduced Mission Goal, which the "
             + "player must approve) or end_mission; for Nominal none. If the script printed an error, quote what matters of it in what_happened.";
 
+        /// <summary>
+        /// #1307: in the Contract Route when a chosen survey has waypoints taken from orbit: the Survey Schedule comes from one addon call,
+        /// so the survey leg's script never works out the ground track itself (#1287 put all five scans at the first waypoint).
+        /// </summary>
+        public const string SurveyScheduleNote = "Survey passes: in the survey leg's script, once in the survey orbit, ADDONS:CLAUDIA:SURVEYSCHEDULE() "
+            + "gives the mod's Survey Schedule for the craft's orbit: a list, in flying order, of lexicons with waypoint (\"3.0° N 10.0° E\"), ut, "
+            + "altitude, out_of_band (the Band the pass is outside, e.g. \"below 10 km\" for a pass higher than that; \"\" if inside) and unreachable (with reaching_inclination); a line with no ut has no pass. Coast to each "
+            + "pass's ut and run science there; don't work out the ground track yourself. Put each pass in the Script Result, and report each "
+            + "waypoint you skip: each \"unreachable\" one with the inclination that would reach it, and any with no ut.";
+
         /// <summary>Added to the Debrief notice when a science call kept data on board (#612): steers the next leg to a transmit-only call.</summary>
         public const string ScienceKeptNoticeLine = " The data is aboard; sending it needs no new landing.";
 
