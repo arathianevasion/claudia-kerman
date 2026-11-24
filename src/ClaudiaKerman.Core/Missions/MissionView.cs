@@ -309,6 +309,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool CanChange;
         /// <summary>#1284: why "Change Contracts" can't be pressed now, shown beside it greyed; "" when it can.</summary>
         public string ChangeNote = "";
+        /// <summary>#1285: the Mission's first Mission Plan is approved: the line says the Contracts are fixed, in place of the button; "" before.</summary>
+        public string FixedNote = "";
         /// <summary>How many Contracts are accepted.</summary>
         public int Accepted;
         /// <summary>The player's typed words, "" when none.</summary>

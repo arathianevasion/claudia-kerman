@@ -523,6 +523,8 @@ namespace ClaudiaKerman.Adapter
                 }
                 GUILayout.EndHorizontal();
                 if (card.ChangeNote.Length > 0) GUILayout.Label(card.ChangeNote, ClaudiaSkin.Secondary);
+                // #1285: from the first Approval the Contracts are fixed; the line says so in place of the button.
+                if (card.FixedNote.Length > 0) GUILayout.Label(card.FixedNote, ClaudiaSkin.Secondary);
                 ClaudiaSkin.EndCard();
                 return;
             }
