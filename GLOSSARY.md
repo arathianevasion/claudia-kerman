@@ -48,9 +48,17 @@ _Avoid_: contract plan, itinerary
 The altitude range, and speed range where the Contract gives one, within which a Contract Requirement is met, e.g. a part test at 51–56 km and 100–260 m/s.
 _Avoid_: envelope, window (a Transfer Window is a time)
 
+**Survey Schedule**:
+The mod's order and timing for a survey Contract's waypoints. For each orbital waypoint, the pass's UT and its predicted altitude against the Band, or "unreachable" with the inclination needed. For each ground waypoint, the landing order, each site's landing, and "needs precision" where the Contract's radius is tighter than a landing's aim.
+_Avoid_: survey plan, pass list
+
 **Hop**:
 A suborbital flight from the launch body up to a Band and back down, without reaching orbit. The plan check recognises a Hop by a launch that never turns (a turn_start_speed at least circular speed), whatever its target_ap: a Band above the air asks for a target_ap above it. A Contract Requirement met on a Hop is priced as one; on a Mission that also goes to orbit, it is met on the way up.
 _Avoid_: suborbital flight, sounding flight
+
+**Site Hop**:
+A suborbital flight from one landed site to a named site on the same body, landing there without reaching orbit; flown by the site_hop Building Block, for a ground survey's waypoints or any Mission. Not a Hop, which goes up from the launch body to a Band and back down.
+_Avoid_: hop (for this), bounce, suborbital transfer
 
 **Haul**:
 A part-test Contract Requirement that asks for the part to be carried to a place or situation, not run there.
@@ -265,7 +273,7 @@ The mod asking Claudia again, thinking harder, for a Debrief, Craft Check, Margi
 _Avoid_: retry (which is the player's), escalation, re-ask
 
 **Nominal**:
-A Debrief outcome: the Maneuver Sequence ended within its Sequence Plan's tolerances.
+A Debrief outcome: the Maneuver Sequence ended within its Sequence Plan's tolerances. A Contract Requirement the Sequence was meant to meet and the game shows unmet rules it out, as a standing Telemetry Check crossing does; the mod enforces this.
 
 **Off-Nominal**:
 A Debrief outcome: the Maneuver Sequence ended outside tolerance, but the Mission Goal is still reachable. A landing miss alone is Off-Nominal: the craft down alive and nothing else short.
