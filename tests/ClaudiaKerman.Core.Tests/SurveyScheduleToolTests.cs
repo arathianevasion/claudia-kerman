@@ -130,6 +130,61 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(1, answer.GetProperty("unreachable_count").GetInt32());
         }
 
+        // ---- #1341: the Survey Plane and its node ----
+
+        private static bool UnderGame(double x, double y, double z, out double latitude, out double longitude)
+        {
+            return new Game().SurfaceUnder("Mun", x, y, z, out latitude, out longitude);
+        }
+
+        [Fact]
+        public void TheToolGivesTheSamePlaneAndNodeAsTheScriptCallOnTheSameOrbitAndWaypoints()
+        {
+            var waypoints = new[] { Waypoint("a", 10.0, 58.2), Waypoint("b", 12.5, 12.5), Waypoint("c", 7.1, 6.0), Waypoint("d", 13.2, 4.2), Waypoint("e", 19.2, 0.7) };
+            var snapshot = Snapshot(waypoints);
+            var mun = snapshot.Bodies.First(b => b.Name == "Mun");
+            // The script call runs this on the game's own elements and frame reads.
+            var call = SurveySchedule.Plane(new SurveyBody { Radius = mun.Radius, RotationPeriod = mun.RotationPeriod, Gm = mun.Gm }, snapshot.Orbit, snapshot.Ut,
+                UnderGame, waypoints, snapshot.SurveyTriggerRange);
+
+            var answer = Run(snapshot);
+
+            Assert.NotNull(call.Node);
+            var plane = answer.GetProperty("survey_plane");
+            Assert.Equal(Math.Round(call.Inclination, 1), plane.GetProperty("inclination").GetDouble());
+            Assert.Equal(Math.Round(call.Lan, 1), plane.GetProperty("lan").GetDouble());
+            Assert.Equal(call.Passed.Select(w => w.Where()), plane.GetProperty("passes_over").EnumerateArray().Select(w => w.GetString()));
+            var node = answer.GetProperty("node");
+            Assert.Equal(Math.Round(call.Node.Ut, 1), node.GetProperty("burn_ut").GetDouble());
+            Assert.Equal(Math.Round(call.Node.Prograde, 2), node.GetProperty("prograde").GetDouble());
+            Assert.Equal(Math.Round(call.Node.Normal, 2), node.GetProperty("normal").GetDouble());
+            Assert.Equal(Math.Round(call.Node.Radial, 2), node.GetProperty("radial").GetDouble());
+            Assert.Equal(Math.Round(call.Node.DeltaV, 1), node.GetProperty("delta_v").GetDouble());
+        }
+
+        [Fact]
+        public void WhenTheCraftsOwnPlaneServesTheToolGivesThePlaneAndNoNode()
+        {
+            // One waypoint under the craft's own track 40° on from its node (it starts 23° on): no plane passes over more.
+            var snapshot = Snapshot(Waypoint("a", 12.7, 38.0));
+
+            var answer = Run(snapshot);
+
+            Assert.Equal(20, answer.GetProperty("survey_plane").GetProperty("inclination").GetDouble());
+            Assert.False(answer.TryGetProperty("node", out _));
+        }
+
+        [Fact]
+        public void AGroundSurveysAnswerHasNoSurveyPlane()
+        {
+            var site = Waypoint("g", 0, 10); site.Ground = true;
+
+            var answer = Run(Snapshot(site));
+
+            Assert.False(answer.TryGetProperty("survey_plane", out _));
+            Assert.False(answer.TryGetProperty("node", out _));
+        }
+
         [Fact]
         public void AGroundSurveysSitesComeBackInLandingOrderWithNeedsPrecisionMarked()
         {

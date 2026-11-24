@@ -101,7 +101,11 @@ namespace ClaudiaKerman.Core.Tools
             var schedule = SurveySchedule.For(new SurveyBody { Radius = body.Radius, RotationPeriod = body.RotationPeriod },
                 new SurveyOrbit { Track = Track(conic, body.Radius, now, turn, lonOffset, handed), Period = conic.Period, Inclination = orbit.Inclination },
                 now, waypoints, snapshot.SurveyTriggerRange);
-            return Answer(body.Name, schedule, now, sites);
+            // #1341: the Survey Plane and the node that reaches it, from the same Core function the script call runs.
+            var plane = SurveySchedule.Plane(new SurveyBody { Radius = body.Radius, RotationPeriod = body.RotationPeriod, Gm = body.Gm }, orbit, now,
+                (double x, double y, double z, out double lat, out double lon) => api.SurfaceUnder(body.Name, x, y, z, out lat, out lon),
+                waypoints, snapshot.SurveyTriggerRange);
+            return Answer(body.Name, schedule, now, sites, plane);
         }
 
         /// <summary>The ground track as Core propagates the orbit, fixed to the turning body from <paramref name="now"/>.</summary>
@@ -117,9 +121,23 @@ namespace ClaudiaKerman.Core.Tools
             };
         }
 
-        private static ToolOutcome Answer(string body, IList<SurveyPass> schedule, double now, IList<SurveyPass> sites)
+        private static ToolOutcome Answer(string body, IList<SurveyPass> schedule, double now, IList<SurveyPass> sites, SurveyPlane plane = null)
         {
             var json = new JsonWriter().BeginObject().Field("body", body);
+            if (plane != null)
+            {
+                json.Name("survey_plane").BeginObject().Field("inclination", PlanningJson.Round(plane.Inclination, 1)).Field("lan", PlanningJson.Round(plane.Lan, 1));
+                json.Name("passes_over").BeginArray();
+                foreach (var waypoint in plane.Passed) json.String(waypoint.Where());
+                json.EndArray().EndObject();
+                if (plane.Node != null)
+                {
+                    json.Name("node").BeginObject();
+                    PlanningJson.Time(json, "burn", plane.Node.Ut, now);
+                    json.Field("prograde", PlanningJson.Round(plane.Node.Prograde, 2)).Field("normal", PlanningJson.Round(plane.Node.Normal, 2))
+                        .Field("radial", PlanningJson.Round(plane.Node.Radial, 2)).Field("delta_v", PlanningJson.Round(plane.Node.DeltaV, 1)).EndObject();
+                }
+            }
             json.Name("passes").BeginArray();
             foreach (var pass in schedule)
             {
@@ -151,6 +169,7 @@ namespace ClaudiaKerman.Core.Tools
             json.EndObject();
             var passes = schedule.Count(p => p.Ut.HasValue);
             var summary = passes + (passes == 1 ? " pass" : " passes") + (unreachable > 0 ? ", " + unreachable + " unreachable" : "");
+            if (plane != null) summary += plane.Node != null ? ", Survey Plane " + PlanningJson.Round(plane.Inclination, 1) + "° over " + plane.Passed.Count + " by a " + PlanningJson.Round(plane.Node.DeltaV, 0) + " m/s node" : ", own plane serves";
             if (sites.Count > 0) summary = (schedule.Count > 0 ? summary + ", " : "") + sites.Count + (sites.Count == 1 ? " landing" : " landings") + (sites.Any(x => x.NeedsPrecision) ? ", " + sites.Count(x => x.NeedsPrecision) + " needing precision" : "") + (sites.Any(x => x.RadiusUnknown) ? ", " + sites.Count(x => x.RadiusUnknown) + " radius unknown" : "");
             return new ToolOutcome { Json = json.ToString(), Summary = summary };
         }
