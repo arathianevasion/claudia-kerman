@@ -68,6 +68,14 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("Holding for the game"));
         }
 
+        [Fact]
+        public void AnEvaWaypointHasNoExperimentYetStillIsNeverMetByWhereTheCraftIs()
+        {
+            var requirement = new ChosenRequirement { Key = "c/0", Body = "Mun", Reach = ContractReach.Orbit, Waypoint = new SurveyWaypoint { Key = "c/0", Body = "Mun", Eva = true } };
+
+            Assert.False(ContractWatch.ConditionsHold(At(TransferEnded), requirement, "Kerbin"));
+        }
+
         // ---- Helpers ----
 
         private sealed class Reading

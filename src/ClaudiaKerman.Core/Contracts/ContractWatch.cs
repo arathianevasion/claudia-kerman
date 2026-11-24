@@ -266,7 +266,7 @@ namespace ClaudiaKerman.Core.Contracts
             // #1244: a placed one is met by its placement; the game marks only what completes after the Mission.
             if (requirement.AfterMission != null) return snapshot != null && PlacementKinds.Unplaced(snapshot, requirement) == null;
             // #1304, #1321: a survey waypoint or collect science is met by a reading taken, which the snapshot doesn't show: where the craft is now never meets it.
-            if (requirement.Experiment != null) return false;
+            if (requirement.Waypoint != null || requirement.Experiment != null) return false;
             var serving = Serving.Of(snapshot, childVesselId);
             if (serving == null) return false;
             var down = serving.Situation == "LANDED" || serving.Situation == "SPLASHED";
