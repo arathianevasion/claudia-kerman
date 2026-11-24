@@ -298,7 +298,7 @@ namespace ClaudiaKerman.Core.Contracts
             var waypoint = requirement.Waypoint;
             var reading = string.IsNullOrEmpty(requirement.Experiment) ? "the survey's reading" : "a " + requirement.Experiment;
             var band = waypoint.MaxAltitude.HasValue ? ", below " + Km(waypoint.MaxAltitude.Value) : waypoint.MinAltitude.HasValue ? ", above " + Km(waypoint.MinAltitude.Value) : "";
-            return "the game shows no " + reading + " taken " + (waypoint.Ground ? "landed at" : "over") + " the waypoint " + waypoint.Where() + band + " on " + ContractKinds.Named(waypoint.Body);
+            return "the game hasn't marked it met: it needs " + reading + " taken " + (waypoint.Ground ? "landed at" : "over") + " the waypoint " + waypoint.Where() + band + " on " + ContractKinds.Named(waypoint.Body);
         }
 
         private static string Km(double metres)

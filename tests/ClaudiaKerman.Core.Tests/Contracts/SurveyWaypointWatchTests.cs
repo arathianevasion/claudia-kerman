@@ -72,7 +72,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             foreach (var where in new[] { "0.0° N 100.0° E", "0.0° N 170.0° W", "0.0° N 80.0° W", "0.0° N 40.0° E" })
             {
                 var one = Assert.Single(open, r => r.Requirement.Contains(where));
-                Assert.Contains("crewReport", one.Gap);
+                Assert.StartsWith("the game hasn't marked it met: it needs a crewReport taken over the waypoint " + where + ", below 30 km on the Mun", one.Gap);
                 Assert.Contains(where, one.Gap);
             }
             Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("Holding for the game"));
