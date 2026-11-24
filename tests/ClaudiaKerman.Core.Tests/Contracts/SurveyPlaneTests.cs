@@ -181,6 +181,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void TheNodeLeavesTimeToTurnAndStartTheBurnWhereverTheCraftIsNow()
+        {
+            // exec_node can't fly a node that is already due: the burn is never at the craft's crossing seconds from now.
+            for (var phase = 0; phase < 360; phase += 15)
+            {
+                var plane = Pick(Circular(30000, 0.9, 0, phase), Waypoints(Playtest));
+
+                Assert.NotNull(plane.Node);
+                Assert.True(plane.Node.Ut >= Now + SurveySchedule.NodeLead, "phase " + phase + ": the node is " + (plane.Node.Ut - Now) + " s away");
+            }
+        }
+
+        [Fact]
         public void WhenTheCraftsOwnPlaneAlreadyPassesOverTheMostThereIsNoNode()
         {
             // An equatorial orbit passes over waypoints on the equator in its first revolution, whatever the body's turn.

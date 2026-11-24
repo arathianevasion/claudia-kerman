@@ -40,6 +40,9 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>The candidate planes' spacing in inclination and in node, degrees.</summary>
         private const double PlaneStep = 0.5;
 
+        /// <summary>The soonest the node comes, s from now: time for exec_node to turn the craft and start the burn early by half its length.</summary>
+        public const double NodeLead = 60;
+
         /// <summary>
         /// #1341: the Survey Plane for an orbital survey's remaining waypoints: of the planes the craft can reach with one burn where its orbit
         /// crosses them, the one that passes over the most of them in the revolution after that burn, allowing for the body's turn; ties go to
@@ -71,9 +74,9 @@ namespace ClaudiaKerman.Core.Contracts
                     var normal = Normal(i, lan);
                     var line = Vec3.Cross(own, normal);
                     if (line.Length < 1e-9) continue;
-                    // The craft crosses the new plane twice an orbit, on the line both planes share: the burn is at the sooner crossing.
+                    // The craft crosses the new plane twice an orbit, on the line both planes share: the burn is at the sooner crossing that leaves exec_node its lead.
                     var nu = Math.Atan2(Vec3.Dot(line, conic.Q), Vec3.Dot(line, conic.P));
-                    var ut = Math.Min(conic.TimeAtTrue(nu, now).Value, conic.TimeAtTrue(nu + Math.PI, now).Value);
+                    var ut = Math.Min(conic.TimeAtTrue(nu, now + NodeLead).Value, conic.TimeAtTrue(nu + Math.PI, now + NodeLead).Value);
                     Vec3 r, v;
                     conic.State(ut, out r, out v);
                     var dv = Burn(r, v, normal).Length;
