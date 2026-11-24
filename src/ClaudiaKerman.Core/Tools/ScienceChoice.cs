@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ClaudiaKerman.Core.Tools
 {
@@ -13,8 +14,6 @@ namespace ClaudiaKerman.Core.Tools
         public bool HasData;
         public bool Inoperable;
         public bool Rerunnable = true;
-        /// <summary>Sending its data would be worth less than the data in hand.</summary>
-        public bool LosesValue;
     }
 
     /// <summary>One experiment, every part of it on the craft, and where the craft is.</summary>
@@ -30,7 +29,6 @@ namespace ClaudiaKerman.Core.Tools
         public bool Tracked = true;
         /// <summary>Science still to gain here.</summary>
         public double Left;
-        public bool Returning;
         /// <summary>An antenna with a link home.</summary>
         public bool CanSend;
         public double EcPct = 100;
@@ -51,63 +49,75 @@ namespace ClaudiaKerman.Core.Tools
     /// <summary>The <c>science</c> block's part choice and transmit decision (#1297, ADR 0014). Pure.</summary>
     public static class ScienceChoice
     {
-        /// <summary>"run" or "skip: &lt;why&gt;" for one part (science_decision).</summary>
-        public static string Decision(bool isExplicit, bool rerunnable, bool hasData, bool inoperable, bool available, bool tracked, double left)
+        /// <summary>Under this, data is left as it is: too little science left here to count.</summary>
+        public const double LeftFloor = 0.05;
+
+        /// <summary>
+        /// One step per part of the experiment, in the order given. At most one part runs: a free one (holding no data) first, its data
+        /// kept aboard unless <c>Mode</c> is "transmit". With none free and a reading needed here, "auto" and "transmit" send one
+        /// rerunnable part's held data to free it, given a link and the charge, then run it ("free"); "transmit" also sends every other
+        /// part's held data ("send"). A reading is needed when the experiment was named, when science is left here, or in Sandbox
+        /// when no part of it holds data. When none can be freed every part holding data says "no free part: &lt;why&gt;" (<see cref="Missed"/>).
+        /// </summary>
+        public static IList<ScienceStep> Choose(ScienceAsk ask)
         {
-            if (inoperable) return "skip: inoperable";
-            if (hasData)
-                return rerunnable ? "skip: holds data, so it was not overwritten" : "skip: holds data and is not rerunnable, so it was not overwritten";
-            if (!available) return "skip: nothing to measure in this situation";
-            if (!isExplicit && tracked && left <= 0.05) return "skip: no science left here";
-            return "run";
+            var parts = ask.Parts ?? new List<SciencePart>();
+            var steps = new List<ScienceStep>();
+            var cantSend = !ask.CanSend ? "no antenna or no link" : ask.EcPct < ask.MinEcPct ? "electric charge is under min_ec_pct" : "";
+            foreach (var p in parts)
+            {
+                if (!p.Named) steps.Add(new ScienceStep { Why = "not in experiments" });
+                else if (p.Inoperable) steps.Add(new ScienceStep { Why = "inoperable" });
+                else if (p.HasData && ask.Mode == "transmit") steps.Add(cantSend == "" ? new ScienceStep { Do = "send" } : new ScienceStep { Do = "hold", Why = "keep: " + cantSend });
+                else if (p.HasData) steps.Add(new ScienceStep { Why = p.Rerunnable ? "holds data, so it was not overwritten" : "holds data and is not rerunnable, so it was not overwritten" });
+                else steps.Add(new ScienceStep { Why = !ask.Available ? "nothing to measure in this situation" : Needed(ask) ? "one reading per experiment; another part took it" : "no science left here" });
+            }
+            if (!ask.Available || !Needed(ask)) return steps;
+            var then = ask.Mode == "keep" ? "keep: transmit is 'keep'" : ask.Mode == "transmit" ? (cantSend == "" ? "transmit" : "keep: " + cantSend) : "keep: kept aboard; sent only to free a part";
+            for (var i = 0; i < parts.Count; i++)
+                if (Usable(parts[i]) && !parts[i].HasData)
+                {
+                    steps[i] = new ScienceStep { Do = "run", Then = then };
+                    return steps;
+                }
+            var missed = Missed(ask);
+            for (var i = 0; i < parts.Count; i++)
+                if (Usable(parts[i]) && parts[i].Rerunnable && missed == "")
+                {
+                    steps[i] = new ScienceStep { Do = "free", Then = then };
+                    return steps;
+                }
+            for (var i = 0; i < parts.Count; i++)
+                if (Usable(parts[i]) && steps[i].Do == "skip") steps[i].Why = "no free part: " + missed;
+            return steps;
         }
 
-        /// <summary>"transmit" or "keep: &lt;why&gt;" for fresh data (science_transmit_choice).</summary>
-        public static string TransmitChoice(string mode, bool returning, bool losesValue, bool canSend, double ecPct, double minEcPct)
-        {
-            if (mode == "keep") return "keep: transmit is 'keep'";
-            if (mode == "auto" && returning && losesValue) return "keep: the craft is returning and transmitting would lose value";
-            if (!canSend) return "keep: no antenna or no link";
-            if (ecPct < minEcPct) return "keep: electric charge is under min_ec_pct";
-            return "transmit";
-        }
-
-        /// <summary>"" or the choice for data a part already holds (science_held_choice).</summary>
-        public static string HeldChoice(bool hasData, bool inoperable, string mode, bool returning, bool losesValue, bool canSend, double ecPct, double minEcPct)
-        {
-            if (!hasData || inoperable || mode == "keep") return "";
-            return TransmitChoice(mode, returning, losesValue, canSend, ecPct, minEcPct);
-        }
-
-        /// <summary>"" or why the experiment got no reading for want of a free part.</summary>
+        /// <summary>
+        /// "" or why the experiment gets no reading for want of a free part: every part it may use holds data and none can be freed
+        /// ("transmit is 'keep'", "no antenna or no link", "electric charge is under min_ec_pct" or "every part holds data and none is
+        /// rerunnable"). "" too when no reading is needed here or it can't run in this situation.
+        /// </summary>
         public static string Missed(ScienceAsk ask)
         {
+            var parts = ask.Parts ?? new List<SciencePart>();
+            if (!ask.Available || !Needed(ask) || !parts.Any(Usable) || parts.Any(p => Usable(p) && !p.HasData)) return "";
+            if (ask.Mode == "keep") return "transmit is 'keep'";
+            if (!parts.Any(p => Usable(p) && p.Rerunnable)) return "every part holds data and none is rerunnable";
+            if (!ask.CanSend) return "no antenna or no link";
+            if (ask.EcPct < ask.MinEcPct) return "electric charge is under min_ec_pct";
             return "";
         }
 
-        /// <summary>One step per part of the experiment, in the order given.</summary>
-        public static IList<ScienceStep> Choose(ScienceAsk ask)
+        private static bool Usable(SciencePart p)
         {
-            var steps = new List<ScienceStep>();
-            foreach (var p in ask.Parts)
-            {
-                if (!p.Named)
-                {
-                    steps.Add(new ScienceStep { Why = "not in experiments" });
-                    continue;
-                }
-                var held = HeldChoice(p.HasData, p.Inoperable, ask.Mode, ask.Returning, p.LosesValue, ask.CanSend, ask.EcPct, ask.MinEcPct);
-                if (held == "transmit") steps.Add(new ScienceStep { Do = "send" });
-                else if (held != "") steps.Add(new ScienceStep { Do = "hold", Why = held });
-                else
-                {
-                    var decision = Decision(ask.Explicit, p.Rerunnable, p.HasData, p.Inoperable, ask.Available, ask.Tracked, ask.Left);
-                    if (decision == "run")
-                        steps.Add(new ScienceStep { Do = "run", Then = TransmitChoice(ask.Mode, ask.Returning, p.LosesValue, ask.CanSend, ask.EcPct, ask.MinEcPct) });
-                    else steps.Add(new ScienceStep { Why = decision.Substring(6) });
-                }
-            }
-            return steps;
+            return p.Named && !p.Inoperable;
+        }
+
+        private static bool Needed(ScienceAsk ask)
+        {
+            if (ask.Explicit) return true;
+            if (ask.Tracked) return ask.Left > LeftFloor;
+            return !(ask.Parts ?? new List<SciencePart>()).Any(p => Usable(p) && p.HasData);
         }
     }
 }

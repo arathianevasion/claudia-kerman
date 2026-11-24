@@ -59,7 +59,7 @@ namespace ClaudiaKerman.Core.Tests
 
         private static ScienceAsk Survey(string mode = "auto", bool link = true)
         {
-            return new ScienceAsk { Mode = mode, Returning = true, CanSend = link, EcPct = 90, MinEcPct = 10, Left = 8, Tracked = true };
+            return new ScienceAsk { Mode = mode, CanSend = link, EcPct = 90, MinEcPct = 10, Left = 8, Tracked = true };
         }
 
         [Fact]
