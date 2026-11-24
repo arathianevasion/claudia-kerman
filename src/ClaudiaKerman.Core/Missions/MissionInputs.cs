@@ -88,6 +88,14 @@ namespace ClaudiaKerman.Core.Missions
         }
     }
 
+    /// <summary>
+    /// #1284: "Change Contracts" on the folded Contract Check: the card reopens on the Chosen Contracts still accepted, priced from a fresh
+    /// Game Snapshot with the words and target given at Start Mission (ADR 0021). Refused while the Craft Check's request is out.
+    /// </summary>
+    public sealed class ChangeContracts : MissionInput
+    {
+    }
+
     /// <summary>#1022: "Plan without Contracts" on the Contract check card: the player's words alone.</summary>
     public sealed class PlanWithoutContracts : MissionInput
     {

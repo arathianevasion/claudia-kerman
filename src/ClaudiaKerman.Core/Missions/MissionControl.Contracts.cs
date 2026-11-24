@@ -23,6 +23,8 @@ namespace ClaudiaKerman.Core.Missions
         private StartMission _contractStart;
         /// <summary>"Plan these" was pressed: the card's one line, shown until the Mission starts; null otherwise.</summary>
         private ContractChoice _folded;
+        /// <summary>#1284: the card up was reopened by Change Contracts, so its ticks are the player's Chosen Contracts, not the suggestion.</summary>
+        private bool _reopened;
 
         private sealed partial class Mission
         {
@@ -160,6 +162,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             _contractCheck = check;
             _contractStart = start;
+            _reopened = false;
             LogToKsp(ContractCardLog.Posted(check, Ticked()));
             return true;
         }
@@ -236,6 +239,45 @@ namespace ClaudiaKerman.Core.Missions
             Start(start);
         }
 
+        /// <summary>#1284: why "Change Contracts" is greyed while the Craft Check's request is out.</summary>
+        private const string ChangeWaits = "The Craft Check's request is out; Change Contracts waits for its verdict.";
+
+        /// <summary>
+        /// #1284: "Change Contracts" on the folded card. The Contract Check is worked again from the latest Game Snapshot with the words and
+        /// target given at Start Mission, ticked on the Chosen Contracts still accepted (a Contract accepted since is unticked); the folded
+        /// choice is set aside. No request: the Craft Check's result stays, and Plan these uses it only while it is current for the new set's goal.
+        /// </summary>
+        private void ContractsChanged()
+        {
+            var refusal = !MissionOver ? "the Mission has started" : _folded == null ? "no Contracts are chosen"
+                : _craftCheck.Running ? "the Craft Check's request is out; wait for its verdict"
+                : _snapshot == null || _snapshot.Contracts == null || _snapshot.Contracts.Accepted.Count == 0 ? "no accepted Contracts are read now"
+                : "";
+            var start = _contractStart;
+            ContractCheck check = null;
+            if (refusal.Length == 0)
+            {
+                check = ContractCheck.Work(_snapshot, start.Goal, start.Remote, _config.CraftCheckMarginPercent, GivenTarget(start.Goal, start.Target));
+                refusal = !check.Priceable ? "the craft's delta-v isn't known (turn on the stock delta-v readout), so the Contracts can't be priced"
+                    : !check.WordsFit ? "the typed words alone no longer fit the craft" : "";
+            }
+            if (refusal.Length > 0)
+            {
+                LogToKsp("Change Contracts pressed and refused: " + refusal + ".");
+                return;
+            }
+            var accepted = new HashSet<string>(_snapshot.Contracts.Accepted.Select(c => c.Guid));
+            var kept = _folded.Guids.Where(accepted.Contains).ToList();
+            check.TickOnly(kept);
+            var ticked = check.TickedGuids;
+            var gone = _folded.Guids.Where(g => !ticked.Contains(g)).ToList();
+            LogToKsp("Change Contracts: the Contract Check reopens on the Chosen Contracts still accepted [" + string.Join(", ", ticked.ToArray()) + "]"
+                + (gone.Count > 0 ? "; chosen but not ticked now [" + string.Join(", ", gone.ToArray()) + "]" : "") + "; " + check.Headline(ticked.Count));
+            _contractCheck = check;
+            _reopened = true;
+            _folded = null;
+        }
+
         /// <summary>A Mission starting from the card: its words, its Contract Route and the card's line in its transcript.</summary>
         private void TakeContracts(Mission mission, StartMission start)
         {
@@ -258,7 +300,8 @@ namespace ClaudiaKerman.Core.Missions
 
         private ContractCheckView ContractCheckView()
         {
-            if (_folded != null && MissionOver) return new ContractCheckView { Folded = true, Summary = _folded.Summary };
+            if (_folded != null && MissionOver)
+                return new ContractCheckView { Folded = true, Summary = _folded.Summary, ChangeOffered = true, CanChange = !_craftCheck.Running, ChangeNote = _craftCheck.Running ? ChangeWaits : "" };
             var check = _contractCheck;
             if (check == null || !MissionOver) return null;
             var ticked = Ticked();
@@ -267,9 +310,9 @@ namespace ClaudiaKerman.Core.Missions
                 Accepted = check.Accepted, Words = check.Words,
                 Rows = check.Fitting.ToList(),
                 Headline = check.Headline(ticked.Count),
-                TickNote = ticked.Count > 0
-                    ? "Ticked Contracts are Mission Control's suggestion for this flight. A click leaves one out, or adds it back."
-                    : "Tick a Contract to plan it.",
+                TickNote = ticked.Count == 0 ? "Tick a Contract to plan it."
+                    : _reopened ? "Ticked Contracts are the ones you chose. A click leaves one out, or adds it back."
+                    : "Ticked Contracts are Mission Control's suggestion for this flight. A click leaves one out, or adds it back.",
                 SearchNote = check.SearchNote, OrderNote = check.OrderNote,
                 NotThisFlight = check.NotThisFlight.ToList(),
                 CraftDeltaV = check.CraftDeltaV, RouteDeltaV = check.RouteDeltaV, RouteIsEstimate = check.RouteIsEstimate, ReservePercent = check.ReservePercent, Reserve = check.Reserve, Spare = check.Spare,
