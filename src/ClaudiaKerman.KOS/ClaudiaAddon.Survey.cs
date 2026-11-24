@@ -21,6 +21,58 @@ namespace ClaudiaKerman.KOS
         {
             AddSuffix("SURVEYSCHEDULE", new NoArgsSuffix<ListValue>(SurveyScheduleNow,
                 "The Survey Schedule: a list in flying order of lexicons waypoint, lat, lng, ut, altitude, out_of_band, unreachable, reaching_inclination; then a ground survey's sites in landing order with landing, needs_precision"));
+            AddSuffix("SURVEYPLANE", new NoArgsSuffix<Lexicon>(SurveyPlaneNow,
+                "The Survey Plane for the orbital survey's remaining waypoints: a lexicon inclination, lan, passes_over (the waypoints it passes over in one revolution) and node: true with ut, radial, normal, prograde and delta_v of the one burn that reaches it (ADD NODE(ut, radial, normal, prograde), then exec_node), false when the craft's own plane serves. Quote the Survey Plane and its burn in the survey's Sequence Plan"));
+        }
+
+        /// <summary>
+        /// #1341: <c>ADDONS:CLAUDIA:SURVEYPLANE</c>, the Survey Plane and its node from <see cref="SurveySchedule.Plane"/>, the function the
+        /// <c>survey_schedule</c> Planning Tool runs, on the craft's orbit elements as the Game Snapshot reads them and the game's own frame reads.
+        /// </summary>
+        private Lexicon SurveyPlaneNow()
+        {
+            var vessel = shared.Vessel;
+            if (vessel == null || vessel.orbit == null) throw new KOSException("SURVEYPLANE needs a craft in orbit");
+            var orbit = vessel.orbit;
+            if (orbit.eccentricity >= 1) throw new KOSException("SURVEYPLANE needs a closed orbit");
+            var body = orbit.referenceBody;
+            var orbital = SurveyWaypointReader.Orbital(body.bodyName);
+            if (orbital.Count == 0) throw new KOSException("SURVEYPLANE: no accepted survey has a waypoint to take from orbit round " + body.bodyName);
+            SurfaceUnder under = (double x, double y, double z, out double latitude, out double longitude) =>
+            {
+                // As the Planning Tools read the frame (PlanningBody.SurfaceUnder): elements' vectors go into the game through Planetarium.Zup.
+                var game = Planetarium.Zup.WorldToLocal(new Vector3d(x, y, z));
+                var at = body.GetLatitudeAndLongitude(game.xzy, true);
+                latitude = at.x;
+                longitude = at.y;
+                return true;
+            };
+            SurveyPlane plane;
+            try
+            {
+                plane = SurveySchedule.Plane(new SurveyBody { Radius = body.Radius, RotationPeriod = body.rotates ? body.rotationPeriod : 0, Gm = body.gravParameter },
+                    SnapshotReader.OrbitOf(orbit), Planetarium.GetUniversalTime(), under, orbital, SurveyWaypointReader.TriggerRange());
+            }
+            catch (System.InvalidOperationException e)
+            {
+                throw new KOSException("SURVEYPLANE: " + e.Message);
+            }
+            var result = new Lexicon();
+            result.Add(new StringValue("inclination"), ScalarValue.Create(plane.Inclination));
+            result.Add(new StringValue("lan"), ScalarValue.Create(plane.Lan));
+            var over = new ListValue();
+            foreach (var waypoint in plane.Passed) over.Add(new StringValue(waypoint.Where()));
+            result.Add(new StringValue("passes_over"), over);
+            result.Add(new StringValue("node"), new BooleanValue(plane.Node != null));
+            if (plane.Node != null)
+            {
+                result.Add(new StringValue("ut"), ScalarValue.Create(plane.Node.Ut));
+                result.Add(new StringValue("radial"), ScalarValue.Create(plane.Node.Radial));
+                result.Add(new StringValue("normal"), ScalarValue.Create(plane.Node.Normal));
+                result.Add(new StringValue("prograde"), ScalarValue.Create(plane.Node.Prograde));
+                result.Add(new StringValue("delta_v"), ScalarValue.Create(plane.Node.DeltaV));
+            }
+            return result;
         }
 
         private ListValue SurveyScheduleNow()

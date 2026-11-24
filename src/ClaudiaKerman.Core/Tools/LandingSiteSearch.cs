@@ -724,11 +724,17 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>How the orbit's frame sits on the body: the longitude of its x axis and whether longitude grows with its angle (1) or against it (-1); an error text when the three reads don't fit a frame this code knows.</summary>
         internal static string Frame(string body, IPlanningBody api, out double lonOffset, out double handed)
         {
+            return Frame(body, (double x, double y, double z, out double lat, out double lon) => api.SurfaceUnder(body, x, y, z, out lat, out lon), out lonOffset, out handed);
+        }
+
+        /// <summary>#1341: the same, from the game's reads of one body, so the script call can find the frame as the Planning Tools do.</summary>
+        internal static string Frame(string body, ClaudiaKerman.Core.Contracts.SurfaceUnder under, out double lonOffset, out double handed)
+        {
             lonOffset = 0;
             handed = 1;
             double lat0, lon0, lat1, lon1, lat2, lon2;
-            if (!api.SurfaceUnder(body, 1, 0, 0, out lat0, out lon0) || !api.SurfaceUnder(body, 0, 1, 0, out lat1, out lon1)
-                || !api.SurfaceUnder(body, 0, 0, 1, out lat2, out lon2)
+            if (!under(1, 0, 0, out lat0, out lon0) || !under(0, 1, 0, out lat1, out lon1)
+                || !under(0, 0, 1, out lat2, out lon2)
                 || double.IsNaN(lat0 + lon0 + lat1 + lon1 + lat2))
                 return "the game could not say where the orbit's frame sits on " + body;
             var quarter = Wrap180(lon1 - lon0);

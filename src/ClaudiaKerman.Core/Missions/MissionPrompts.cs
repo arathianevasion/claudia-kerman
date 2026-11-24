@@ -353,7 +353,11 @@ namespace ClaudiaKerman.Core.Missions
             + "pass's ut and run science there; don't work out the ground track yourself. Put each pass in the Script Result, and report each "
             + "waypoint you skip: each \"unreachable\" one with the inclination that would reach it, and any with no ut. "
             + "While you write the survey's Sequence Plan, the survey_schedule tool gives you the same schedule: quote the pass times, the total wait "
-            + "(total_wait_s) and each unreachable waypoint in the plan, and set its expected duration from them (the wait plus the passes' own time).";
+            + "(total_wait_s) and each unreachable waypoint in the plan, and set its expected duration from them (the wait plus the passes' own time). "
+            + "Survey Plane: the survey_schedule tool's survey_plane (and ADDONS:CLAUDIA:SURVEYPLANE() in a script) is the plane, inclination and node, "
+            + "that passes over the most remaining waypoints in one revolution, with node, the one burn that reaches it, when one is given. "
+            + "In the script, when one is given, ADD NODE(ut, radial, normal, prograde) from it and fly it with exec_node, then call SURVEYSCHEDULE() for the passes; "
+            + "with none, the craft's own plane serves. In the Sequence Plan, quote the Survey Plane and its burn (burn time and delta_v).";
 
         /// <summary>
         /// #1311: in the Contract Route when a chosen survey has waypoints taken landed: the Survey Schedule gives their landing order, and the

@@ -121,7 +121,8 @@ namespace ClaudiaKerman.Adapter
             return snapshot;
         }
 
-        private static SnapshotOrbit OrbitOf(Orbit orbit)
+        /// <summary>The Game Snapshot's elements for a game orbit; #1341: the Survey Plane call reads the craft's orbit the same way, so it and the Planning Tool start from the same elements.</summary>
+        public static SnapshotOrbit OrbitOf(Orbit orbit)
         {
             return new SnapshotOrbit
             {
