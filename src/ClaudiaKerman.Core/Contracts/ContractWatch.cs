@@ -265,6 +265,8 @@ namespace ClaudiaKerman.Core.Contracts
         {
             // #1244: a placed one is met by its placement; the game marks only what completes after the Mission.
             if (requirement.AfterMission != null) return snapshot != null && PlacementKinds.Unplaced(snapshot, requirement) == null;
+            // #1304: a survey waypoint is met by a reading taken over it, which the snapshot doesn't show: where the craft is now never meets it.
+            if (requirement.Waypoint != null) return false;
             var serving = Serving.Of(snapshot, childVesselId);
             if (serving == null) return false;
             var down = serving.Situation == "LANDED" || serving.Situation == "SPLASHED";
@@ -282,11 +284,26 @@ namespace ClaudiaKerman.Core.Contracts
         public static string Gap(GameSnapshot snapshot, ChosenRequirement requirement, string childVesselId = "")
         {
             if (requirement.AfterMission != null && snapshot != null) return PlacementKinds.Unplaced(snapshot, requirement) ?? "";
+            if (requirement.Waypoint != null) return WaypointGap(requirement);
             var serving = Serving.Of(snapshot, childVesselId);
             if (serving == null) return "the mod has no reading of the " + (string.IsNullOrEmpty(childVesselId) ? "craft" : "Child Vessel");
             var miss = serving.Situation == "ORBITING" && serving.Body == requirement.Body ? OrbitMiss(snapshot, serving, requirement) : null;
             if (miss != null) return miss;
             return serving.Noun + " is " + serving.Situation + " at " + ContractKinds.Named(serving.Body) + ", and the Requirement asks it to " + requirement.Words;
+        }
+
+        /// <summary>#1304: what a survey waypoint the game shows unmet still lacks: the reading, taken where and in the band the Contract asks.</summary>
+        private static string WaypointGap(ChosenRequirement requirement)
+        {
+            var waypoint = requirement.Waypoint;
+            var reading = string.IsNullOrEmpty(requirement.Experiment) ? "the survey's reading" : "a " + requirement.Experiment;
+            var band = waypoint.MaxAltitude.HasValue ? ", below " + Km(waypoint.MaxAltitude.Value) : waypoint.MinAltitude.HasValue ? ", above " + Km(waypoint.MinAltitude.Value) : "";
+            return "the game shows no " + reading + " taken " + (waypoint.Ground ? "landed at" : "over") + " the waypoint " + waypoint.Where() + band + " on " + ContractKinds.Named(waypoint.Body);
+        }
+
+        private static string Km(double metres)
+        {
+            return (metres / 1000).ToString("0.#", CultureInfo.InvariantCulture) + " km";
         }
 
         /// <summary>#1031: a satellite's orbit against the Contract's window, "inclination 3.4° outside the 5% window"; null when inside, or not a satellite.</summary>
