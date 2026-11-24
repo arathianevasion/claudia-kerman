@@ -162,7 +162,8 @@ namespace ClaudiaKerman.Core.Contracts
                     continue;
                 }
                 var latitude = Math.Abs(waypoint.Latitude);
-                var unreachable = latitude > reach;
+                // #1349: a waypoint within the trigger range's arc of the tilt can be passed over; it only lacks a pass in the window.
+                var unreachable = latitude > reach + TriggerArc(body.Radius, triggerRange);
                 missed.Add(new SurveyPass { Waypoint = waypoint, Unreachable = unreachable, ReachingInclination = unreachable ? ReachingInclination(body.Radius, latitude, triggerRange) : (double?)null });
             }
             return passes.OrderBy(p => p.Ut.Value).Concat(missed).ToList();
@@ -171,7 +172,13 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>#1346: the smallest inclination whose ground track comes within the trigger range, along the ground, of a waypoint at this latitude (degrees, north or south): the latitude less the range's arc.</summary>
         private static double ReachingInclination(double radius, double latitude, double triggerRange)
         {
-            return Math.Max(0, latitude - triggerRange / radius * 180 / Math.PI);
+            return Math.Max(0, latitude - TriggerArc(radius, triggerRange));
+        }
+
+        /// <summary>The trigger range's arc along the ground, degrees.</summary>
+        private static double TriggerArc(double radius, double triggerRange)
+        {
+            return triggerRange / radius * 180 / Math.PI;
         }
 
         /// <summary>The Band a pass at this altitude misses, in words; "" inside it.</summary>

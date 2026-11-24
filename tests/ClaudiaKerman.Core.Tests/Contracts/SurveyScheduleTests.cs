@@ -93,6 +93,20 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AWaypointWithinTheTriggerArcOfTheTiltWithNoPassIsNotUnreachable()
+        {
+            // #1349: the tilt is 20°; 24.29° N is 4.29° off it, inside the range's arc (about 4.3°), so the track can pass over it but doesn't within the window.
+            var orbit = new CircularOrbit(12500, 20, 30, 0);
+            var waypoint = Waypoint(0, "24.29,10", maxAltitude: 30000);
+
+            var entry = SurveySchedule.For(Mun(), orbit.Survey(), Now, new List<SurveyWaypoint> { waypoint }, Range).Single();
+
+            Assert.Null(entry.Ut);
+            Assert.False(entry.Unreachable);
+            Assert.Null(entry.ReachingInclination);
+        }
+
+        [Fact]
         public void ARetrogradeOrbitReachesTheLatitudesItsTiltReaches()
         {
             var orbit = new CircularOrbit(12500, 160, 30, 0);
