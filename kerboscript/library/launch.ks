@@ -364,10 +364,7 @@ function launch {
   }
   if go:wait > 0 {
     local waited is claudia_wait_until(ctx, time:seconds + go:wait).
-    if waited <> "" {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, waited, extra).
-    }
+    if waited <> "" { return claudia_fail(ctx, waited, extra). }
   }
 
   // The heading is Core's (launch_heading) for the plane, set for the pad and recomputed on the climb as the latitude moves.
@@ -375,10 +372,7 @@ function launch {
   local into_plane is hdg:istype("String").
   if into_plane {
     local aimed is launch_heading(go:inc, target_ap).
-    if aimed:error <> "" {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, "launch heading: " + aimed:error, extra).
-    }
+    if aimed:error <> "" { return claudia_fail(ctx, "launch heading: " + aimed:error, extra). }
     set hdg to aimed:heading.
   }
   local max_q_pa is -1.
@@ -387,10 +381,7 @@ function launch {
   }
 
   local stowed is claudia_stow_ship_systems(ctx).
-  if stowed <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, stowed, extra).
-  }
+  if stowed <> "" { return claudia_fail(ctx, stowed, extra). }
   // Light the engines.
   sas off.
   local tset is choose 1 if ship:modulesnamed("LaunchClamp"):length > 0 else 0.
@@ -398,10 +389,7 @@ function launch {
   local aim is ship:up:vector.
   lock steering to aim.
   local lit is claudia_stage_into_engines(ctx, true).
-  if lit <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, lit, extra).
-  }
+  if lit <> "" { return claudia_fail(ctx, lit, extra). }
   set tset to 1.
   launch_release_clamps(ctx).
   local liftoff_ut is time:seconds.
@@ -597,10 +585,7 @@ function launch {
   addons:claudia:blocktrace("launch", lexicon("phase", "end", "alt", round(altitude, 1), "t", round(time:seconds - liftoff_ut, 2),
     "ap", round(ship:apoapsis), "coast_ap", extra:coast_ap, "max_q", extra:max_q, "stage", stage:number, "mass", round(ship:mass, 3),
     "dv_used", round(ctx:dv_used, 1), "failed", reason <> "")).
-  if reason <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, reason, extra).
-  }
+  if reason <> "" { return claudia_fail(ctx, reason, extra). }
   set tset to 0.
   claudia_release_controls().
   return claudia_finish(ctx, true, "", extra).

@@ -116,6 +116,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): seconds until a closed orbit or an inbound hyperbolic path falls to r_fall, from ecc, sma, mu, r_fall, ta (degrees); 0 under it now, -1 never"));
             AddSuffix("LANDSTART", new OneArgsSuffix<Lexicon, Lexicon>(LandStartCall,
                 "Core Library only (land, once): where land starts from (orbit, arc or fail), from situation, ecc, sma, mu, r_fall, radius, day, fall_s, end_lat, end_lng, now, descent_shape and target; lexicon start, why, end_m and an arc's plan"));
+            AddSuffix("SITEHOP", new OneArgsSuffix<Lexicon, Lexicon>(SiteHopCall,
+                "Core Library only (site_hop, before liftoff and each tick of its burn): the arc to the site, from mu, day, lat, lng, r, agl, vel_up, vel_north, vel_east, accel, target_lat, target_lng, target_r and (before liftoff) dv; lexicon why, km, need, speed, heading, pitch, tof, steer_heading, steer_pitch, throttle, err, done"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
                 "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, core, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
             AddSuffix("SCIENCECHOICE", new OneArgsSuffix<Lexicon, Lexicon>(ScienceChoiceCall,
@@ -842,6 +844,17 @@ namespace ClaudiaKerman.KOS
                 () => (string)start["start"] == "fail" ? "fail: " + start["why"]
                     : (string)start["start"] == "orbit" ? "orbit"
                     : string.Format(CultureInfo.InvariantCulture, "arc ending {0:0} m from the aim", start["end_m"]));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:SITEHOP</c> (#1310, ADR 0014): <see cref="SiteHop.Call"/>, pure. Called every tick of the burn, so its time is logged at most once a second (guardrail 6).
+        /// </summary>
+        private Lexicon SiteHopCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> hop = null;
+            return (Lexicon)Guarded("SITEHOP", () => KosValues.FromPlain(hop = SiteHop.Call(KosValues.ToDictionary(input))),
+                () => (string)hop["why"] != "" ? "fail: " + hop["why"]
+                    : string.Format(CultureInfo.InvariantCulture, "{0:0.0} km, {1:0} m/s at {2:0.0} deg, throttle {3:0.00}, {4:0.0} m/s to gain", hop["km"], hop["speed"], hop["pitch"], hop["throttle"], hop["err"]), 1);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:ENTRYTRIM</c> (#892): <see cref="BlockCalls.EntryTrim"/> with this planet's air and the craft reentry flies; the log line is the decision.</summary>

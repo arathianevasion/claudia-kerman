@@ -64,9 +64,8 @@ function coast {
   if end_ut > time:seconds {
     local waited is claudia_warp_to(ctx, end_ut, opt:lead).
     if waited <> "" {
-      claudia_make_safe().
       set extra:coasted to round(time:seconds - ctx:start_ut, 1).
-      return claudia_finish(ctx, false, waited, extra).
+      return claudia_fail(ctx, waited, extra).
     }
   }
   set extra:coasted to round(time:seconds - ctx:start_ut, 1).

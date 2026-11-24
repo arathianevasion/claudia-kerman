@@ -87,7 +87,7 @@ namespace ClaudiaKerman.Core.Tests
             // Its summary stays in the base layer; its full docs come only with a goal that names an orbit change.
             var names = CoreLibrary.Blocks.Select(b => b.Name).ToList();
             var picked = BlockSelection.For("Prove the kOS link from the launch pad.", names);
-            Assert.Equal(names.Where(n => n != "change_orbit" && n != "rendezvous" && n != "dock"), picked);
+            Assert.Equal(names.Where(n => n != "change_orbit" && n != "rendezvous" && n != "dock" && n != "site_hop"), picked);
         }
 
         [Fact]
@@ -100,6 +100,21 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("rendezvous", BlockSelection.For("Meet the tug in low Kerbin orbit", names));
             Assert.DoesNotContain("rendezvous", BlockSelection.For("Land on the Mun", names));
             Assert.DoesNotContain("rendezvous", BlockSelection.For("Put a satellite in a stationary orbit", names));
+        }
+
+        [Fact]
+        public void SiteHopComesOnlyWithAGoalThatHopsBetweenSites()
+        {
+            // #1310: its full docs come with a Site Hop, not with every goal (nor a Hop up from the pad); its summary stays in the base layer.
+            var names = CoreLibrary.Blocks.Select(b => b.Name).ToList();
+            var picked = BlockSelection.For("Land on the Mun, then hop to a second site 20 km east", names);
+            Assert.Contains("site_hop", picked);
+            Assert.Contains("land", picked);
+            Assert.Contains("site_hop", BlockSelection.For("A site hop between two Minmus flats", names));
+            Assert.Contains("site_hop", BlockSelection.For("Hop between the Mun's craters", names));
+            Assert.DoesNotContain("site_hop", BlockSelection.For("Land on the Mun", names));
+            Assert.DoesNotContain("site_hop", BlockSelection.For("A suborbital hop from the pad to 8 km", names));
+            Assert.DoesNotContain("site_hop", BlockSelection.For("", names));
         }
 
         [Fact]
@@ -145,8 +160,9 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("transfer_to", narrow);
             Assert.Contains("land", narrow);
             Assert.DoesNotContain("reentry", narrow);
-            // change_orbit comes only with a goal that names an orbit change (#444), rendezvous with another vessel (#455), dock with docking (#456).
-            Assert.Equal(names.Count - 3, BlockSelection.For("", names).Count);
+            // change_orbit comes only with a goal that names an orbit change (#444), rendezvous with another vessel (#455), dock with docking (#456),
+            // site_hop with a Site Hop (#1310).
+            Assert.Equal(names.Count - 4, BlockSelection.For("", names).Count);
         }
 
         [Fact]
