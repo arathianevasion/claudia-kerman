@@ -32,8 +32,16 @@ _Avoid_: contract (for a Building Block's interface: say interface), offer, job
 One condition a Contract sets that must be met for it to complete, e.g. reach an orbit, test a part at a given altitude and speed, or visit a waypoint.
 _Avoid_: contract parameter, objective, criterion
 
+**Contract Check**:
+Mission Control's card at Start Mission: the accepted Contracts, with the ones that fit this craft ticked as its suggestion, and the ones not on this flight with the reason. The player ticks and unticks it to choose; it is the mod's own work, with no Claude.
+_Avoid_: contract card, contract picker, Craft Check (Claudia's assessment of the craft)
+
+**Chosen Contracts**:
+The Contracts the player has ticked for one Mission, from which the Contract Route is built.
+_Avoid_: selected contracts, contract goals, contract tasks
+
 **Contract Route**:
-The mod's ordering of the chosen Contracts' Contract Requirements against the phases of one Mission, from which Claudia writes the Mission Plan.
+The mod's ordering of the Chosen Contracts' Contract Requirements against the phases of one Mission, from which Claudia writes the Mission Plan.
 _Avoid_: contract plan, itinerary
 
 **Band**:
