@@ -630,6 +630,7 @@ namespace ClaudiaKerman.Core.Missions
             _seen = new List<SeenVessel>();
             _pendingStart = null;
             _startRefusal = "";
+            _folded = null;
             _craftCheck.Reset();
             _parked.Clear();
             _finishedCache.Clear();

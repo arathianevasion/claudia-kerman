@@ -645,6 +645,20 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void ALoadedSaveForgetsTheChosenContractsSoCheckCraftJudgesTheTypedWords()
+        {
+            var mission = FailedCheckAfterPlanThese();
+            using (var other = new TempDir())
+            {
+                mission.Send(new SaveLoaded(other.Path));
+                mission.Send(TwoAtTheMunAndAHaul());
+                mission.Send(new RunCraftCheck("Also run a crew report in Mun orbit.", 25m, Sonnet));
+                DrainUntil(mission, v => Requests == 2 && v.CraftCheck.State == CraftCheckState.Done);
+                Assert.DoesNotContain("Contracts: ", Text(_transport.Requests[1]));
+            }
+        }
+
+        [Fact]
         public void CheckCraftWithNoContractsChosenStillJudgesTheTypedWordsAlone()
         {
             var mission = Control(TwoAtTheMunAndAHaul(), false, ScriptedResponse.Fixture("craft-check-pass-free.sse", 64));
