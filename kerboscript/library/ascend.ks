@@ -291,10 +291,7 @@ function ascend {
     }
     // Burning the whole climb (#379): tset is never under 0.05, so the tick's default (tset > 0) already stages on a flameout.
     local ticked is claudia_tick(ctx, tset, true).
-    if ticked <> "" {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, ticked, extra).
-    }
+    if ticked <> "" { return claudia_fail(ctx, ticked, extra). }
     wait 0.
   }
   set tset to 0.
@@ -305,10 +302,7 @@ function ascend {
   add nd.
   local flown is claudia_fly_node(ctx, nd).
   set extra:ap_error to round(ship:apoapsis - goal).
-  if flown <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, flown, extra).
-  }
+  if flown <> "" { return claudia_fail(ctx, flown, extra). }
   if ship:periapsis <= highest {
     return claudia_finish(ctx, false, "periapsis " + round(ship:periapsis) + " m is still under the highest terrain, " + round(highest) + " m", extra).
   }

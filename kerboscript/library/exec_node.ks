@@ -127,15 +127,9 @@ function exec_node {
   local burn is claudia_warp_to_burn(ctx, nd, opt:lead, turn:turn_time).
   set extra:turn_s to burn:turn_s.
   set extra:not_aligned to burn:not_aligned.
-  if burn:error <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, burn:error, extra).
-  }
+  if burn:error <> "" { return claudia_fail(ctx, burn:error, extra). }
   local resolved is exec_node_resolve(opt:resolve, nd).
-  if resolved <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, resolved, extra).
-  }
+  if resolved <> "" { return claudia_fail(ctx, resolved, extra). }
   set extra:node_dv to round(nd:deltav:mag, 3).
 
   local steer is nd:deltav.
@@ -197,9 +191,8 @@ function exec_node {
   if opt:rcs_trim and nd:deltav:mag > opt:max_residual {
     local trimmed is exec_node_rcs_trim(ctx, nd, done_dv).
     if trimmed <> "" {
-      claudia_make_safe().
       set extra:residual to round(nd:deltav:mag, 3).
-      return claudia_finish(ctx, false, trimmed, extra).
+      return claudia_fail(ctx, trimmed, extra).
     }
   }
 
@@ -207,9 +200,8 @@ function exec_node {
   if exec_node_finish(nd:deltav:mag, extra:node_dv, opt:max_residual, opt:finish_fraction) = "short" {
     local trimmed is claudia_trim(ctx, { return nd:deltav. }, done_dv).
     if trimmed <> "" {
-      claudia_make_safe().
       set extra:residual to round(nd:deltav:mag, 3).
-      return claudia_finish(ctx, false, trimmed, extra).
+      return claudia_fail(ctx, trimmed, extra).
     }
   }
 

@@ -203,10 +203,7 @@ function science {
       }
       if step:do = "send" or step:do = "free" {
         local sent is science_send(ctx, m, entry).
-        if sent <> "" {
-          claudia_make_safe().
-          return claudia_finish(ctx, false, sent, extra).
-        }
+        if sent <> "" { return claudia_fail(ctx, sent, extra). }
         set entry:detail to science_held_detail(entry:transmit).
         if entry:transmit = "transmitted" {
           set entry:action to "sent held data".
@@ -222,10 +219,7 @@ function science {
         set entry:transmit to "".
         m:deploy().
         local ran is science_wait_data(ctx, m, true, 15).
-        if ran <> "" {
-          claudia_make_safe().
-          return claudia_finish(ctx, false, ran, extra).
-        }
+        if ran <> "" { return claudia_fail(ctx, ran, extra). }
         if not m:hasdata {
           set entry:detail to "the experiment gave no data".
         } else {
@@ -236,10 +230,7 @@ function science {
           }
           if step:then = "transmit" {
             local sent is science_send(ctx, m, entry).
-            if sent <> "" {
-              claudia_make_safe().
-              return claudia_finish(ctx, false, sent, extra).
-            }
+            if sent <> "" { return claudia_fail(ctx, sent, extra). }
             if entry:transmit = "kept" {
               science_note_kept(extra, id + ": transmission did not finish; call science with transmit again, from anywhere").
             }
@@ -251,10 +242,7 @@ function science {
         }
       }
       local ticked is claudia_tick(ctx, 0).
-      if ticked <> "" {
-        claudia_make_safe().
-        return claudia_finish(ctx, false, ticked, extra).
-      }
+      if ticked <> "" { return claudia_fail(ctx, ticked, extra). }
     }
     if choice:missed <> "" {
       science_note_kept(extra, id + ": no free part, so no reading here; " + choice:missed).

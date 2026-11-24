@@ -2113,6 +2113,13 @@ function claudia_node_report {
   return lexicon("ut", round(nd:time, 1), "dv", round(sqrt(nd:radialout ^ 2 + nd:normal ^ 2 + nd:prograde ^ 2), 1)).
 }
 
+// Makes the craft safe, then the block's failed result: how a block that stops mid-flight ends.
+function claudia_fail {
+  parameter ctx, reason, extra.
+  claudia_make_safe().
+  return claudia_finish(ctx, false, reason, extra).
+}
+
 // The block's result lexicon: the Script Result's common fields plus extra (the block's own).
 // A node the block added that is still in place is removed and reported as node_removed (a list of lexicon(ut, dv)); nodes
 // there when the block started are left alone (#537).

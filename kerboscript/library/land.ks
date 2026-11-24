@@ -1711,10 +1711,7 @@ function land {
   if not site:istype("String") and not on_arc {
     until land_resolve_ut(plan:burn_ut) <= time:seconds {
       local waited is claudia_warp_to(ctx, land_resolve_ut(plan:burn_ut), 30).
-      if waited <> "" {
-        claudia_make_safe().
-        return claudia_finish(ctx, false, waited, extra).
-      }
+      if waited <> "" { return claudia_fail(ctx, waited, extra). }
       local again is land_pass_plan(addons:claudia:landingpass(land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours,
         craft, opt:descent_shape, may_move)), site, r_pe).
       local found_ok is again:error = "".
@@ -1758,20 +1755,14 @@ function land {
     local descent_node is node(plan:burn_ut, 0, 0, deorbit_dv).
     add descent_node.
     local flown is claudia_fly_node(ctx, descent_node).
-    if flown <> "" {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, flown, extra).
-    }
+    if flown <> "" { return claudia_fail(ctx, flown, extra). }
     // actual_dv (#511): the burns flown, then the braking land_descend adds, against predicted_dv.
     set extra:actual_dv to abs(deorbit_dv).
 
     // A burn that left periapsis well under the plan (a bad burn or bad terrain data) would put the
     // craft into the ground before the descent could be flown to plan.
     local planned_pe is plan:r_pe - body:radius.
-    if not land_periapsis_ok(ship:orbit:periapsis, planned_pe) {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, "deorbit left periapsis at " + round(ship:orbit:periapsis) + " m, planned " + round(planned_pe) + " m", extra).
-    }
+    if not land_periapsis_ok(ship:orbit:periapsis, planned_pe) { return claudia_fail(ctx, "deorbit left periapsis at " + round(ship:orbit:periapsis) + " m, planned " + round(planned_pe) + " m", extra). }
 
     // Correction, a quarter orbit before the site: turn the plane about the craft's position so it
     // holds the site at periapsis.
@@ -1791,10 +1782,7 @@ function land {
       if fix_dv:mag > 0.5 {
         local fix is land_node_for(fix_ut, fix_dv).
         set flown to claudia_fly_node(ctx, fix).
-        if flown <> "" {
-          claudia_make_safe().
-          return claudia_finish(ctx, false, flown, extra).
-        }
+        if flown <> "" { return claudia_fail(ctx, flown, extra). }
         set extra:actual_dv to extra:actual_dv + fix_dv:mag.
       }
     }
@@ -1846,10 +1834,7 @@ function land {
   }
   if coast_ut > time:seconds {
     local coasted is land_coast(ctx, coast_ut, a_brake).
-    if coasted <> "" {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, coasted, extra).
-    }
+    if coasted <> "" { return claudia_fail(ctx, coasted, extra). }
   }
 
   // BRAKEPATH (#511): braking predicted again from the craft's real state as it begins, through a delegate made here so the
@@ -1864,10 +1849,7 @@ function land {
   }.
   local landed is land_descend(ctx, aim, extra, turn, under, plan, predict, keep_clear).
   set extra:actual_dv to round(extra:actual_dv).
-  if landed <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, landed, extra).
-  }
+  if landed <> "" { return claudia_fail(ctx, landed, extra). }
   set extra:distance_to_target to round(land_surface_distance(aim:lat, aim:lng, ship:geoposition:lat, ship:geoposition:lng, body:radius)).
   if extra:poi <> "" {
     set extra:distance_to_poi to round(land_surface_distance(keep_clear:at:lat, keep_clear:at:lng, ship:geoposition:lat, ship:geoposition:lng, body:radius)).

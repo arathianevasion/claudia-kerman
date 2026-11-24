@@ -250,10 +250,7 @@ function circularize {
     local trimmed is claudia_trim(ctx, { return trim:deltav. }, 0.1).
     remove trim.
     set extra:ecc to round(ship:orbit:eccentricity, 5).
-    if trimmed <> "" {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, trimmed, extra).
-    }
+    if trimmed <> "" { return claudia_fail(ctx, trimmed, extra). }
     claudia_release_controls().
   }
   if ship:orbit:eccentricity > opt:tolerance {
