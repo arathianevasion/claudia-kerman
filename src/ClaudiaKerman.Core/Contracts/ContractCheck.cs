@@ -681,6 +681,17 @@ namespace ClaudiaKerman.Core.Contracts
             RouteIsEstimate = true;
         }
 
+        /// <summary>#1284: ticks exactly <paramref name="guids"/> (those Core plans), in place of the suggestion; the card re-prices in place when that changes the set.</summary>
+        public void TickOnly(IEnumerable<string> guids)
+        {
+            var wanted = new HashSet<string>(_planned.Select(p => p.Contract.Guid).Where(new HashSet<string>(guids).Contains));
+            if (wanted.SetEquals(_ticked)) return;
+            _ticked.Clear();
+            _ticked.UnionWith(wanted);
+            Reprice();
+            RouteIsEstimate = true;
+        }
+
         /// <summary>Applies the swap offered for <paramref name="guid"/>: the others go out and it comes in. Nothing when none is offered now.</summary>
         public void SwapIn(string guid)
         {

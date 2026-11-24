@@ -678,6 +678,175 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.DoesNotContain("Contracts: ", Text(_transport.Requests[0]));
         }
 
+        // ---- #1284: Change Contracts reopens the folded Contract Check on the Chosen Contracts ----
+
+        /// <summary>Plan these on the land Contract left out, and a Craft Check that fails: the card is folded and the Mission hasn't started.</summary>
+        private MissionControl FoldedWithLandLeftOut(params ScriptedResponse[] more)
+        {
+            var mission = Control(TwoAtTheMunAndAHaul(), false, new[] { ScriptedResponse.Fixture("craft-check-fail.sse") }.Concat(more).ToArray());
+            mission.Send(Start("Also run a crew report in Mun orbit."));
+            mission.Send(new TickContract("c-land", false));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
+            Assert.Equal(1, Requests);
+            return mission;
+        }
+
+        [Fact]
+        public void TheFoldedCardOffersChangeContractsAndPressingItReopensTheCardOnTheChosenContractsNotTheSuggestion()
+        {
+            var mission = FoldedWithLandLeftOut();
+            var folded = mission.View.ContractCheck;
+            Assert.True(folded.Folded);
+            Assert.True(folded.ChangeOffered);
+            Assert.True(folded.CanChange);
+
+            mission.Send(new ChangeContracts());
+
+            var card = mission.View.ContractCheck;
+            Assert.False(card.Folded);
+            Assert.False(card.Rows.Single(r => r.Guid == "c-land").Ticked);
+            Assert.Equal(new[] { "c-land" }, card.Rows.Where(r => !r.Ticked).Select(r => r.Guid).ToArray());
+            Assert.Equal("Also run a crew report in Mun orbit.", card.Words);
+            Assert.Equal("Plan these 1", card.PlanLabel);
+            Assert.Equal(1, Requests);
+        }
+
+        [Fact]
+        public void AContractAcceptedSincePlanTheseShowsUntickedOnTheReopenedCardWhichIsPricedFromTheFreshSnapshot()
+        {
+            var mission = FoldedWithLandLeftOut();
+            mission.Send(ContractCheckTests.With(
+                ContractCheckTests.Fixture("ExplorationContract.json"),
+                ContractCheckTests.Exploration("c-land", 30000, "Mun:LANDING"),
+                ContractCheckTests.Fixture("SurveyContract.json"),
+                ContractCheckTests.Exploration("c-new", 20000, "Minmus:FLYBY")));
+
+            mission.Send(new ChangeContracts());
+
+            var card = mission.View.ContractCheck;
+            Assert.Equal(4, card.Accepted);
+            Assert.False(card.Rows.Any(r => r.Guid == "c-new" && r.Ticked) || card.NotThisFlight.Any(l => l.Guid == "c-new" && l.Ticked));
+            Assert.True(card.Rows.Any(r => r.Guid == "c-new") || card.NotThisFlight.Any(l => l.Guid == "c-new"));
+            Assert.Equal("Plan these 1", card.PlanLabel);
+        }
+
+        [Fact]
+        public void AChosenContractNoLongerAcceptedIsLeftOffTheReopenedCard()
+        {
+            var mission = FoldedWithLandLeftOut();
+            var chosen = mission.View.ContractCheck.Summary;
+            mission.Send(ContractCheckTests.With(
+                ContractCheckTests.Exploration("c-land", 30000, "Mun:LANDING"),
+                ContractCheckTests.Fixture("SurveyContract.json")));
+
+            mission.Send(new ChangeContracts());
+
+            var card = mission.View.ContractCheck;
+            Assert.Equal(2, card.Accepted);
+            Assert.Equal("Pick a Contract", card.PlanLabel);
+            Assert.False(card.CanPlan);
+            Assert.True(card.CanPlanWithout);
+            Assert.NotEmpty(chosen);
+        }
+
+        [Fact]
+        public void UntickingEveryContractOnTheReopenedCardGreysPlanTheseAndPlanWithoutContractsNeedsWords()
+        {
+            var mission = FoldedWithLandLeftOut();
+            mission.Send(new ChangeContracts());
+            foreach (var row in mission.View.ContractCheck.Rows.Where(r => r.Ticked).ToList()) mission.Send(new TickContract(row.Guid, false));
+
+            Assert.False(mission.View.ContractCheck.CanPlan);
+            Assert.Equal("Pick a Contract", mission.View.ContractCheck.PlanLabel);
+            Assert.True(mission.View.ContractCheck.CanPlanWithout);
+
+            var bare = Control(TwoAtTheMunAndAHaul(), false, ScriptedResponse.Fixture("craft-check-fail.sse"));
+            bare.Send(Start(""));
+            bare.Send(new PlanContracts());
+            DrainUntil(bare, v => v.CraftCheck.State == CraftCheckState.Done);
+            bare.Send(new ChangeContracts());
+            Assert.False(bare.View.ContractCheck.CanPlanWithout);
+        }
+
+        [Fact]
+        public void PlanTheseOnTheReopenedCardWithAnUnchangedSetSpendsNoRequest()
+        {
+            var mission = FoldedWithLandLeftOut();
+            mission.Send(new ChangeContracts());
+            mission.Send(new PlanContracts());
+            Settle();
+
+            Assert.Equal(1, Requests);
+            Assert.True(mission.View.ContractCheck.Folded);
+            Assert.Equal(CraftVerdict.Fail, mission.View.CraftCheck.Verdict);
+        }
+
+        [Fact]
+        public void PlanTheseOnTheReopenedCardWithAChangedSetRunsACraftCheckForTheNewSetsGoal()
+        {
+            var mission = FoldedWithLandLeftOut(ScriptedResponse.Fixture("craft-check-pass-free.sse", 64), ScriptedResponse.Fixture("mission-plan.sse"));
+            Assert.DoesNotContain("land on the Mun", Text(_transport.Requests[0]));
+            mission.Send(new ChangeContracts());
+            mission.Send(new TickContract("c-land", true));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => Requests >= 2);
+
+            Assert.Contains("land on the Mun", ContractGoalIn(Text(_transport.Requests[1])));
+        }
+
+        [Fact]
+        public void WhileACraftCheckRequestIsOutChangeContractsIsGreyedAndAPressIsRefusedAndChangesNothing()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul(), false, ScriptedResponse.Fixture("craft-check-fail.sse"));
+            mission.Send(Start("Also run a crew report in Mun orbit."));
+            mission.Send(new PlanContracts());
+            Assert.Equal(CraftCheckState.Running, mission.View.CraftCheck.State);
+            Assert.True(mission.View.ContractCheck.ChangeOffered);
+            Assert.False(mission.View.ContractCheck.CanChange);
+            Assert.NotEmpty(mission.View.ContractCheck.ChangeNote);
+            mission.TakeCommands();
+
+            mission.Send(new ChangeContracts());
+
+            Assert.True(mission.View.ContractCheck.Folded);
+            Assert.Equal("Change Contracts pressed and refused: the Craft Check's request is out; wait for its verdict.", Assert.Single(KspLog(mission), l => l.StartsWith("Change Contracts")));
+
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
+            Assert.True(mission.View.ContractCheck.CanChange);
+            Assert.Equal("", mission.View.ContractCheck.ChangeNote);
+            mission.Send(new ChangeContracts());
+            Assert.False(mission.View.ContractCheck.Folded);
+        }
+
+        [Fact]
+        public void EachChangeContractsPressLogsOneLineAndAPressWithNothingChosenIsRefusedWithItsReason()
+        {
+            var mission = FoldedWithLandLeftOut();
+            mission.TakeCommands();
+            mission.Send(new ChangeContracts());
+            var line = Assert.Single(KspLog(mission), l => l.StartsWith("Change Contracts"));
+            Assert.StartsWith("Change Contracts: the Contract Check reopens on the Chosen Contracts still accepted [", line);
+
+            mission.Send(new ChangeContracts());
+            Assert.Equal("Change Contracts pressed and refused: no Contracts are chosen.", Assert.Single(KspLog(mission), l => l.StartsWith("Change Contracts")));
+        }
+
+        [Fact]
+        public void ACardThatCantBeRepricedIsRefusedAndTheFoldedLineStays()
+        {
+            var mission = FoldedWithLandLeftOut();
+            var unpriced = TwoAtTheMunAndAHaul();
+            unpriced.DeltaVSimulator = false;
+            mission.Send(unpriced);
+            mission.TakeCommands();
+
+            mission.Send(new ChangeContracts());
+
+            Assert.True(mission.View.ContractCheck.Folded);
+            Assert.Contains("can't be priced", Assert.Single(KspLog(mission), l => l.StartsWith("Change Contracts pressed and refused: ")));
+        }
+
         // ---- #1262: the card's life in KSP.log, and the Contracts read saved at Start Mission ----
 
         private static List<string> KspLog(MissionControl mission)
