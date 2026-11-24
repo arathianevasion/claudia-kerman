@@ -858,6 +858,82 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("Change Contracts pressed and refused: no Contracts are chosen.", Assert.Single(KspLog(mission), l => l.StartsWith("Change Contracts")));
         }
 
+        // ---- #1292: a refused Change Contracts says why on the folded line ----
+
+        private void AssertRefusedWithReasonAndChangedNothing(MissionControl mission, string reason, string logged)
+        {
+            var summary = mission.View.ContractCheck.Summary;
+            mission.TakeCommands();
+            mission.Send(new ChangeContracts());
+            var card = mission.View.ContractCheck;
+            Assert.True(card.Folded);
+            Assert.Equal(summary, card.Summary);
+            Assert.Equal("Can't change Contracts: " + reason, card.ChangeNote);
+            Assert.Equal("Change Contracts pressed and refused: " + logged + ".", Assert.Single(KspLog(mission), l => l.StartsWith("Change Contracts")));
+        }
+
+        [Fact]
+        public void ChangeContractsRefusedForAnUnknownDeltaVSaysSoOnTheFoldedLine()
+        {
+            var mission = FoldedWithLandLeftOut();
+            var fresh = TwoAtTheMunAndAHaul();
+            fresh.DeltaVSimulator = false;
+            mission.Send(fresh);
+
+            AssertRefusedWithReasonAndChangedNothing(mission, "Mission Control can't read this craft's delta-v (turn on the stock delta-v readout).",
+                "the craft's delta-v isn't known (turn on the stock delta-v readout), so the Contracts can't be priced");
+        }
+
+        [Fact]
+        public void ChangeContractsRefusedBecauseTheTypedWordsNoLongerFitSaysSoOnTheFoldedLine()
+        {
+            var mission = FoldedWithLandLeftOut();
+            var fresh = TwoAtTheMunAndAHaul();
+            foreach (var stage in fresh.Stages) stage.DeltaVVac *= 0.05;
+            mission.Send(fresh);
+
+            AssertRefusedWithReasonAndChangedNothing(mission, "the words you typed no longer fit this craft.", "the typed words alone no longer fit the craft");
+        }
+
+        [Fact]
+        public void ChangeContractsRefusedWithNoAcceptedContractsSaysSoOnTheFoldedLine()
+        {
+            var mission = FoldedWithLandLeftOut();
+            mission.Send(ContractCheckTests.With());
+
+            AssertRefusedWithReasonAndChangedNothing(mission, "no accepted Contracts are read now.", "no accepted Contracts are read now");
+        }
+
+        [Fact]
+        public void TheRefusalReasonClearsOnTheNextSuccessfulChangeContracts()
+        {
+            var mission = FoldedWithLandLeftOut();
+            mission.Send(ContractCheckTests.With());
+            mission.Send(new ChangeContracts());
+            Assert.NotEmpty(mission.View.ContractCheck.ChangeNote);
+
+            mission.Send(TwoAtTheMunAndAHaul());
+            mission.Send(new ChangeContracts());
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.ContractCheck != null && v.ContractCheck.Folded);
+
+            Assert.Equal("", mission.View.ContractCheck.ChangeNote);
+        }
+
+        [Fact]
+        public void TheRefusalReasonClearsAtTheFirstApproval()
+        {
+            var mission = ProposedOnTheChosenContracts();
+            mission.Send(ContractCheckTests.With());
+            mission.Send(new ChangeContracts());
+            Assert.StartsWith("Can't change Contracts:", mission.View.ContractCheck.ChangeNote);
+
+            mission.Send(new Approve());
+
+            Assert.Equal("", mission.View.ContractCheck.ChangeNote);
+            Assert.NotEmpty(mission.View.ContractCheck.FixedNote);
+        }
+
         [Fact]
         public void TheReopenedCardSaysItsTicksAreTheChosenContractsNotMissionControlsSuggestion()
         {
