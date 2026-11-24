@@ -155,7 +155,7 @@ namespace ClaudiaKerman.Core.Missions
                 Cache = false,
                 CompactionInstructions = MissionPrompts.CompactionInstructions,
             };
-            request.Tools.AddRange(MissionTools());
+            request.Tools.AddRange(MissionTools(mission));
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission));
             AddDiagnostics(mission, request);

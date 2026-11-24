@@ -1322,7 +1322,7 @@ namespace ClaudiaKerman.Core.Missions
                 OutputSchemaJson = MissionReply.MissionSchemaJson,
                 NoToolChoice = turn.ToolLimitSent || turn.PlanCallRefused || TakesNoTool(turn.Purpose),
             };
-            request.Tools.AddRange(MissionTools());
+            request.Tools.AddRange(MissionTools(mission));
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission, turn.CompactionBase, turn.CompactedBase));
             request.Messages.AddRange(turn.Messages);

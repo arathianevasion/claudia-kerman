@@ -115,6 +115,8 @@ namespace ClaudiaKerman.Adapter
             }
             ReadTargets(snapshot, vessel);
             snapshot.Contracts = ContractReader.Read();
+            // #1308: survey_schedule's trigger range is the one ADDONS:CLAUDIA:SURVEYSCHEDULE reads, so the two give the same passes.
+            snapshot.SurveyTriggerRange = SurveyWaypointReader.TriggerRange();
             ReadContractVessels(snapshot);
             return snapshot;
         }
