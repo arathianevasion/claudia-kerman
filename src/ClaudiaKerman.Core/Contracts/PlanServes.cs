@@ -141,8 +141,8 @@ namespace ClaudiaKerman.Core.Contracts
                 if (requirement.Experiment != null && !science.HasValue)
                     result.Problems.Add("\"" + requirement.Title + "\" needs \"" + requirement.Words + "\", but no leg runs the science block there: add a science step to leg "
                         + (by.Leg + 1) + " \"" + plan.Sequences[by.Leg].Name + "\", or a leg after it before the craft leaves");
-                // #1304: a survey waypoint is met where the science block runs over it, so the leg that runs it is the one that flies it.
-                if (requirement.Waypoint != null && science.HasValue) by = new Touch { Leg = science.Value, Order = by.Order, Body = by.Body, Reach = by.Reach, Home = by.Home, Child = by.Child };
+                // #1304, #1321: a survey waypoint or collect science is met where the science block runs, so the leg that runs it is the one that serves it.
+                if (science.HasValue) by = new Touch { Leg = science.Value, Order = by.Order, Body = by.Body, Reach = by.Reach, Home = by.Home, Child = by.Child };
                 served.Leg = by.Leg;
                 served.LegName = plan.Sequences[by.Leg].Name;
                 Tag(tags[by.Leg], requirement.Title);

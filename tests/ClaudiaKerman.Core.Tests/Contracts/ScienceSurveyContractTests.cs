@@ -27,7 +27,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return ContractCheck.Work(snapshot, words, false, ContractCheckTests.Margin);
         }
 
-        private static SnapshotContract Science(string id, string body, string location)
+        internal static SnapshotContract Science(string id, string body, string location)
         {
             var contract = ContractCheckTests.Fixture("CollectScience.json");
             contract.Guid = id;
@@ -305,9 +305,9 @@ namespace ClaudiaKerman.Core.Tests.Contracts
                 "Run science over the survey waypoint", "Return to Kerbin");
 
             Assert.Empty(served.Problems);
-            // #1304: the waypoint is tied to the leg that flies it, the science run; collect science near the Mun to the capture.
+            // #1304, #1321: the waypoint and collect science are each tied to the leg that runs the science block, not to the capture.
             Assert.Equal(2, served.Record.Single(r => r.Key.StartsWith("c-s/", StringComparison.Ordinal)).Leg);
-            Assert.Equal(1, served.Record.Single(r => r.Key.StartsWith("c-sci/", StringComparison.Ordinal)).Leg);
+            Assert.Equal(2, served.Record.Single(r => r.Key.StartsWith("c-sci/", StringComparison.Ordinal)).Leg);
         }
 
         [Fact]
