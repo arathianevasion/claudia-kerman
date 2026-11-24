@@ -158,6 +158,7 @@ namespace ClaudiaKerman.Core.Missions
             if (served.Count == 0) return "";
             var readings = mission.Contracts.Read(_snapshot, served, null);
             mission.RequirementMissed = ContractWatch.Unmet(readings).Count > 0;
+            CountMisses(mission, readings);
             foreach (var reading in readings.Where(r => r.State == "not met"))
             {
                 // #1244: a station never set up keeps its placement's gap.
@@ -204,6 +205,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 var readings = mission.Contracts.Read(_snapshot, served, mission.ContractGaps);
                 mission.RequirementMissed = ContractWatch.Unmet(readings).Count > 0;
+                CountMisses(mission, readings);
                 text += ContractWatch.Line(readings);
             }
             text += mission.Contracts.TakeNews();
