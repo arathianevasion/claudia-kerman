@@ -83,7 +83,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         public void ARetrogradeOrbitReachesTheLatitudesItsTiltReaches()
         {
             var orbit = new CircularOrbit(12500, 160, 30, 0);
-            var reached = Waypoint(0, "15,10", maxAltitude: 30000);
+            var under = orbit.At(Now + 5000);
+            var reached = Waypoint(0, under.Latitude.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "," + under.Longitude.ToString("R", System.Globalization.CultureInfo.InvariantCulture), maxAltitude: 30000);
 
             var pass = Assert.Single(SurveySchedule.For(Mun(), orbit.Survey(), Now, new List<SurveyWaypoint> { reached }, Range));
 
@@ -108,6 +109,29 @@ namespace ClaudiaKerman.Core.Tests.Contracts
                 Assert.True(orbit.GroundDistanceTo(p.Waypoint, p.Ut.Value) <= Range, p.Waypoint.Where() + " is passed too far off along the ground");
                 Assert.InRange(track.Altitude, 29999, 30001);
             });
+        }
+
+        [Fact]
+        public void TheWindowIsOneTwelveHoursSharedByEveryWaypointAndTheRestAreLeftForTheNextSurveyPlane()
+        {
+            // #1342: four waypoints under the track at 2 h, 9 h, 11 h and 30 h: the first three are in the one window, the fourth waits for the next Survey Plane.
+            var orbit = new CircularOrbit(12500, 20, 30, 0);
+            var waypoints = new[] { 2.0, 9.0, 11.0, 30.0 }.Select((h, i) =>
+            {
+                var at = orbit.At(Now + Math.Round(h * 3600 / orbit.Survey().Period) * orbit.Survey().Period);
+                return Waypoint(i, at.Latitude.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "," + at.Longitude.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+            }).ToList();
+
+            var schedule = SurveySchedule.For(Mun(), orbit.Survey(), Now, waypoints, 1000);
+
+            var listed = schedule.Where(p => p.Ut.HasValue).ToList();
+            Assert.Equal(new[] { waypoints[0], waypoints[1], waypoints[2] }, listed.Select(p => p.Waypoint));
+            Assert.All(listed, p => Assert.InRange(p.Ut.Value - Now, 0, SurveySchedule.PlaneWindow));
+            var left = Assert.Single(schedule, p => p.LeftForNextPlane);
+            Assert.Same(waypoints[3], left.Waypoint);
+            Assert.Null(left.Ut);
+            Assert.False(left.Unreachable);
+            Assert.Equal(43200, SurveySchedule.PlaneWindow);
         }
 
         // ---- #1311: a ground survey ----

@@ -32,7 +32,8 @@ namespace ClaudiaKerman.Core.Tools
             {
                 return "The Survey Schedule for the chosen survey Contracts' waypoints, for the craft's orbit as it is. Taken from orbit: per waypoint, "
                     + "its pass (pass_ut, pass_in, altitude), out_of_band (the Band the pass misses, \"\" if inside), unreachable (with reaching_inclination, "
-                    + "the inclination that would reach it) or no pass; and total_wait_s, from now to the last pass. Passes are in flying order. "
+                    + "the inclination that would reach it) or no pass; and total_wait_s, from now to the last pass. Passes are in flying order, and only those within 12 game hours (43,200 s) of now, one window shared by every waypoint: "
+                    + "a waypoint that passes after it has left_for_next_plane true and no pass, for the next Survey Plane. "
                     + "Taken landed: landings, the sites in landing order (landing 1 is landed on from orbit with land, each next is a site_hop from the one before), "
                     + "each with needs_precision true where the Contract's radius is tighter than land's aim of about 5 km. "
                     + "Quote the pass times, the total wait and the unreachable waypoints in the survey's Sequence Plan and set its expected duration from them; "
@@ -147,7 +148,7 @@ namespace ClaudiaKerman.Core.Tools
                 json.BeginObject().Field("waypoint", pass.Waypoint.Where());
                 if (pass.Ut.HasValue) PlanningJson.Time(json, "pass", pass.Ut.Value, now);
                 if (pass.Altitude.HasValue) json.Field("altitude", PlanningJson.Round(pass.Altitude.Value, 0));
-                json.Field("out_of_band", pass.OutOfBand).Field("unreachable", pass.Unreachable);
+                json.Field("out_of_band", pass.OutOfBand).Field("unreachable", pass.Unreachable).Field("left_for_next_plane", pass.LeftForNextPlane);
                 if (pass.ReachingInclination.HasValue) json.Field("reaching_inclination", PlanningJson.Round(pass.ReachingInclination.Value, 1));
                 json.EndObject();
             }
@@ -168,10 +169,10 @@ namespace ClaudiaKerman.Core.Tools
             var passed = schedule.Where(p => p.Ut.HasValue).Select(p => p.Ut.Value).ToList();
             if (passed.Count > 0) json.Field("total_wait_s", PlanningJson.Round(Math.Max(0, passed.Max() - now), 0));
             var unreachable = schedule.Count(p => p.Unreachable);
-            json.Field("unreachable_count", unreachable);
+            json.Field("unreachable_count", unreachable).Field("left_for_next_plane_count", schedule.Count(p => p.LeftForNextPlane));
             json.EndObject();
             var passes = schedule.Count(p => p.Ut.HasValue);
-            var summary = passes + (passes == 1 ? " pass" : " passes") + (unreachable > 0 ? ", " + unreachable + " unreachable" : "");
+            var summary = passes + (passes == 1 ? " pass" : " passes") + (unreachable > 0 ? ", " + unreachable + " unreachable" : "") + (schedule.Any(p => p.LeftForNextPlane) ? ", " + schedule.Count(p => p.LeftForNextPlane) + " left for the next Survey Plane" : "");
             if (plane != null) summary += plane.Node != null ? ", Survey Plane " + PlanningJson.Round(plane.Inclination, 1) + "° over " + plane.Passed.Count + " by a " + PlanningJson.Round(plane.Node.DeltaV, 0) + " m/s node" : ", own plane serves";
             if (sites.Count > 0) summary = (schedule.Count > 0 ? summary + ", " : "") + sites.Count + (sites.Count == 1 ? " landing" : " landings") + (sites.Any(x => x.NeedsPrecision) ? ", " + sites.Count(x => x.NeedsPrecision) + " needing precision" : "") + (sites.Any(x => x.RadiusUnknown) ? ", " + sites.Count(x => x.RadiusUnknown) + " radius unknown" : "");
             return new ToolOutcome { Json = json.ToString(), Summary = summary };
