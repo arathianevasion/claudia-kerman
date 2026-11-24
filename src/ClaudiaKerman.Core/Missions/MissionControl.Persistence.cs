@@ -124,6 +124,7 @@ namespace ClaudiaKerman.Core.Missions
                 Crossings = CrossingsJson(mission),
                 RunEvents = RunEventsJson(mission),
                 RunStartUt = mission.RunStartUt,
+                SurveyStartUt = mission.SurveyStartUt ?? 0,
                 RunTransfers = mission.RunTransfers,
                 RunWords = mission.RunWords,
                 CrewDeaths = CrewDeathsJson(mission),
@@ -542,6 +543,7 @@ namespace ClaudiaKerman.Core.Missions
             RestoreCrossings(mission, state.Crossings);
             RestoreRunEvents(mission, state.RunEvents);
             mission.RunStartUt = state.RunStartUt;
+            mission.SurveyStartUt = state.SurveyStartUt != 0 ? state.SurveyStartUt : (double?)null;
             mission.RunTransfers = state.RunTransfers ?? "";
             mission.RunWords = state.RunWords ?? "";
             RestoreCrewDeaths(mission, state.CrewDeaths);
