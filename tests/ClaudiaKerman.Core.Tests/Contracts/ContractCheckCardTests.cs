@@ -393,6 +393,72 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void WordsSentFromThePromptWithTheCardUpAndEveryContractUntickedLetPlanWithoutContractsPlanThemAlone()
+        {
+            // #1333: the dead end the player met: nothing typed at Start Mission, every Contract unticked, then words given at the prompt.
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(Start(""));
+            foreach (var row in mission.View.ContractCheck.Rows.Where(r => r.Ticked).ToList()) mission.Send(new TickContract(row.Guid, false));
+            Assert.False(mission.View.ContractCheck.CanPlan);
+            Assert.False(mission.View.ContractCheck.CanPlanWithout);
+            Assert.Equal("Type the goal below and press Enter to plan without Contracts.", ContractCheckView.PlanWithoutHint);
+
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+
+            var card = mission.View.ContractCheck;
+            Assert.Equal("Fly to Minmus and capture into orbit.", card.Words);
+            Assert.True(card.CanPlanWithout);
+            Assert.False(card.CanPlan);
+            Assert.Equal("Pick a Contract", card.PlanLabel);
+            Assert.Equal(0, Requests);
+
+            mission.Send(new PlanWithoutContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            var text = Text(Assert.Single(_transport.Requests));
+            Assert.Contains("Fly to Minmus and capture into orbit.", text);
+            Assert.DoesNotContain("Contract Route", text);
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptKeepTheTicksTheCardHad()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(Start(""));
+            var before = mission.View.ContractCheck.Rows.Where(r => r.Ticked).Select(r => r.Guid).ToList();
+            Assert.NotEmpty(before);
+
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+
+            Assert.Equal(before, mission.View.ContractCheck.Rows.Where(r => r.Ticked).Select(r => r.Guid).ToList());
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptOnAReopenedCardSetTheCardsWords()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new ChangeContracts());
+            foreach (var row in mission.View.ContractCheck.Rows.Where(r => r.Ticked).ToList()) mission.Send(new TickContract(row.Guid, false));
+            Assert.False(mission.View.ContractCheck.CanPlanWithout);
+
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+
+            Assert.True(mission.View.ContractCheck.CanPlanWithout);
+            Assert.Equal("Fly to Minmus and capture into orbit.", mission.View.ContractCheck.Words);
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptWithNoCardUpDoNothing()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+            Assert.Null(mission.View.ContractCheck);
+            Assert.Equal(0, Requests);
+        }
+
+        [Fact]
         public void PlanWithoutContractsNeedsWords()
         {
             var mission = Control(TwoAtTheMunAndAHaul());

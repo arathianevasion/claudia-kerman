@@ -156,6 +156,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is PlanContracts) ContractsPlanned();
             else if (input is TickContract) { if (_contractCheck != null) { _contractCheck.Tick(((TickContract)input).Guid, ((TickContract)input).Ticked); LogEdit("TickContract", ((TickContract)input).Guid); } }
             else if (input is SwapInContract) { if (_contractCheck != null) { _contractCheck.SwapIn(((SwapInContract)input).Guid); LogEdit("SwapInContract", ((SwapInContract)input).Guid); } }
+            else if (input is GiveContractWords) ContractWordsGiven(((GiveContractWords)input).Words);
             else if (input is PlanWithoutContracts) PlannedWithoutContracts();
             else if (input is ChangeContracts) ContractsChanged();
             CheckDue();
