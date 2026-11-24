@@ -265,8 +265,8 @@ namespace ClaudiaKerman.Core.Contracts
         {
             // #1244: a placed one is met by its placement; the game marks only what completes after the Mission.
             if (requirement.AfterMission != null) return snapshot != null && PlacementKinds.Unplaced(snapshot, requirement) == null;
-            // #1304: a survey waypoint is met by a reading taken over it, which the snapshot doesn't show: where the craft is now never meets it.
-            if (requirement.Waypoint != null) return false;
+            // #1304, #1321: a survey waypoint or collect science is met by a reading taken, which the snapshot doesn't show: where the craft is now never meets it.
+            if (requirement.Waypoint != null || requirement.Experiment != null) return false;
             var serving = Serving.Of(snapshot, childVesselId);
             if (serving == null) return false;
             var down = serving.Situation == "LANDED" || serving.Situation == "SPLASHED";
@@ -285,6 +285,7 @@ namespace ClaudiaKerman.Core.Contracts
         {
             if (requirement.AfterMission != null && snapshot != null) return PlacementKinds.Unplaced(snapshot, requirement) ?? "";
             if (requirement.Waypoint != null) return WaypointGap(requirement);
+            if (requirement.Experiment != null) return "the game hasn't marked it met: it needs science collected " + requirement.Words.Replace("collect science ", "");
             var serving = Serving.Of(snapshot, childVesselId);
             if (serving == null) return "the mod has no reading of the " + (string.IsNullOrEmpty(childVesselId) ? "craft" : "Child Vessel");
             var miss = serving.Situation == "ORBITING" && serving.Body == requirement.Body ? OrbitMiss(snapshot, serving, requirement) : null;
