@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Core.Tools;
@@ -178,6 +179,28 @@ namespace ClaudiaKerman.Core.Tests
             var steps = ScienceChoice.Choose(new ScienceAsk { Explicit = true, Available = false, Parts = parts });
             Assert.Equal(new[] { "inoperable", "not in experiments", "nothing to measure in this situation" }, steps.Select(s => s.Why));
             Assert.All(steps, s => Assert.Equal("skip", s.Do));
+        }
+
+        [Fact]
+        public void The_block_call_reads_the_ask_and_gives_one_step_per_part()
+        {
+            var part = new Func<bool, object>(held => new Dictionary<string, object> { { "named", true }, { "has_data", held }, { "inoperable", false }, { "rerunnable", true } });
+            var ask = new Dictionary<string, object>
+            {
+                { "mode", "auto" }, { "explicit", true }, { "available", true }, { "tracked", true }, { "left", 8.0 }, { "can_send", true },
+                { "ec_pct", 90.0 }, { "min_ec_pct", 10.0 }, { "parts", new List<object> { part(true), part(true) } },
+            };
+            var answer = BlockCalls.ScienceChoiceOf(ask);
+            Assert.Equal("", answer["error"]);
+            Assert.Equal("", answer["missed"]);
+            var steps = ((IList<object>)answer["steps"]).Cast<IDictionary<string, object>>().ToList();
+            Assert.Equal(new[] { "free", "skip" }, steps.Select(st => st["do"]));
+
+            ask["can_send"] = false;
+            Assert.Equal("no antenna or no link", BlockCalls.ScienceChoiceOf(ask)["missed"]);
+
+            var failed = BlockCalls.ScienceChoiceOf(ask, true);
+            Assert.Equal(new[] { "skip", "skip" }, ((IList<object>)failed["steps"]).Cast<IDictionary<string, object>>().Select(st => st["do"]));
         }
     }
 }
