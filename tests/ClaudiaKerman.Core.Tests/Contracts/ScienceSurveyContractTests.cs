@@ -195,11 +195,13 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
-        public void AGroundSurveyGetsNoSurveyScheduleCall()
+        public void AGroundSurveyGetsTheLandingNoteAndNotThePassNote()
         {
             var check = Check(ContractCheckTests.With(Survey("c-g", "2", "GROUND", "crewReport", 0, "0,0", "0,0.5729578")));
+            var section = check.Choose(check.TickedGuids).Section;
 
-            Assert.DoesNotContain("SURVEYSCHEDULE", check.Choose(check.TickedGuids).Section);
+            Assert.Contains(MissionPrompts.SurveyLandingNote, section);
+            Assert.DoesNotContain("Coast to each pass's ut", section);
         }
 
         [Fact]
