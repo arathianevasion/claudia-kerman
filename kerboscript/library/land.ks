@@ -1,26 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 //
-// Building Block land: lands on an airless body from a low, near-circular orbit. Built on
-// claudia_lib.ks and exec_node.ks (which flies its deorbit and correction burns); block-only helpers
-// are prefixed land_. The "//|" lines are Claudia's docs for it; the first is its summary.
-//
-// The descent (ADR 0011): the pass search (ADDONS:CLAUDIA:LANDINGPASS) simulates braking over the terrain
-// under each pass's approach and picks the periapsis and Descent Shape that clear it most cheaply; a deorbit
-// burn half an orbit before the site lowers periapsis to that height; a correction burn on the way down
-// swings the orbit plane over the site; the fall turns the craft onto its first braking command; then, from
-// the stopping distance (times burn_margin, plus the distance covered in any turn still left), a powered
-// descent checks the slope at the site (diverting to flatter ground through ADDONS:CLAUDIA:FLATSPOT),
-// predicts its braking again from the real state (ADDONS:CLAUDIA:BRAKEPATH), then brakes once along the way
-// it was moving (land_guide: never turning back unless it stopped over max_overshoot past the site, never
-// faster than when braking began) holding the Descent Shape's height above the highest terrain ahead
-// (land_clearance), comes straight down once stopped and touches down at touchdown_speed. It traces its
-// descent to the log (ADDONS:CLAUDIA:BLOCKTRACE) as it goes. No Trajectories: an airless body's fall is plain orbit maths.
+// Building Block land: lands on an airless body from a low, near-circular orbit or a suborbital arc ending near its site
+// (#1309; ADDONS:CLAUDIA:LANDSTART decides). Built on claudia_lib.ks and exec_node.ks (which flies its deorbit and correction
+// burns); block-only helpers are prefixed land_. The "//|" lines are Claudia's docs for it; the first is its summary.
+// The descent is ADR 0011's: pass search (LANDINGPASS), deorbit, correction, the fall, then powered braking (BRAKEPATH,
+// land_guide, land_clearance) with slope checks and diverts (FLATSPOT), traced to the log (BLOCKTRACE). No Trajectories.
 
 @lazyglobal off.
 
-//| land(options): lands on an airless body from a low, near-circular orbit:
-//| a deorbit burn timed for the site, a correction burn that puts the ground track over it, and a
+//| land(options): lands on an airless body from a low, near-circular orbit (a deorbit burn timed for the site,
+//| a correction burn that puts the ground track over it) or from a suborbital arc that ends within 5 km of the site
+//| (no burn before braking; the site, or "any"'s spot where the arc meets the ground; no biome; daylight is the arc's), then a
 //| powered descent that brakes onto it, rejects slopes over max_slope (diverting up to max_divert to
 //| flatter ground) and touches down at about touchdown_speed. Aims for about 5 km of the site.
 //| Options:
@@ -1161,15 +1152,6 @@ function land_fall_samples {
   return out.
 }
 
-// The site's lat and lng from the target option, or "" for "any" (and for "vessel", whose site land works out from the Target Vessel).
-function land_site_of {
-  parameter target_opt.
-  if target_opt:istype("String") {
-    return "".
-  }
-  return lexicon("lat", target_opt:lat, "lng", target_opt:lng).
-}
-
 // Degrees the sun stands above the horizon at a point (a vector from the body's centre) at ut.
 function land_sun_elevation {
   parameter point, ut.
@@ -1347,6 +1329,7 @@ function land_missed_reason {
 // periapsis, and 100 m/s of margin)).
 function land_deorbit_figures {
   parameter plan.
+  if plan:haskey("figures") { return plan:figures. } // an arc's (#1309)
   local mu is body:mu.
   local burn_pos is positionat(ship, plan:burn_ut) - body:position.
   local burn_vel is velocityat(ship, plan:burn_ut):orbit.
@@ -1462,15 +1445,13 @@ function land {
   if claudia_on_ground() {
     return claudia_finish(ctx, false, "already down (" + status + ")", extra).
   }
-  if status <> "ORBITING" or ship:orbit:eccentricity > 0.1 {
-    return claudia_finish(ctx, false, "land needs a near-circular orbit (eccentricity under 0.1); situation " + status + ", eccentricity " + round(ship:orbit:eccentricity, 3), extra).
-  }
 
   // A biome target becomes a site below, once the craft is measured (#528), then flies as a LATLNG would.
   local site is "".
   local reach is land_reach_dv(opt:max_correction_dv, ship:deltav:current).
-  if not by_biome {
-    set site to land_site_of(opt:target).
+  // The site given as coordinates; "" for "any" and for "vessel", whose site comes from the Target Vessel below.
+  if not by_biome and not opt:target:istype("String") {
+    set site to lexicon("lat", opt:target:lat, "lng", opt:target:lng).
   }
   // A "vessel" target (#662): the site vessel_offset m beside the landed Target Vessel, read live from the Game Snapshot by a
   // block-internal call that sits in the block (ADR 0007). keep_clear is the vessel: the site never moves within 50 m of it.
@@ -1495,6 +1476,16 @@ function land {
     set opt:max_divert to land_vessel_divert(opt:max_divert, opt:vessel_offset).
     addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "beside " + named:name, "lat", round(site:lat, 5), "lng", round(site:lng, 5))).
   }
+  // Where it starts (#1309, ADR 0014; block-internal, so inline): a low, near-circular orbit, or a suborbital arc ending near the site.
+  local r_fall is body:radius + (choose 0 if site:istype("String") else max(0, body:geopositionlatlng(site:lat, site:lng):terrainheight)).
+  local fall_s is addons:claudia:falleta(lexicon("ecc", ship:orbit:eccentricity, "sma", ship:orbit:semimajoraxis, "mu", body:mu, "r_fall", r_fall, "ta", ship:orbit:trueanomaly)).
+  local arc_end is body:geopositionof(positionat(ship, time:seconds + max(0, fall_s))).
+  local start is addons:claudia:landstart(lexicon("situation", status, "ecc", ship:orbit:eccentricity, "sma", ship:orbit:semimajoraxis, "mu", body:mu, "r_fall", r_fall, "radius", body:radius,
+    "day", body:rotationperiod, "fall_s", fall_s, "end_lat", arc_end:lat, "end_lng", arc_end:lng, "now", time:seconds, "descent_shape", opt:descent_shape, "target", choose "biome" if by_biome else site)).
+  if start:start = "fail" {
+    return claudia_finish(ctx, false, start:why, extra).
+  }
+  local on_arc is start:start = "arc".
 
   // #622: staging can't be undone, so a biome the body doesn't have (#591) is refused before it, by the site search's
   // check-only call (block-internal, ADR 0007). A biome with no site is only known after staging (#528).
@@ -1547,7 +1538,9 @@ function land {
   // A site given as coordinates (or "any"'s) may move up to 5 km for terrain; a biome's is chosen for it (#511), the next site taking its place (#528);
   // a "vessel" target's stays beside the vessel (#662).
   local may_move is not by_biome and not by_vessel.
-  if not by_biome and site:istype("String") {
+  if on_arc {
+    set plan to start:plan. // From the arc (#1309): LANDSTART's plan, with no pass and no burn before braking.
+  } else if not by_biome and site:istype("String") {
     // "any": the arrival point of the first pass in daylight, then its descent over that pass alone (#511); if no shape
     // clears it, the next arrival point on, up to 10.
     local earliest is time:seconds + 120.
@@ -1645,7 +1638,7 @@ function land {
   // burn_margin), the stage goes now, in orbit before the deorbit burn, even one that could cover the braking: braking on the
   // whole stack turns slowly and burns the stage's fuel hovering. The lander plans its own pass first (a plan made for the
   // stack is made again for it), and the stage goes only if that plan stands and the lander covers its need; else the stack flies.
-  if under:plan:decouplers:length > 0 {
+  if under:plan:decouplers:length > 0 and not on_arc {
     local lander_need is land_dv_needed(plan:predicted_dv, opt:burn_margin, land_deorbit_figures(plan):needed).
     local stage_note is "kept the stack: the lander is short of the need".
     if opt:drop_underhang = "late" {
@@ -1716,7 +1709,7 @@ function land {
   // A site's pass is solved again from the orbit as it is shortly before the deorbit burn (ADR 0006):
   // a pass missed before the burn commits it (a warp that overshot it, an orbit that moved) gives way to
   // the next in the window, up to 2 times, while the orbit is near-circular (#510). The call is inline (ADR 0007).
-  if not site:istype("String") {
+  if not site:istype("String") and not on_arc {
     until land_resolve_ut(plan:burn_ut) <= time:seconds {
       local waited is claudia_warp_to(ctx, land_resolve_ut(plan:burn_ut), 30).
       if waited <> "" {
@@ -1761,48 +1754,50 @@ function land {
   }
   sas off.
 
-  // Deorbit: retrograde, half an orbit before the site.
-  local descent_node is node(plan:burn_ut, 0, 0, deorbit_dv).
-  add descent_node.
-  local flown is claudia_fly_node(ctx, descent_node).
-  if flown <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, flown, extra).
-  }
-  // actual_dv (#511): the burns flown, then the braking land_descend adds, against predicted_dv.
-  set extra:actual_dv to abs(deorbit_dv).
-
-  // A burn that left periapsis well under the plan (a bad burn or bad terrain data) would put the
-  // craft into the ground before the descent could be flown to plan.
-  local planned_pe is plan:r_pe - body:radius.
-  if not land_periapsis_ok(ship:orbit:periapsis, planned_pe) {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, "deorbit left periapsis at " + round(ship:orbit:periapsis) + " m, planned " + round(planned_pe) + " m", extra).
-  }
-
-  // Correction, a quarter orbit before the site: turn the plane about the craft's position so it
-  // holds the site at periapsis.
-  local pe_ut is time:seconds + eta:periapsis.
-  local fix_ut is time:seconds + eta:periapsis / 2.
-  if fix_ut > time:seconds + 90 {
-    local fix_pos is positionat(ship, fix_ut) - body:position.
-    local fix_vel is velocityat(ship, fix_ut):orbit.
-    local up_dir is fix_pos:normalized.
-    local plane is vcrs(fix_pos, land_site_vector(aim, pe_ut)):normalized.
-    if vdot(plane, vcrs(fix_pos, fix_vel)) < 0 {
-      set plane to -plane.
+  // Deorbit: retrograde, half an orbit before the site; none from an arc.
+  if not on_arc {
+    local descent_node is node(plan:burn_ut, 0, 0, deorbit_dv).
+    add descent_node.
+    local flown is claudia_fly_node(ctx, descent_node).
+    if flown <> "" {
+      claudia_make_safe().
+      return claudia_finish(ctx, false, flown, extra).
     }
-    local radial is vdot(fix_vel, up_dir) * up_dir.
-    local wanted is radial + vxcl(up_dir, fix_vel):mag * vcrs(plane, up_dir):normalized.
-    local fix_dv is wanted - fix_vel.
-    if fix_dv:mag > 0.5 {
-      local fix is land_node_for(fix_ut, fix_dv).
-      set flown to claudia_fly_node(ctx, fix).
-      if flown <> "" {
-        claudia_make_safe().
-        return claudia_finish(ctx, false, flown, extra).
+    // actual_dv (#511): the burns flown, then the braking land_descend adds, against predicted_dv.
+    set extra:actual_dv to abs(deorbit_dv).
+
+    // A burn that left periapsis well under the plan (a bad burn or bad terrain data) would put the
+    // craft into the ground before the descent could be flown to plan.
+    local planned_pe is plan:r_pe - body:radius.
+    if not land_periapsis_ok(ship:orbit:periapsis, planned_pe) {
+      claudia_make_safe().
+      return claudia_finish(ctx, false, "deorbit left periapsis at " + round(ship:orbit:periapsis) + " m, planned " + round(planned_pe) + " m", extra).
+    }
+
+    // Correction, a quarter orbit before the site: turn the plane about the craft's position so it
+    // holds the site at periapsis.
+    local pe_ut is time:seconds + eta:periapsis.
+    local fix_ut is time:seconds + eta:periapsis / 2.
+    if fix_ut > time:seconds + 90 {
+      local fix_pos is positionat(ship, fix_ut) - body:position.
+      local fix_vel is velocityat(ship, fix_ut):orbit.
+      local up_dir is fix_pos:normalized.
+      local plane is vcrs(fix_pos, land_site_vector(aim, pe_ut)):normalized.
+      if vdot(plane, vcrs(fix_pos, fix_vel)) < 0 {
+        set plane to -plane.
       }
-      set extra:actual_dv to extra:actual_dv + fix_dv:mag.
+      local radial is vdot(fix_vel, up_dir) * up_dir.
+      local wanted is radial + vxcl(up_dir, fix_vel):mag * vcrs(plane, up_dir):normalized.
+      local fix_dv is wanted - fix_vel.
+      if fix_dv:mag > 0.5 {
+        local fix is land_node_for(fix_ut, fix_dv).
+        set flown to claudia_fly_node(ctx, fix).
+        if flown <> "" {
+          claudia_make_safe().
+          return claudia_finish(ctx, false, flown, extra).
+        }
+        set extra:actual_dv to extra:actual_dv + fix_dv:mag.
+      }
     }
   }
 

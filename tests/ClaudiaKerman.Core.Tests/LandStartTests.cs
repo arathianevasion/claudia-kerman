@@ -10,7 +10,7 @@ namespace ClaudiaKerman.Core.Tests
     /// <summary>
     /// <c>ADDONS:CLAUDIA:LANDSTART</c> (#1309, ADR 0014): where <c>land</c> starts from. A low, near-circular orbit flies the
     /// deorbit as before (the rule was land's inline eccentricity check, pinned here with its words); a suborbital arc that ends
-    /// near the site flies its powered descent from the arc, aimed at the site, or for "any" at where the arc ends.
+    /// near the site flies its powered descent from the arc, aimed at the site, or for "any" (target "") at where the arc ends.
     /// Mun figures: mu 6.5138398e10, radius 200 km, day 138984.48 s.
     /// </summary>
     public sealed class LandStartTests
@@ -27,12 +27,9 @@ namespace ClaudiaKerman.Core.Tests
                 { "radius", MunRadius }, { "day", MunDay }, { "fall_s", fallS }, { "end_lat", endLat }, { "end_lng", endLng },
             };
             var at = site as double[];
-            if (at != null)
-            {
-                ask["site_lat"] = at[0];
-                ask["site_lng"] = at[1];
-            }
-            else if (site is string) ask["target"] = site;
+            ask["target"] = at != null ? new Dictionary<string, object> { { "lat", at[0] }, { "lng", at[1] } } : site;
+            ask["now"] = 1000.0;
+            ask["descent_shape"] = "auto";
             return ask;
         }
 
@@ -64,8 +61,9 @@ namespace ClaudiaKerman.Core.Tests
             // so the ground it meets is 0.123 degrees east of (0, 20): 429 m along the equator, 1 km from the site at (0, 20.4).
             var said = BlockCalls.LandStart(Arc(0, 20.9, 300, new[] { 0.0, 20.4 }));
             Assert.Equal("arc", said["start"]);
-            Assert.Equal(0.0, (double)said["lat"], 6);
-            Assert.Equal(20.4, (double)said["lng"], 6);
+            var site = (IDictionary<string, object>)((IDictionary<string, object>)said["plan"])["site"];
+            Assert.Equal(0.0, (double)site["lat"], 6);
+            Assert.Equal(20.4, (double)site["lng"], 6);
             Assert.InRange((double)said["end_m"], 950, 1000);
         }
 
@@ -73,9 +71,28 @@ namespace ClaudiaKerman.Core.Tests
         public void AnArcStartGivesTheSpeedWhereItMeetsTheGroundAndTheDeltaVTheDescentNeeds()
         {
             // Vis-viva at 200 km on a 120 km semi-major axis: sqrt(mu (2/200000 - 1/120000)) = 329.5 m/s; needed is 1.2 x that + 100.
-            var said = BlockCalls.LandStart(Arc(0, 20.9, 300, new[] { 0.0, 20.4 }));
-            Assert.Equal(329.5, (double)said["v_end"], 1);
-            Assert.Equal(495.4, (double)said["needed"], 1);
+            var figures = (IDictionary<string, object>)((IDictionary<string, object>)BlockCalls.LandStart(Arc(0, 20.9, 300, new[] { 0.0, 20.4 }))["plan"])["figures"];
+            Assert.Equal(0.0, figures["deorbit_dv"]);
+            Assert.Equal(329.5, (double)figures["v_pe"], 1);
+            Assert.Equal(495.4, (double)figures["needed"], 1);
+        }
+
+        [Fact]
+        public void AnArcsPlanHasNoPassAndBrakesFromTheRealState()
+        {
+            // No deorbit burn: it "burns" now and arrives when the arc meets the ground; no path, so braking predicts its own;
+            // braking at the ground's radius; "auto" leaves the shape to the descent (-1), a number is flown as given.
+            var plan = (IDictionary<string, object>)BlockCalls.LandStart(Arc(0, 20.9, 300, new[] { 0.0, 20.4 }))["plan"];
+            Assert.Equal("", plan["error"]);
+            Assert.Equal(1000.0, plan["burn_ut"]);
+            Assert.Equal(1300.0, plan["arrive_ut"]);
+            Assert.Equal(-1.0, plan["next_pass_ut"]);
+            Assert.Equal(MunRadius, plan["r_pe"]);
+            Assert.Equal(-1.0, plan["descent_shape"]);
+            Assert.Empty((IList<object>)plan["path"]);
+            var given = Arc(0, 20.9, 300, new[] { 0.0, 20.4 });
+            given["descent_shape"] = 0.5;
+            Assert.Equal(0.5, ((IDictionary<string, object>)BlockCalls.LandStart(given)["plan"])["descent_shape"]);
         }
 
         [Fact]
@@ -90,10 +107,11 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void AnyAimsWhereTheArcMeetsTheGround()
         {
-            var said = BlockCalls.LandStart(Arc(1.5, 20.9, 300, "any"));
+            var said = BlockCalls.LandStart(Arc(1.5, 20.9, 300, ""));
             Assert.Equal("arc", said["start"]);
-            Assert.Equal(1.5, (double)said["lat"], 6);
-            Assert.Equal(20.123, (double)said["lng"], 3);
+            var site = (IDictionary<string, object>)((IDictionary<string, object>)said["plan"])["site"];
+            Assert.Equal(1.5, (double)site["lat"], 6);
+            Assert.Equal(20.123, (double)site["lng"], 3);
         }
 
         [Fact]
