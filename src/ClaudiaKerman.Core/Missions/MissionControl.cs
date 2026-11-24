@@ -2546,6 +2546,13 @@ namespace ClaudiaKerman.Core.Missions
             var checkedGoal = _form == null ? null : chosenForCheck == null ? _form.Goal : chosenForCheck.Goal;
             _craftCheck.Populate(view.CraftCheck, _snapshot, checkedGoal,
                 _form == null ? null : ChooseTarget(checkedGoal, _form.Target, chosenForCheck == null ? null : chosenForCheck.Target).Target, _form != null, formWindow.Key);
+            // #1286: a delta-v shortfall carries the folded line's Change Contracts, offered by the same rule.
+            var change = view.ContractCheck;
+            foreach (var finding in view.CraftCheck.Findings.Where(f => f.Code == "delta_v_short"))
+            {
+                finding.ChangeOffered = change != null && change.ChangeOffered;
+                finding.CanChange = finding.ChangeOffered && change.CanChange;
+            }
 
             if (mission != null)
             {

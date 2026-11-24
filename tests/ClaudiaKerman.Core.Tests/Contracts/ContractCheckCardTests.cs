@@ -796,6 +796,32 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void ADeltaVShortFindingOffersChangeContractsWhileContractsAreChosenAndPressingItReopensTheCardLikeTheFoldedLine()
+        {
+            var mission = FoldedWithLandLeftOut();
+            var finding = Assert.Single(mission.View.CraftCheck.Findings, f => f.Code == "delta_v_short");
+            Assert.True(finding.ChangeOffered);
+            Assert.True(finding.CanChange);
+            Assert.All(mission.View.CraftCheck.Findings.Where(f => f.Code != "delta_v_short"), f => Assert.False(f.ChangeOffered));
+
+            mission.Send(new ChangeContracts());
+
+            Assert.False(mission.View.ContractCheck.Folded);
+            Assert.False(Assert.Single(mission.View.CraftCheck.Findings, f => f.Code == "delta_v_short").ChangeOffered);
+        }
+
+        [Fact]
+        public void ADeltaVShortFindingOffersNoChangeContractsWithNoContractsChosen()
+        {
+            var mission = Control(ReachesTheBandButNotOrbit(ContractCheckTests.Exploration("c-mun", 10000, "Mun:ORBIT")), false, ScriptedResponse.Fixture("craft-check-fail.sse"));
+            mission.Send(Start(WordsNeedingOrbit));
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
+
+            Assert.Null(mission.View.ContractCheck);
+            Assert.All(mission.View.CraftCheck.Findings, f => Assert.False(f.ChangeOffered));
+        }
+
+        [Fact]
         public void WhileACraftCheckRequestIsOutChangeContractsIsGreyedAndAPressIsRefusedAndChangesNothing()
         {
             var mission = Control(TwoAtTheMunAndAHaul(), false, ScriptedResponse.Fixture("craft-check-fail.sse"));
@@ -871,6 +897,15 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Send(new Approve());
             Assert.Equal(MissionStage.None, mission.View.Stage);
             Assert.Equal(requests, Requests);
+        }
+
+        [Fact]
+        public void AfterThePlayersApprovalADeltaVShortFindingNoLongerOffersChangeContracts()
+        {
+            var mission = ProposedOnTheChosenContracts();
+            mission.Send(new Approve());
+
+            Assert.All(mission.View.CraftCheck.Findings, f => Assert.False(f.ChangeOffered));
         }
 
         [Fact]
