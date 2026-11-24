@@ -26,8 +26,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         private StreamingFakeTransport _transport;
         private CraftCheckRouter _router;
 
+        private readonly List<MissionControl> _missions = new List<MissionControl>();
+
         public void Dispose()
         {
+            // A Start with the player's words begins a Craft Check in the background, and it writes under the save's craft-checks
+            // folder; let it finish before the save is deleted, or the delete races it ("Directory not empty", #1323).
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (_missions.Any(m => m.View.CraftCheck.State == CraftCheckState.Running) && DateTime.UtcNow < deadline)
+            {
+                _background.Drain();
+                Thread.Sleep(2);
+            }
+            _background.Drain();
             _save.Dispose();
         }
 
@@ -42,6 +53,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Send(new SceneChanged(GameScene.Flight));
             // A crewed Mission started in Flight: the Mun Shot's crew is Claudia, aboard already.
             mission.Send(snapshot);
+            _missions.Add(mission);
             return mission;
         }
 
