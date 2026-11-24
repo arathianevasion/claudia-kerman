@@ -318,56 +318,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal("False", One("science_matches(list(\"mysteryGoo\"), \"temperatureScan\", \"2HOT Thermometer\", \"sensorThermometer\")"));
         }
 
-        // science_decision(explicit, rerunnable, has_data, inoperable, available, tracked, left)
-        [Theory]
-        [InlineData("false, true, false, false, true, true, 12", "run")]
-        [InlineData("false, true, false, false, true, true, 0", "skip: no science left here")]
-        [InlineData("false, true, false, false, true, false, -1", "run")]                                  // Sandbox: nothing tracked, run once
-        [InlineData("true, true, false, false, true, true, 0", "run")]                                      // named: run whether or not science is left
-        [InlineData("false, false, true, false, true, true, 30", "skip: holds data and is not rerunnable, so it was not overwritten")]
-        [InlineData("true, false, true, false, true, true, 30", "skip: holds data and is not rerunnable, so it was not overwritten")]
-        [InlineData("false, true, true, false, true, false, -1", "skip: holds data, so it was not overwritten")]  // Sandbox: a second run would be a repeat
-        [InlineData("false, true, false, true, true, true, 30", "skip: inoperable")]
-        [InlineData("true, true, false, false, false, true, 30", "skip: nothing to measure in this situation")]
-        public void An_experiment_runs_only_when_it_is_useful_and_would_overwrite_nothing(string args, string expected)
-        {
-            Assert.Equal(expected, One("science_decision(" + args + ")"));
-        }
-
-        // science_transmit_choice(mode, returning, loses_value, can_send, ec_pct, min_ec_pct)
-        [Theory]
-        [InlineData("\"keep\", false, false, true, 90, 10", "keep: transmit is 'keep'")]
-        [InlineData("\"transmit\", false, false, true, 90, 10", "transmit")]
-        [InlineData("\"transmit\", true, true, true, 90, 10", "transmit")]                                 // asked to: transmit even when returning
-        [InlineData("\"auto\", false, true, true, 90, 10", "transmit")]                                    // not coming home: nothing to lose
-        [InlineData("\"auto\", true, false, true, 90, 10", "transmit")]                                    // coming home but transmitting loses nothing
-        [InlineData("\"auto\", true, true, true, 90, 10", "keep: the craft is returning and transmitting would lose value")]
-        [InlineData("\"transmit\", false, false, false, 90, 10", "keep: no antenna or no link")]
-        [InlineData("\"transmit\", false, false, true, 9.9, 10", "keep: electric charge is under min_ec_pct")]
-        [InlineData("\"auto\", false, false, true, 10, 10", "transmit")]
-        public void Data_is_transmitted_or_kept_by_mode_return_trip_link_and_charge(string args, string expected)
-        {
-            Assert.Equal(expected, One("science_transmit_choice(" + args + ")"));
-        }
-
-        // #612: science_held_choice(has_data, inoperable, mode, returning, loses_value, can_send, ec_pct, min_ec_pct)
-        [Theory]
-        [InlineData("true, false, \"transmit\", false, false, true, 90, 10", "transmit")]                  // held crewReport, link up: sent
-        [InlineData("true, false, \"auto\", true, true, true, 90, 10", "keep: the craft is returning and transmitting would lose value")]
-        [InlineData("true, false, \"keep\", false, false, true, 90, 10", "")]                              // left to science_decision, which keeps it
-        [InlineData("true, false, \"transmit\", false, false, false, 90, 10", "keep: no antenna or no link")]
-        [InlineData("false, false, \"transmit\", false, false, true, 90, 10", "")]                         // nothing held: a fresh run
-        [InlineData("true, true, \"transmit\", false, false, true, 90, 10", "")]
-        public void Held_data_is_sent_or_kept_by_the_same_rule_as_fresh_data(string args, string expected)
-        {
-            Assert.Equal(expected, One("science_held_choice(" + args + ")"));
-        }
-
-        [Fact]
-        public void With_keep_held_data_is_never_overwritten()
-        {
-            Assert.Equal("skip: holds data, so it was not overwritten", One("science_decision(true, true, true, false, true, true, 30)"));
-        }
+        // #1297: which part runs and what is sent moved to Core (ScienceChoiceTests).
 
         // #624: a held send says "sent" only once the data transmitted; a failed one says it was not sent.
         [Theory]

@@ -1214,6 +1214,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             "print addons:claudia:predictionmiss(lexicon(\"lat\", 0, \"lng\", 0)):km.",
             "print addons:claudia:turntime(lexicon()):turn_time.",
             "print addons:claudia:lowcharge(lexicon()):carry_on.",
+            "print addons:claudia:sciencechoice(lexicon()):missed.",
             "print addons:claudia:brakeheights(lexicon()):brake_h.",
             "local t is addons:claudia:braketick(lexicon()).\nprint t:start.",
             "print addons:claudia:entryloss(lexicon()):carry_on.",
