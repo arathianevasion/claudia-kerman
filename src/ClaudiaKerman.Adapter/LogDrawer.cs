@@ -491,6 +491,12 @@ namespace ClaudiaKerman.Adapter
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("Fix:", _bold, GUILayout.ExpandWidth(false));
                 GUILayout.Label(finding.Fix, ClaudiaSkin.Body);
+                // #1286: the folded Contract Check line's button, here where the check says the craft falls short.
+                if (finding.ChangeOffered)
+                {
+                    if (!finding.CanChange) ClaudiaSkin.DisabledButton("Change Contracts", GUILayout.ExpandWidth(false));
+                    else if (ClaudiaSkin.SecondaryButton("Change Contracts", GUILayout.ExpandWidth(false))) _send(new ChangeContracts());
+                }
                 GUILayout.EndHorizontal();
             }
             if (warning)
