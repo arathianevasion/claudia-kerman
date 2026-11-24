@@ -169,6 +169,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AChosenSurveyYieldsOneRequirementPerWaypointAndTheRouteWordsNameEach()
+        {
+            var check = Check(ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "0,10", "0,100", "0,-170")));
+
+            var choice = check.Choose(check.TickedGuids);
+
+            Assert.Equal(3, choice.Requirements.Count);
+            Assert.All(choice.Requirements, r => Assert.NotNull(r.Waypoint));
+            Assert.Equal("orbit the Mun; survey 3 waypoints over the Mun in this order: 0.0° N 170.0° W; 0.0° N 100.0° E; 0.0° N 10.0° E; return to Kerbin", choice.RouteWords);
+            Assert.Contains("- survey 3 waypoints over the Mun in this order: 0.0° N 170.0° W; 0.0° N 100.0° E; 0.0° N 10.0° E [serves: ", choice.Section);
+        }
+
+        [Fact]
         public void TheWaitForThePassCountsAgainstTheDeadline()
         {
             // About 29,000 s to low Mun orbit; the first pass is up to half a turn of the Mun (69,492 s) later. A deadline 60,000 s out
@@ -269,7 +282,24 @@ namespace ClaudiaKerman.Core.Tests.Contracts
                 "Run science over the survey waypoint", "Return to Kerbin");
 
             Assert.Empty(served.Problems);
-            Assert.All(served.Record, r => Assert.Equal(1, r.Leg));
+            // #1304: the waypoint is tied to the leg that flies it, the science run; collect science near the Mun to the capture.
+            Assert.Equal(2, served.Record.Single(r => r.Key.StartsWith("c-s/", StringComparison.Ordinal)).Leg);
+            Assert.Equal(1, served.Record.Single(r => r.Key.StartsWith("c-sci/", StringComparison.Ordinal)).Leg);
+        }
+
+        [Fact]
+        public void EachSurveyWaypointIsTiedToTheLegThatFliesIt()
+        {
+            var snapshot = ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "3,10", "-5,60", "8,120"));
+
+            var served = PlanCheck(snapshot, "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit",
+                "Survey: take a crewReport over each waypoint", "Return to Kerbin");
+
+            Assert.Empty(served.Problems);
+            Assert.Equal(3, served.Record.Count);
+            Assert.All(served.Record, r => Assert.Equal(2, r.Leg));
+            Assert.NotEmpty(served.Legs[2]);
+            Assert.Empty(served.Legs[1]);
         }
 
         [Fact]
