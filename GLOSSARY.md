@@ -49,12 +49,16 @@ The altitude range, and speed range where the Contract gives one, within which a
 _Avoid_: envelope, window (a Transfer Window is a time)
 
 **Survey Schedule**:
-The mod's order and timing for a survey Contract's waypoints. For each orbital waypoint, the pass's UT and its predicted altitude against the Band, or "unreachable" with the inclination needed. For each ground waypoint, the landing order, each site's landing, and "needs precision" where the Contract's radius is tighter than a landing's aim, or "radius unknown" where the radius can't be read (treat it as needing precision). Claudia reads the orbital part through the `survey_schedule` Planning Tool while she plans, offered only when a Chosen Contract is an orbital survey; a script reads it with `ADDONS:CLAUDIA:SURVEYSCHEDULE()`.
+The mod's order and timing for a survey Contract's waypoints. For an orbital survey, the Survey Plane to fly and the burn that reaches it, then for each orbital waypoint the pass's UT and its predicted altitude against the Band, or "unreachable" with the inclination needed. For each ground waypoint, the landing order, each site's landing, and "needs precision" where the Contract's radius is tighter than a landing's aim, or "radius unknown" where the radius can't be read (treat it as needing precision). Claudia reads the orbital part through the `survey_schedule` Planning Tool while she plans, offered only when a Chosen Contract is an orbital survey; a script reads it with `ADDONS:CLAUDIA:SURVEYSCHEDULE()`.
 _Avoid_: survey plan, pass list
 
 **Hop**:
 A suborbital flight from the launch body up to a Band and back down, without reaching orbit. The plan check recognises a Hop by a launch that never turns (a turn_start_speed at least circular speed), whatever its target_ap: a Band above the air asks for a target_ap above it. A Contract Requirement met on a Hop is priced as one; on a Mission that also goes to orbit, it is met on the way up.
 _Avoid_: suborbital flight, sounding flight
+
+**Survey Plane**:
+The orbital plane, inclination and node together, that the Survey Schedule picks to pass over the most of an orbital survey's remaining waypoints in one revolution; one per Sequence Plan. The waypoints that pass under it within 12 game hours are flown on it; the rest wait for the next Survey Plane. A whole survey ends within 24 game hours of its first Sequence Plan or by the Contract's deadline, whichever comes first.
+_Avoid_: survey inclination, survey orbit
 
 **Site Hop**:
 A suborbital flight from one landed site to a named site on the same body, landing there without reaching orbit; flown by the site_hop Building Block, for a ground survey's waypoints or any Mission. Not a Hop, which goes up from the launch body to a Band and back down.
