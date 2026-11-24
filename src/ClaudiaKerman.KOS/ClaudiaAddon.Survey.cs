@@ -60,6 +60,7 @@ namespace ClaudiaKerman.KOS
                 {
                     line.Add(new StringValue("landing"), ScalarValue.Create(pass.Landing));
                     line.Add(new StringValue("needs_precision"), new BooleanValue(pass.NeedsPrecision));
+                    line.Add(new StringValue("radius_unknown"), new BooleanValue(pass.RadiusUnknown));
                 }
                 list.Add(line);
             }

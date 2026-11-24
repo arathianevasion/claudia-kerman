@@ -130,6 +130,20 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.False(schedule.Single(p => p.Waypoint == unknown).NeedsPrecision);
         }
 
+        [Fact]
+        public void ASiteWhoseRadiusCantBeReadIsMarkedRadiusUnknownAndOneWithARadiusIsNot()
+        {
+            var tight = Ground(0, "0,0", radius: 2000);
+            var roomy = Ground(1, "0,10", radius: 8000);
+            var unknown = Ground(2, "0,20");
+
+            var schedule = SurveySchedule.Ground(Mun(), new[] { tight, roomy, unknown });
+
+            Assert.False(schedule.Single(p => p.Waypoint == tight).RadiusUnknown);
+            Assert.False(schedule.Single(p => p.Waypoint == roomy).RadiusUnknown);
+            Assert.True(schedule.Single(p => p.Waypoint == unknown).RadiusUnknown);
+        }
+
         private static SurveyBody Mun()
         {
             return new SurveyBody { Radius = MunRadius, RotationPeriod = MunTurn };

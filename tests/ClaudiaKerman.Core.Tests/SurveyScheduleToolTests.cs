@@ -144,6 +144,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(new[] { "0.0° N 0.0° E", "0.0° N 10.0° E", "0.0° N 40.0° E" }, landings.Select(l => l.GetProperty("waypoint").GetString()).ToArray());
             Assert.Equal(new[] { 1, 2, 3 }, landings.Select(l => l.GetProperty("landing").GetInt32()).ToArray());
             Assert.Equal(new[] { true, false, false }, landings.Select(l => l.GetProperty("needs_precision").GetBoolean()).ToArray());
+            Assert.Equal(new[] { false, true, false }, landings.Select(l => l.GetProperty("radius_unknown").GetBoolean()).ToArray());
             Assert.Equal(0, answer.GetProperty("passes").GetArrayLength());
         }
 
@@ -284,6 +285,16 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("in landing order", note);
             Assert.Contains("science", note);
             Assert.Contains("needs_precision", note);
+        }
+
+        [Fact]
+        public void ClaudiasDocsSayWhatRadiusUnknownMeansAndToTreatItAsNeedingPrecision()
+        {
+            var note = MissionPrompts.SurveyLandingNote;
+
+            Assert.Contains("radius_unknown", note);
+            Assert.Contains("couldn't read", note);
+            Assert.Contains("treat it as needing precision", note);
         }
     }
 }
