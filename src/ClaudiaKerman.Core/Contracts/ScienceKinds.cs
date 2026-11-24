@@ -23,6 +23,8 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>A space band's floor and ceiling above the surface, m; null where it has none.</summary>
         public double? MinAltitude;
         public double? MaxAltitude;
+        /// <summary>#1311: how near the waypoint a landed survey must be taken, m, where the Contract gives it; null where it doesn't.</summary>
+        public double? Radius;
 
         /// <summary>"3.0° N 10.0° E".</summary>
         public string Where()
@@ -117,6 +119,7 @@ namespace ClaudiaKerman.Core.Contracts
             string eva;
             EvaExperiments.TryGetValue(experiment, out eva);
             var waypoint = new SurveyWaypoint { Key = requirement.Key, Body = body, Latitude = latitude.Value, Longitude = longitude.Value };
+            if (band == "GROUND") waypoint.Radius = ContractKinds.Number(requirement, "wpRadius");
             if (band == "GROUND")
             {
                 if (body == home) return ContractKinds.NotYet(one, HomeGroundNotYet);

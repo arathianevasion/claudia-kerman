@@ -53,6 +53,10 @@ namespace ClaudiaKerman.Core.Contracts
         public bool Unreachable;
         /// <summary>The inclination that would reach it, degrees; null unless <see cref="Unreachable"/>.</summary>
         public double? ReachingInclination;
+        /// <summary>#1311: a ground survey's site: 1 for the first landed (with <c>land</c>), 2 and on flown to with <c>site_hop</c>; 0 for an orbital pass.</summary>
+        public int Landing;
+        /// <summary>#1311: the Contract's radius is tighter than <c>land</c>'s aim, <see cref="SurveySchedule.LandAim"/>.</summary>
+        public bool NeedsPrecision;
     }
 
     /// <summary>
@@ -66,6 +70,21 @@ namespace ClaudiaKerman.Core.Contracts
     {
         /// <summary>The stock Contracts.cfg's Survey <c>MaximumTriggerRange</c>, m, where the game's settings can't be read.</summary>
         public const double StockTriggerRange = 15000;
+
+        /// <summary>#1311: how near a site <c>land</c> aims to come, m ("about 5 km"); a Contract radius under it is "needs precision".</summary>
+        public const double LandAim = 5000;
+
+        /// <summary>
+        /// #1311: a ground survey's sites in landing order: the least travel between them, the order the route prices. The first is landed on
+        /// from orbit with <c>land</c>; each next is a <c>site_hop</c> from the one before. Each is marked "needs precision" where its Contract
+        /// radius is tighter than <see cref="LandAim"/>; a site whose radius isn't known is not marked.
+        /// </summary>
+        public static List<SurveyPass> Ground(SurveyBody body, IList<SurveyWaypoint> waypoints)
+        {
+            return SurveyPasses.LandingOrder(body.Radius, waypoints)
+                .Select((w, i) => new SurveyPass { Waypoint = w, Landing = i + 1, NeedsPrecision = w.Radius.HasValue && w.Radius.Value < LandAim })
+                .ToList();
+        }
 
         /// <summary>Samples of the ground track per orbit: a Mun orbit's track moves about 0.5° between them.</summary>
         private const int SamplesPerOrbit = 720;

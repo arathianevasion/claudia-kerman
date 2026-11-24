@@ -30,11 +30,14 @@ namespace ClaudiaKerman.Core.Tools
         {
             get
             {
-                return "The Survey Schedule for the chosen survey Contracts' waypoints taken from orbit, for the craft's orbit as it is: per waypoint, "
+                return "The Survey Schedule for the chosen survey Contracts' waypoints, for the craft's orbit as it is. Taken from orbit: per waypoint, "
                     + "its pass (pass_ut, pass_in, altitude), out_of_band (the Band the pass misses, \"\" if inside), unreachable (with reaching_inclination, "
                     + "the inclination that would reach it) or no pass; and total_wait_s, from now to the last pass. Passes are in flying order. "
-                    + "Quote the pass times, the total wait and the unreachable waypoints in the survey's Sequence Plan and set its expected duration from them. "
-                    + "The craft must orbit the body; call it again once the survey orbit is flown. The survey leg's script gets the same list from ADDONS:CLAUDIA:SURVEYSCHEDULE().";
+                    + "Taken landed: landings, the sites in landing order (landing 1 is landed on from orbit with land, each next is a site_hop from the one before), "
+                    + "each with needs_precision true where the Contract's radius is tighter than land's aim of about 5 km. "
+                    + "Quote the pass times, the total wait and the unreachable waypoints in the survey's Sequence Plan and set its expected duration from them; "
+                    + "name each needs_precision site in the plan. "
+                    + "The craft must orbit the body for the passes; call it again once the survey orbit is flown. The survey leg's script gets the same list from ADDONS:CLAUDIA:SURVEYSCHEDULE().";
             }
         }
 
@@ -59,16 +62,33 @@ namespace ClaudiaKerman.Core.Tools
             return waypoint != null && !waypoint.Ground && !waypoint.Eva;
         }
 
+        /// <summary>#1311: whether a Chosen Contract's waypoint is taken landed: the Survey Schedule gives it a place in the landing order.</summary>
+        internal static bool IsGround(SurveyWaypoint waypoint)
+        {
+            return waypoint != null && waypoint.Ground;
+        }
+
         public ToolOutcome Run(JsonNode input, GameSnapshot snapshot, IPlanningBody api)
         {
+            var all = snapshot.SurveyWaypoints ?? new List<SurveyWaypoint>();
             var orbit = snapshot.Orbit;
+            var orbitBody = orbit == null || string.IsNullOrEmpty(orbit.Body) ? snapshot.Body : orbit.Body;
+            var ground = all.Where(IsGround).ToList();
+            // A ground survey's order needs no orbit: the body is the one its sites are on.
+            var landings = ground.Where(w => w.Body == orbitBody).ToList();
+            if (landings.Count == 0 && ground.Count > 0) landings = ground.Where(w => w.Body == ground[0].Body).ToList();
+            var landBody = landings.Count > 0 ? new BodySystem(snapshot.Bodies).Find(landings[0].Body) : null;
+            var hasOrbital = all.Any(IsOrbital);
+            if (!hasOrbital && landBody != null)
+                return Answer(landBody.Name, new List<SurveyPass>(), snapshot.Ut, SurveySchedule.Ground(new SurveyBody { Radius = landBody.Radius }, landings));
             if (orbit == null) return PlanningJson.Error("the craft has no orbit to schedule passes from");
             if (orbit.Eccentricity >= 1) return PlanningJson.Error("the Survey Schedule needs a closed orbit");
-            var orbitBody = string.IsNullOrEmpty(orbit.Body) ? snapshot.Body : orbit.Body;
             var body = new BodySystem(snapshot.Bodies).Find(orbitBody);
             if (body == null) return PlanningJson.Error("the Game Snapshot has no body table entry for " + PlanningJson.Quote(orbitBody ?? ""));
-            var waypoints = (snapshot.SurveyWaypoints ?? new List<SurveyWaypoint>()).Where(w => IsOrbital(w) && w.Body == body.Name).ToList();
-            if (waypoints.Count == 0) return PlanningJson.Error("no chosen survey Contract has a waypoint to take from orbit round " + body.Name);
+            var waypoints = all.Where(w => IsOrbital(w) && w.Body == body.Name).ToList();
+            if (waypoints.Count == 0 && landBody == null) return PlanningJson.Error("no chosen survey Contract has a waypoint to take from orbit round " + body.Name);
+            var sites = landBody == null ? new List<SurveyPass>() : SurveySchedule.Ground(new SurveyBody { Radius = landBody.Radius }, landings);
+            if (waypoints.Count == 0) return Answer(landBody.Name, new List<SurveyPass>(), snapshot.Ut, sites);
             double lonOffset, handed;
             var frame = LandingSiteSearch.Frame(body.Name, api, out lonOffset, out handed);
             if (frame != null) return PlanningJson.Error(frame);
@@ -80,7 +100,7 @@ namespace ClaudiaKerman.Core.Tools
             var schedule = SurveySchedule.For(new SurveyBody { Radius = body.Radius, RotationPeriod = body.RotationPeriod },
                 new SurveyOrbit { Track = Track(conic, body.Radius, now, turn, lonOffset, handed), Period = conic.Period, Inclination = orbit.Inclination },
                 now, waypoints, snapshot.SurveyTriggerRange);
-            return Answer(body.Name, schedule, now);
+            return Answer(body.Name, schedule, now, sites);
         }
 
         /// <summary>The ground track as Core propagates the orbit, fixed to the turning body from <paramref name="now"/>.</summary>
@@ -96,7 +116,7 @@ namespace ClaudiaKerman.Core.Tools
             };
         }
 
-        private static ToolOutcome Answer(string body, IList<SurveyPass> schedule, double now)
+        private static ToolOutcome Answer(string body, IList<SurveyPass> schedule, double now, IList<SurveyPass> sites)
         {
             var json = new JsonWriter().BeginObject().Field("body", body);
             json.Name("passes").BeginArray();
@@ -110,6 +130,18 @@ namespace ClaudiaKerman.Core.Tools
                 json.EndObject();
             }
             json.EndArray();
+            // #1311: a ground survey's sites in landing order; the first is landed on with land, each next flown to with site_hop.
+            if (sites.Count > 0)
+            {
+                json.Name("landings").BeginArray();
+                foreach (var site in sites)
+                {
+                    json.BeginObject().Field("landing", site.Landing).Field("waypoint", site.Waypoint.Where());
+                    if (site.Waypoint.Radius.HasValue) json.Field("radius", PlanningJson.Round(site.Waypoint.Radius.Value, 0));
+                    json.Field("needs_precision", site.NeedsPrecision).EndObject();
+                }
+                json.EndArray();
+            }
             // With no pass at all there is no wait to quote: a zero would tell Claudia the survey costs nothing.
             var passed = schedule.Where(p => p.Ut.HasValue).Select(p => p.Ut.Value).ToList();
             if (passed.Count > 0) json.Field("total_wait_s", PlanningJson.Round(Math.Max(0, passed.Max() - now), 0));
@@ -117,7 +149,9 @@ namespace ClaudiaKerman.Core.Tools
             json.Field("unreachable_count", unreachable);
             json.EndObject();
             var passes = schedule.Count(p => p.Ut.HasValue);
-            return new ToolOutcome { Json = json.ToString(), Summary = passes + (passes == 1 ? " pass" : " passes") + (unreachable > 0 ? ", " + unreachable + " unreachable" : "") };
+            var summary = passes + (passes == 1 ? " pass" : " passes") + (unreachable > 0 ? ", " + unreachable + " unreachable" : "");
+            if (sites.Count > 0) summary = (schedule.Count > 0 ? summary + ", " : "") + sites.Count + (sites.Count == 1 ? " landing" : " landings") + (sites.Any(x => x.NeedsPrecision) ? ", " + sites.Count(x => x.NeedsPrecision) + " needing precision" : "");
+            return new ToolOutcome { Json = json.ToString(), Summary = summary };
         }
     }
 }

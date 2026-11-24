@@ -91,6 +91,45 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.True(orbit.SlantTo(reached, pass.Ut.Value) <= Range);
         }
 
+        // ---- #1311: a ground survey ----
+
+        private static SurveyWaypoint Ground(int i, string where, double? radius = null)
+        {
+            var site = Waypoint(i, where);
+            site.Ground = true;
+            site.Radius = radius;
+            return site;
+        }
+
+        [Fact]
+        public void AGroundSurveyGetsALandingOrderByLeastTravelBetweenItsSites()
+        {
+            // Along the equator: asked in the order 0, 40, 10, 20; the shortest tour from the first-keyed site is 0, 10, 20, 40.
+            var sites = new[] { Ground(0, "0,0"), Ground(1, "0,40"), Ground(2, "0,10"), Ground(3, "0,20") };
+
+            var schedule = SurveySchedule.Ground(Mun(), sites);
+
+            Assert.Equal(new[] { 1, 2, 3, 4 }, schedule.Select(p => p.Landing).ToArray());
+            Assert.Equal(new[] { "c-survey/0", "c-survey/2", "c-survey/3", "c-survey/1" }, schedule.Select(p => p.Waypoint.Key).ToArray());
+            Assert.All(schedule, p => Assert.False(p.Ut.HasValue));
+        }
+
+        [Fact]
+        public void ASiteWhoseRadiusIsTighterThanLandsAimNeedsPrecision()
+        {
+            var tight = Ground(0, "0,0", radius: 2000);
+            var roomy = Ground(1, "0,10", radius: 8000);
+            var edge = Ground(2, "0,20", radius: SurveySchedule.LandAim);
+            var unknown = Ground(3, "0,30");
+
+            var schedule = SurveySchedule.Ground(Mun(), new[] { tight, roomy, edge, unknown });
+
+            Assert.True(schedule.Single(p => p.Waypoint == tight).NeedsPrecision);
+            Assert.False(schedule.Single(p => p.Waypoint == roomy).NeedsPrecision);
+            Assert.False(schedule.Single(p => p.Waypoint == edge).NeedsPrecision);
+            Assert.False(schedule.Single(p => p.Waypoint == unknown).NeedsPrecision);
+        }
+
         private static SurveyBody Mun()
         {
             return new SurveyBody { Radius = MunRadius, RotationPeriod = MunTurn };
