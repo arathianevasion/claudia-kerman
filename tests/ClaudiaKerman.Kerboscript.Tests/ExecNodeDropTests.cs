@@ -74,6 +74,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             s = Swap(s, "claudia_begin(", "test_begin(");
             s = Swap(s, "claudia_finish(", "test_finish(");
             s = Swap(s, "claudia_make_safe()", "test_safe()");
+            s = Swap(s, "claudia_fail(", "test_fail(");
             s = Swap(s, "addons:claudia:turntime(lexicon(\"max_stopping_time\", steeringmanager:maxstoppingtime))", "test_turn()");
             s = Swap(s, "claudia_stage_into_engines(", "test_lit(");
             s = Swap(s, "claudia_warp_to_burn(", "test_warp(");
@@ -104,6 +105,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "    \"drop_tries\", lexicon(), \"drop_ut\", 0, \"drop_key\", \"\", \"drop_scan\", 0, \"drop_mode\", \"full\"). }\n"
             + "function test_finish { parameter ctx, success, reason, extra. print \"dropped \" + ctx:dropped:join(\",\"). return ctx. }\n"
             + "function test_safe { }\n"
+            + "function test_fail { parameter ctx, reason, extra. return test_finish(ctx, false, reason, extra). }\n"
             + "function test_note { parameter block, note. }\n"
             + "function test_turn { return lexicon(\"error\", \"\", \"turn_time\", 20). }\n"
             + "function test_lit { parameter ctx. return \"\". }\n"
