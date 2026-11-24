@@ -265,7 +265,7 @@ namespace ClaudiaKerman.Core.Missions
         private decimal DebriefReserve(Mission mission, Turn turn)
         {
             var probe = new MessagesRequest { Model = mission.Model, MaxTokens = MissionPrompts.MaxTokens, OutputSchemaJson = MissionReply.MissionSchemaJson };
-            probe.Tools.AddRange(MissionTools());
+            probe.Tools.AddRange(MissionTools(mission));
             probe.System.AddRange(mission.System);
             probe.Messages.AddRange(Sent(mission));
             probe.Messages.Add(Message.UserText(turn.UserText));

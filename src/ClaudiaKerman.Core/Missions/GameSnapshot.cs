@@ -296,6 +296,10 @@ namespace ClaudiaKerman.Core.Missions
         public Func<string, IDictionary<string, double>> BiomeLatitudesOf;
         /// <summary>The site <c>find_landing_site</c> last gave this Mission (#788); null for none. Not in the JSON.</summary>
         public Tools.PickedSite PickedSite;
+        /// <summary>The orbital survey waypoints of the Mission's Chosen Contracts, for <c>survey_schedule</c> (#1308); empty with none. Set by the Mission before a tool runs; not in the JSON.</summary>
+        public IList<ClaudiaKerman.Core.Contracts.SurveyWaypoint> SurveyWaypoints = new List<ClaudiaKerman.Core.Contracts.SurveyWaypoint>();
+        /// <summary>How near a waypoint a survey pass must come, m: the game's own Survey trigger range, as the script call reads it (#1307). Not in the JSON.</summary>
+        public double SurveyTriggerRange = ClaudiaKerman.Core.Contracts.SurveySchedule.StockTriggerRange;
         /// <summary>The arrival plane <c>transfer_to</c> last aimed for, as Core recorded it for <c>capture</c> (#788); "" for none. Not in the JSON.</summary>
         public string RecordedPlane = "";
         /// <summary>Where the Mission's last aiming block aimed the landing, for <c>reentry</c>'s late trim (#892); null for none. Not in the JSON.</summary>

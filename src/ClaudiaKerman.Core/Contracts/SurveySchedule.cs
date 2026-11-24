@@ -64,6 +64,9 @@ namespace ClaudiaKerman.Core.Contracts
     /// </summary>
     public static class SurveySchedule
     {
+        /// <summary>The stock Contracts.cfg's Survey <c>MaximumTriggerRange</c>, m, where the game's settings can't be read.</summary>
+        public const double StockTriggerRange = 15000;
+
         /// <summary>Samples of the ground track per orbit: a Mun orbit's track moves about 0.5° between them.</summary>
         private const int SamplesPerOrbit = 720;
         /// <summary>A pass's UT is refined to this, s.</summary>

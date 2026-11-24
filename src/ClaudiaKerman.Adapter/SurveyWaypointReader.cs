@@ -15,7 +15,7 @@ namespace ClaudiaKerman.Adapter
     public static class SurveyWaypointReader
     {
         /// <summary>The stock Contracts.cfg's Survey <c>MaximumTriggerRange</c>, m, where the game's settings can't be read.</summary>
-        public const double StockTriggerRange = 15000;
+        public const double StockTriggerRange = SurveySchedule.StockTriggerRange;
 
         /// <summary>The orbital survey waypoints on <paramref name="body"/> not yet met; empty outside Career.</summary>
         public static List<SurveyWaypoint> Orbital(string body)
