@@ -564,8 +564,11 @@ namespace ClaudiaKerman.Core.Missions
         {
             _pendingStart = null;
             _startRefusal = "";
-            var windows = OfferFor((run.Goal ?? "").Trim(), _snapshot);
-            _craftCheck.Run(run.Goal, run.Model, _snapshot, run.SpendingCap, run.Remote, ChooseTarget(run.Goal, run.Target).Target, windows.RowFor(run.Window));
+            // #1281: with Contracts chosen for the Mission being set up, Check craft and Check again judge what Start Mission pins: the words and the Contract Route.
+            var chosen = MissionOver ? _folded : null;
+            var goal = chosen == null ? run.Goal : chosen.Goal;
+            var windows = OfferFor((goal ?? "").Trim(), _snapshot);
+            _craftCheck.Run(goal, run.Model, _snapshot, run.SpendingCap, run.Remote, ChooseTarget(goal, run.Target, chosen == null ? null : chosen.Target).Target, windows.RowFor(run.Window));
         }
 
         /// <summary>A Craft Check request ended: if Start Mission asked for it and it passed outright, the Mission starts now.</summary>
@@ -627,6 +630,7 @@ namespace ClaudiaKerman.Core.Missions
             _seen = new List<SeenVessel>();
             _pendingStart = null;
             _startRefusal = "";
+            _folded = null;
             _craftCheck.Reset();
             _parked.Clear();
             _finishedCache.Clear();
@@ -2536,8 +2540,11 @@ namespace ClaudiaKerman.Core.Missions
             if (view.StartForm.CanStart && _form != null) view.StartForm.Windows = OfferFor((_form.Goal ?? "").Trim(), _snapshot);
             var formWindow = _form == null ? WindowPick.None : WindowChoice.Held(_form.Window, view.StartForm.Windows);
             view.StartForm.WindowPickMissing = view.StartForm.Windows.Needed && formWindow.IsNone;
-            _craftCheck.Populate(view.CraftCheck, _snapshot, _form == null ? null : _form.Goal,
-                _form == null ? null : ChooseTarget(_form.Goal, _form.Target).Target, _form != null, formWindow.Key);
+            // #1281: the Craft Check judges the chosen set's goal while Contracts are chosen, so staleness compares against that goal, not the typed words.
+            var chosenForCheck = MissionOver ? _folded : null;
+            var checkedGoal = _form == null ? null : chosenForCheck == null ? _form.Goal : chosenForCheck.Goal;
+            _craftCheck.Populate(view.CraftCheck, _snapshot, checkedGoal,
+                _form == null ? null : ChooseTarget(checkedGoal, _form.Target, chosenForCheck == null ? null : chosenForCheck.Target).Target, _form != null, formWindow.Key);
 
             if (mission != null)
             {
