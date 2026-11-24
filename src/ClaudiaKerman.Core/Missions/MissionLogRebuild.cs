@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Linq;
 using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Config;
+using ClaudiaKerman.Core.Contracts;
 using ClaudiaKerman.Core.Tools;
 
 namespace ClaudiaKerman.Core.Missions
@@ -176,6 +177,12 @@ namespace ClaudiaKerman.Core.Missions
             {
                 debrief.Outcome = "Off-Nominal";
                 log.Add(new LogEntry { Kind = LogKind.Notice, Text = LandingLine.NoCorrectionNotice });
+            }
+            // #1305: the request carried the rule, so a Nominal reply was held as it was live.
+            if (nominal && ContractWatch.RulesOutNominal(userText))
+            {
+                debrief.Outcome = "Off-Nominal";
+                log.Add(new LogEntry { Kind = LogKind.Notice, Text = ContractWatch.OffNominalNotice });
             }
             var outcome = debrief.Outcome;
             log.Add(new LogEntry
