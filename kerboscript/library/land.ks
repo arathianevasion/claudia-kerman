@@ -9,10 +9,9 @@
 
 @lazyglobal off.
 
-//| land(options): lands on an airless body from a low, near-circular orbit (a deorbit burn timed for the site,
-//| a correction burn that puts the ground track over it) or from a suborbital arc that ends within 5 km of the site
-//| (no burn before braking; the site, or "any"'s spot where the arc meets the ground; no biome; daylight is the arc's), then a
-//| powered descent that brakes onto it, rejects slopes over max_slope (diverting up to max_divert to
+//| land(options): lands on an airless body from low orbit or a suborbital arc:
+//| from a near-circular orbit, a deorbit burn timed for the site and a correction burn that puts the ground track over it;
+//| from an arc ending within 5 km of the site, no burn. Then a powered descent that brakes onto it, rejects slopes over max_slope (diverting up to max_divert to
 //| flatter ground) and touches down at about touchdown_speed. Aims for about 5 km of the site.
 //| Options:
 //|   target ["any"]: "any", "vessel", LATLNG(lat, lng), lexicon("lat", x, "lng", y), lexicon("biome", name) or
