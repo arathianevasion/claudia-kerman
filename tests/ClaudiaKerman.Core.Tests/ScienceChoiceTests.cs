@@ -102,6 +102,7 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("auto", false, 50, "no free part: no antenna or no link")]
         [InlineData("auto", true, 5, "no free part: electric charge is under min_ec_pct")]
         [InlineData("keep", true, 50, "no free part: transmit is 'keep'")]
+        [InlineData("transmit", false, 50, "no free part: no antenna or no link")]
         public void With_no_free_part_and_none_freed_the_experiment_says_no_free_part(string mode, bool link, double ec, string why)
         {
             var parts = new List<SciencePart> { new SciencePart { HasData = true }, new SciencePart { HasData = true } };
@@ -118,6 +119,14 @@ namespace ClaudiaKerman.Core.Tests
             var steps = ScienceChoice.Choose(new ScienceAsk { Mode = "auto", CanSend = true, Left = 8, Parts = parts });
             Assert.Equal("skip", steps[0].Do);
             Assert.Equal("no free part: every part holds data and none is rerunnable", steps[0].Why);
+        }
+
+        [Fact]
+        public void Transmit_still_sends_held_data_that_cannot_be_rerun_and_says_no_free_part()
+        {
+            var ask = new ScienceAsk { Mode = "transmit", CanSend = true, Left = 8, Parts = new List<SciencePart> { new SciencePart { HasData = true, Rerunnable = false } } };
+            Assert.Equal("send", ScienceChoice.Choose(ask)[0].Do);
+            Assert.Equal("every part holds data and none is rerunnable", ScienceChoice.Missed(ask));
         }
 
         [Fact]

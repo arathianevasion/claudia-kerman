@@ -88,7 +88,7 @@ namespace ClaudiaKerman.Core.Tools
                     return steps;
                 }
             for (var i = 0; i < parts.Count; i++)
-                if (Usable(parts[i]) && steps[i].Do == "skip") steps[i].Why = "no free part: " + missed;
+                if (Usable(parts[i]) && steps[i].Do != "send") steps[i] = new ScienceStep { Why = "no free part: " + missed };
             return steps;
         }
 

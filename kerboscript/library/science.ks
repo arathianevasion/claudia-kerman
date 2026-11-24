@@ -74,15 +74,7 @@ function science_matches {
 }
 
 function science_can_send {
-  if not homeconnection:isconnected {
-    return false.
-  }
-  for p in ship:parts {
-    if p:hasmodule("ModuleDataTransmitter") {
-      return true.
-    }
-  }
-  return false.
+  return homeconnection:isconnected and ship:modulesnamed("ModuleDataTransmitter"):length > 0.
 }
 
 // "" or the hint for data kept because it couldn't be sent now: no link or antenna, or low charge.
@@ -220,6 +212,10 @@ function science {
           set entry:action to "sent held data".
         } else {
           science_note_kept(extra, id + ": transmission did not finish; call science with transmit again, from anywhere").
+          if step:do = "free" {
+            set choice:missed to "transmission did not finish".
+            set entry:detail to "no free part: held data not sent, transmission did not finish".
+          }
         }
       }
       if (step:do = "run" or step:do = "free") and not m:hasdata {
