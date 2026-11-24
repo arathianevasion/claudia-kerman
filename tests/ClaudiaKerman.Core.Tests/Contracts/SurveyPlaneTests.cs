@@ -139,6 +139,24 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return PassedInOneRevolution(r, v, t, waypoints);
         }
 
+        [Fact]
+        public void ThePassesOverKeepToThe12HourWindowOfTheSchedule()
+        {
+            // #1348: a 1,300 km equatorial orbit takes 45,000 s a turn, longer than the 43,200 s window. The craft starts over longitude 0 and
+            // the body turns east beneath it, so it comes abreast of a site at longitude L after L / (n - turn) seconds, by hand.
+            var orbit = Circular(1300000, 0, 0, 0);
+            var n = Math.Sqrt(MunGm / Math.Pow(orbit.SemiMajorAxis, 3)) * 180 / Math.PI;
+            var turn = 360 / MunTurn;
+            Assert.True(2 * Math.PI * Math.Sqrt(Math.Pow(orbit.SemiMajorAxis, 3) / MunGm) > SurveySchedule.PlaneWindow);
+            var inside = new SurveyWaypoint { Key = "in", Body = "Mun", Latitude = 0, Longitude = (n - turn) * 40000 };
+            var outside = new SurveyWaypoint { Key = "out", Body = "Mun", Latitude = 0, Longitude = (n - turn) * 44500 };
+            Assert.True(inside.Longitude < 360 && outside.Longitude < 360);
+
+            var plane = Pick(orbit, new List<SurveyWaypoint> { inside, outside });
+
+            Assert.Equal(new[] { "in" }, plane.Passed.Select(w => w.Key).ToArray());
+        }
+
         // ---- the playtest ----
 
         [Fact]

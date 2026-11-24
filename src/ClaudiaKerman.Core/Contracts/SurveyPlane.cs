@@ -29,7 +29,7 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>Degrees, 0 to 180, and the longitude of its ascending node in the orbit's frame, degrees 0 to 360, as the craft's own orbit gives them.</summary>
         public double Inclination;
         public double Lan;
-        /// <summary>The waypoints it passes over in one revolution, allowing for the body's turn during it.</summary>
+        /// <summary>The waypoints it passes over in one revolution, allowing for the body's turn during it, and within <see cref="SurveySchedule.PlaneWindow"/> of now: the schedule's pass list.</summary>
         public List<SurveyWaypoint> Passed = new List<SurveyWaypoint>();
         /// <summary>The burn onto it; null when the craft's own plane already passes over the most.</summary>
         public SurveyNode Node;
@@ -148,7 +148,7 @@ namespace ClaudiaKerman.Core.Contracts
                 _range = range;
             }
 
-            /// <summary>The waypoints a craft passes over in one revolution of the plane with this normal, starting at <paramref name="start"/> at <paramref name="t0"/>.</summary>
+            /// <summary>The waypoints a craft passes over in one revolution of the plane with this normal, within <see cref="PlaneWindow"/> of now, starting at <paramref name="start"/> at <paramref name="t0"/>.</summary>
             public List<SurveyWaypoint> Over(Vec3 normal, Vec3 start, double t0)
             {
                 var ahead = Vec3.Cross(normal, start);
@@ -166,7 +166,8 @@ namespace ClaudiaKerman.Core.Contracts
                     var t = t0 + angle / _mean;
                     var craft = Math.Cos(angle) * start + Math.Sin(angle) * ahead;
                     var off = Math.Acos(Math.Max(-1, Math.Min(1, Vec3.Dot(craft, At(waypoint, t)))));
-                    if (_radius * off <= _range) passed.Add(waypoint);
+                    // #1348: only the passes inside the Survey Plane's window from now, as the schedule's pass list keeps them.
+                    if (_radius * off <= _range && t - _now <= PlaneWindow) passed.Add(waypoint);
                 }
                 return passed;
             }
