@@ -600,6 +600,60 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.NotNull(chosen);
         }
 
+        // ---- #1281: Check again judges the chosen set's goal ----
+
+        private MissionControl FailedCheckAfterPlanThese()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul(), false, ScriptedResponse.Fixture("craft-check-fail.sse"), ScriptedResponse.Fixture("craft-check-pass-free.sse", 64), ScriptedResponse.Fixture("mission-plan.sse"));
+            mission.Send(Start("Also run a crew report in Mun orbit."));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
+            Assert.Equal(1, Requests);
+            return mission;
+        }
+
+        [Fact]
+        public void CheckAgainAfterPlanTheseJudgesTheWordsAndTheContractRouteNotTheTypedWordsAlone()
+        {
+            var mission = FailedCheckAfterPlanThese();
+            mission.Send(new RunCraftCheck("Also run a crew report in Mun orbit.", 25m, Sonnet));
+            DrainUntil(mission, v => Requests == 2 && v.CraftCheck.State == CraftCheckState.Done);
+
+            var goal = ContractGoalIn(Text(_transport.Requests[1]));
+            Assert.Contains(goal, Text(_transport.Requests[0]));
+        }
+
+        private static string ContractGoalIn(string text)
+        {
+            var at = text.IndexOf("Also run a crew report in Mun orbit. Contracts: ", StringComparison.Ordinal);
+            Assert.True(at >= 0, "the Craft Check's goal has no Contracts route: " + text);
+            return text.Substring(at, text.IndexOf('"', at) - at);
+        }
+
+        [Fact]
+        public void APassThroughCheckAgainWithContractsChosenIsCurrentSoTheNextStartMissionStartsWithoutASecondCheck()
+        {
+            var mission = FailedCheckAfterPlanThese();
+            mission.Send(new RunCraftCheck("Also run a crew report in Mun orbit.", 25m, Sonnet));
+            DrainUntil(mission, v => Requests == 2 && v.CraftCheck.State == CraftCheckState.Done && v.CraftCheck.Verdict == CraftVerdict.Pass);
+
+            mission.Send(Start("Also run a crew report in Mun orbit."));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            // Two Craft Checks (the failed one, the Check again) and the Mission Plan request: no third check.
+            Assert.Equal(3, Requests);
+        }
+
+        [Fact]
+        public void CheckCraftWithNoContractsChosenStillJudgesTheTypedWordsAlone()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul(), false, ScriptedResponse.Fixture("craft-check-pass-free.sse", 64));
+            mission.Send(Start("Also run a crew report in Mun orbit."));
+            mission.Send(new RunCraftCheck("Also run a crew report in Mun orbit.", 25m, Sonnet));
+            DrainUntil(mission, v => Requests == 1 && v.CraftCheck.State == CraftCheckState.Done);
+            Assert.DoesNotContain("Contracts: ", Text(_transport.Requests[0]));
+        }
+
         // ---- #1262: the card's life in KSP.log, and the Contracts read saved at Start Mission ----
 
         private static List<string> KspLog(MissionControl mission)

@@ -564,8 +564,11 @@ namespace ClaudiaKerman.Core.Missions
         {
             _pendingStart = null;
             _startRefusal = "";
-            var windows = OfferFor((run.Goal ?? "").Trim(), _snapshot);
-            _craftCheck.Run(run.Goal, run.Model, _snapshot, run.SpendingCap, run.Remote, ChooseTarget(run.Goal, run.Target).Target, windows.RowFor(run.Window));
+            // #1281: with Contracts chosen for the Mission being set up, Check craft and Check again judge what Start Mission pins: the words and the Contract Route.
+            var chosen = MissionOver ? _folded : null;
+            var goal = chosen == null ? run.Goal : chosen.Goal;
+            var windows = OfferFor((goal ?? "").Trim(), _snapshot);
+            _craftCheck.Run(goal, run.Model, _snapshot, run.SpendingCap, run.Remote, ChooseTarget(goal, run.Target, chosen == null ? null : chosen.Target).Target, windows.RowFor(run.Window));
         }
 
         /// <summary>A Craft Check request ended: if Start Mission asked for it and it passed outright, the Mission starts now.</summary>
