@@ -23,6 +23,8 @@ namespace ClaudiaKerman.Core.Missions
         private StartMission _contractStart;
         /// <summary>"Plan these" was pressed: the card's one line, shown until the Mission starts; null otherwise.</summary>
         private ContractChoice _folded;
+        /// <summary>#1284: the card up was reopened by Change Contracts, so its ticks are the player's Chosen Contracts, not the suggestion.</summary>
+        private bool _reopened;
 
         private sealed partial class Mission
         {
@@ -160,6 +162,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             _contractCheck = check;
             _contractStart = start;
+            _reopened = false;
             LogToKsp(ContractCardLog.Posted(check, Ticked()));
             return true;
         }
@@ -246,7 +249,7 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private void ContractsChanged()
         {
-            var refusal = _folded == null || !MissionOver ? "no Contracts are chosen"
+            var refusal = !MissionOver ? "the Mission has started" : _folded == null ? "no Contracts are chosen"
                 : _craftCheck.Running ? "the Craft Check's request is out; wait for its verdict"
                 : _snapshot == null || _snapshot.Contracts == null || _snapshot.Contracts.Accepted.Count == 0 ? "no accepted Contracts are read now"
                 : "";
@@ -271,8 +274,8 @@ namespace ClaudiaKerman.Core.Missions
             LogToKsp("Change Contracts: the Contract Check reopens on the Chosen Contracts still accepted [" + string.Join(", ", ticked.ToArray()) + "]"
                 + (gone.Count > 0 ? "; chosen but not ticked now [" + string.Join(", ", gone.ToArray()) + "]" : "") + "; " + check.Headline(ticked.Count));
             _contractCheck = check;
+            _reopened = true;
             _folded = null;
-            _pendingStart = null;
         }
 
         /// <summary>A Mission starting from the card: its words, its Contract Route and the card's line in its transcript.</summary>
@@ -307,9 +310,9 @@ namespace ClaudiaKerman.Core.Missions
                 Accepted = check.Accepted, Words = check.Words,
                 Rows = check.Fitting.ToList(),
                 Headline = check.Headline(ticked.Count),
-                TickNote = ticked.Count > 0
-                    ? "Ticked Contracts are Mission Control's suggestion for this flight. A click leaves one out, or adds it back."
-                    : "Tick a Contract to plan it.",
+                TickNote = ticked.Count == 0 ? "Tick a Contract to plan it."
+                    : _reopened ? "Ticked Contracts are the ones you chose. A click leaves one out, or adds it back."
+                    : "Ticked Contracts are Mission Control's suggestion for this flight. A click leaves one out, or adds it back.",
                 SearchNote = check.SearchNote, OrderNote = check.OrderNote,
                 NotThisFlight = check.NotThisFlight.ToList(),
                 CraftDeltaV = check.CraftDeltaV, RouteDeltaV = check.RouteDeltaV, RouteIsEstimate = check.RouteIsEstimate, ReservePercent = check.ReservePercent, Reserve = check.Reserve, Spare = check.Spare,

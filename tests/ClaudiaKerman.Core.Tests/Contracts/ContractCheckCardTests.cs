@@ -833,6 +833,28 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void TheReopenedCardSaysItsTicksAreTheChosenContractsNotMissionControlsSuggestion()
+        {
+            var mission = FoldedWithLandLeftOut();
+            mission.Send(new ChangeContracts());
+            Assert.Equal("Ticked Contracts are the ones you chose. A click leaves one out, or adds it back.", mission.View.ContractCheck.TickNote);
+        }
+
+        [Fact]
+        public void APressAfterTheMissionHasStartedIsRefusedSayingSo()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.TakeCommands();
+
+            mission.Send(new ChangeContracts());
+
+            Assert.Equal("Change Contracts pressed and refused: the Mission has started.", Assert.Single(KspLog(mission), l => l.StartsWith("Change Contracts")));
+        }
+
+        [Fact]
         public void ACardThatCantBeRepricedIsRefusedAndTheFoldedLineStays()
         {
             var mission = FoldedWithLandLeftOut();
