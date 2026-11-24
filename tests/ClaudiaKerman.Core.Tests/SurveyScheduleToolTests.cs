@@ -240,12 +240,12 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void AGroundSurveyGetsARequestWithoutTheTool()
+        public void AGroundSurveyGetsARequestWithTheTool()
         {
             var ground = Waypoint("g", 3, 10);
             ground.Ground = true;
 
-            Assert.DoesNotContain("survey_schedule", RequestToolNames(Requirement(ground)));
+            Assert.Contains("survey_schedule", RequestToolNames(Requirement(ground)));
         }
 
         // ---- the docs ----
@@ -259,6 +259,18 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("quote the pass times, the total wait", note);
             Assert.Contains("each unreachable waypoint", note);
             Assert.Contains("set its expected duration from them", note);
+        }
+
+        [Fact]
+        public void ClaudiasDocsTellHerToLandAtTheFirstSiteThenSiteHopToEachNextInOrderWithScienceAtEach()
+        {
+            var note = MissionPrompts.SurveyLandingNote;
+
+            Assert.Contains("land at the first site with land", note);
+            Assert.Contains("site_hop", note);
+            Assert.Contains("in landing order", note);
+            Assert.Contains("science", note);
+            Assert.Contains("needs_precision", note);
         }
     }
 }

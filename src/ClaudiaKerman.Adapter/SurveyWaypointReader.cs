@@ -20,12 +20,23 @@ namespace ClaudiaKerman.Adapter
         /// <summary>The orbital survey waypoints on <paramref name="body"/> not yet met; empty outside Career.</summary>
         public static List<SurveyWaypoint> Orbital(string body)
         {
+            return Read(body, false);
+        }
+
+        /// <summary>#1311: the ground survey waypoints on <paramref name="body"/> not yet met, to be landed at; empty outside Career.</summary>
+        public static List<SurveyWaypoint> Ground(string body)
+        {
+            return Read(body, true);
+        }
+
+        private static List<SurveyWaypoint> Read(string body, bool ground)
+        {
             var contracts = ContractReader.Read();
             if (contracts == null) return new List<SurveyWaypoint>();
             var home = FlightGlobals.GetHomeBodyName();
             return contracts.Accepted
                 .SelectMany(c => ContractKinds.Read(c, home))
-                .Where(r => r.NotYet.Length == 0 && r.Waypoint != null && !r.Waypoint.Ground && r.Waypoint.Body == body)
+                .Where(r => r.NotYet.Length == 0 && r.Waypoint != null && r.Waypoint.Ground == ground && r.Waypoint.Body == body)
                 .Select(r => r.Waypoint)
                 .ToList();
         }
