@@ -12,7 +12,7 @@
 //| Options: target [required]: the site, a LATLNG or lexicon("lat", …, "lng", …), at least 1 km away; and land's descent
 //|   options (max_slope, max_divert, max_overshoot, touchdown_speed, gear_alt, burn_margin, descent_shape), passed on to it, plus the common ones.
 //| Before liftoff it fails with the reason when the site is under 1 km away, the craft can't lift off, the sun never lights
-//| the site within a day of the body, or the hop needs more delta-v than the craft has (the burn plus 10%, and land's need from the arc). Extra results: land's, and hop_km,
+//| the site within 1.2 days of the body, or the hop needs more delta-v than the craft has (the burn plus 10%, and land's need from the arc). Extra results: land's, and hop_km,
 //| hop_need_dv, hop_burn_dv. Example: `addons:claudia:report(site_hop(lexicon("target", latlng(2.46, 81.5)))).`
 
 // Its options: land's descent options, passed on to it ("required": the Mission Script gives target).

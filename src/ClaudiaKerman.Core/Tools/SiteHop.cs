@@ -50,12 +50,12 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// The same, and (#1322, ADR 0011's daylight touchdown) for the look before liftoff (with <c>dv</c> and <c>now</c>, UT) the liftoff: <paramref name="sunAt"/>
-        /// gives the sun's elevation at the site by UT (degrees; NaN where it can't be read, which holds nothing up). Adds <c>wait</c> (s) and <c>liftoff_ut</c>:
+        /// gives the sun's elevation at a point of the body (latitude, longitude, UT; degrees, NaN where it can't be read, which holds nothing up), asked at the site. Adds <c>wait</c> (s) and <c>liftoff_ut</c>:
         /// the first liftoff, now or within <see cref="LandingPass.DaylightTurns"/> of the body's day, whose touchdown has Daylight
         /// (<see cref="LandingSiteSearch.MinSunElevationDeg"/>) <see cref="TouchdownSlackS"/> either side; with none, <c>why</c> says so. The ticks of the burn
         /// (no <c>dv</c>) never ask the sun: <c>wait</c> 0.
         /// </summary>
-        public static IDictionary<string, object> Call(IDictionary<string, object> input, Func<double, double> sunAt)
+        public static IDictionary<string, object> Call(IDictionary<string, object> input, Func<double, double, double, double> sunAt)
         {
             var mu = Number(input, "mu", 0);
             var day = Number(input, "day", 0);
@@ -108,7 +108,7 @@ namespace ClaudiaKerman.Core.Tools
             var wait = 0.0;
             if (why == "" && sunAt != null && input != null && input.ContainsKey("dv") && input.ContainsKey("now"))
             {
-                wait = DaylightWait(sunAt, now + speed / Math.Max(accel, 0.1) + tof, day);
+                wait = DaylightWait(ut => sunAt(tLat, tLng, ut), now + speed / Math.Max(accel, 0.1) + tof, day);
                 if (wait < 0)
                     why = string.Format(CultureInfo.InvariantCulture, "no daylight touchdown at the site in the next {0:0.0} h: the sun never gets over {1:0} degrees there in that time",
                         LandingPass.DaylightTurns * Math.Abs(day) / 3600, LandingSiteSearch.MinSunElevationDeg);

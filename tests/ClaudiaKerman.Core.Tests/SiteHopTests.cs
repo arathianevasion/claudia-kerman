@@ -231,6 +231,12 @@ namespace ClaudiaKerman.Core.Tests
             return noonUt - Math.Acos(1.0 / 3) / (2 * Math.PI) * MunDay;
         }
 
+        /// <summary>The sun by UT, read only at the target LandedAt aims for (0, 6): asked anywhere else, the sun is down.</summary>
+        private static Func<double, double, double, double> AtTheSite(Func<double, double> sun)
+        {
+            return (lat, lng, ut) => lat == 0 && lng == 6 ? sun(ut) : -90;
+        }
+
         private static Dictionary<string, object> LandedAt(double now)
         {
             var ask = Landed(0, 6);
@@ -245,7 +251,7 @@ namespace ClaudiaKerman.Core.Tests
             const double now = 1000;
             var noon = now + MunDay / 2;
             var sun = SunWithNoonAt(noon);
-            var hop = SiteHop.Call(LandedAt(now), sun);
+            var hop = SiteHop.Call(LandedAt(now), AtTheSite(sun));
             Assert.Equal("", (string)hop["why"]);
             var liftoff = (double)hop["liftoff_ut"];
             var touchdown = liftoff + (double)hop["tof"];
@@ -260,7 +266,7 @@ namespace ClaudiaKerman.Core.Tests
         public void A_hop_that_would_touch_down_in_daylight_lifts_off_with_no_wait()
         {
             const double now = 1000;
-            var hop = SiteHop.Call(LandedAt(now), SunWithNoonAt(now));
+            var hop = SiteHop.Call(LandedAt(now), AtTheSite(SunWithNoonAt(now)));
             Assert.Equal("", (string)hop["why"]);
             Assert.Equal(0.0, (double)hop["wait"]);
             Assert.Equal(now, (double)hop["liftoff_ut"]);
@@ -269,7 +275,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_site_the_sun_never_lights_fails_before_liftoff()
         {
-            var hop = SiteHop.Call(LandedAt(1000), ut => 5.0);
+            var hop = SiteHop.Call(LandedAt(1000), AtTheSite(ut => 5.0));
             Assert.Contains("no daylight touchdown", (string)hop["why"]);
             Assert.Equal(0.0, (double)hop["throttle"]);
         }
@@ -277,7 +283,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_sun_that_can_not_be_read_does_not_hold_the_hop()
         {
-            var hop = SiteHop.Call(LandedAt(1000), ut => double.NaN);
+            var hop = SiteHop.Call(LandedAt(1000), AtTheSite(ut => double.NaN));
             Assert.Equal("", (string)hop["why"]);
             Assert.Equal(0.0, (double)hop["wait"]);
         }
@@ -289,7 +295,7 @@ namespace ClaudiaKerman.Core.Tests
             var ask = LandedAt(1000);
             ask.Remove("dv");
             var asked = 0;
-            var tick = SiteHop.Call(ask, ut => { asked++; return -90.0; });
+            var tick = SiteHop.Call(ask, (la, lo, ut) => { asked++; return -90.0; });
             Assert.Equal(0, asked);
             Assert.Equal("", (string)tick["why"]);
         }

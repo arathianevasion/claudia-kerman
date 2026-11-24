@@ -847,7 +847,7 @@ namespace ClaudiaKerman.KOS
         }
 
         /// <summary>
-        /// <c>ADDONS:CLAUDIA:SITEHOP</c> (#1310, ADR 0014): <see cref="SiteHop.Call(System.Collections.Generic.IDictionary{string, object}, System.Func{double, double})"/>,
+        /// <c>ADDONS:CLAUDIA:SITEHOP</c> (#1310, ADR 0014): <see cref="SiteHop.Call(System.Collections.Generic.IDictionary{string, object}, System.Func{double, double, double, double})"/>,
         /// with the sun at the site read from the game for the look before liftoff (#1322: Core asks it only then). Called every tick of the burn, so its time is logged
         /// at most once a second (guardrail 6).
         /// </summary>
@@ -856,12 +856,9 @@ namespace ClaudiaKerman.KOS
             System.Collections.Generic.IDictionary<string, object> hop = null;
             return (Lexicon)Guarded("SITEHOP", () =>
             {
-                var ask = KosValues.ToDictionary(input);
                 var body = shared.Vessel.mainBody.bodyName;
-                var sky = new PlanningBody();
-                double lat = Convert.ToDouble(ask.ContainsKey("target_lat") ? ask["target_lat"] : 0.0, CultureInfo.InvariantCulture);
-                double lng = Convert.ToDouble(ask.ContainsKey("target_lng") ? ask["target_lng"] : 0.0, CultureInfo.InvariantCulture);
-                return KosValues.FromPlain(hop = SiteHop.Call(ask, ut => sky.SunElevation(body, lat, lng, ut)));
+                PlanningBody sky = null;
+                return KosValues.FromPlain(hop = SiteHop.Call(KosValues.ToDictionary(input), (lat, lng, ut) => (sky = sky ?? new PlanningBody()).SunElevation(body, lat, lng, ut)));
             },
                 () => (string)hop["why"] != "" ? "fail: " + hop["why"]
                     : string.Format(CultureInfo.InvariantCulture, "{0:0.0} km, {1:0} m/s at {2:0.0} deg, throttle {3:0.00}, {4:0.0} m/s to gain{5}", hop["km"], hop["speed"], hop["pitch"], hop["throttle"], hop["err"],
