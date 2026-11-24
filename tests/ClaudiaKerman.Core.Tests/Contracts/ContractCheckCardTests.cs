@@ -645,6 +645,16 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void APassThroughCheckAgainWithContractsChosenIsNotShownAsStale()
+        {
+            var mission = FailedCheckAfterPlanThese();
+            mission.Send(new StartFormChanged("Also run a crew report in Mun orbit."));
+            mission.Send(new RunCraftCheck("Also run a crew report in Mun orbit.", 25m, Sonnet));
+            DrainUntil(mission, v => Requests == 2 && v.CraftCheck.State == CraftCheckState.Done && v.CraftCheck.Verdict == CraftVerdict.Pass);
+            Assert.False(mission.View.CraftCheck.Stale, mission.View.CraftCheck.StaleReason);
+        }
+
+        [Fact]
         public void ALoadedSaveForgetsTheChosenContractsSoCheckCraftJudgesTheTypedWords()
         {
             var mission = FailedCheckAfterPlanThese();

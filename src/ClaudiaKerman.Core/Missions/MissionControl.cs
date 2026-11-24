@@ -2540,8 +2540,11 @@ namespace ClaudiaKerman.Core.Missions
             if (view.StartForm.CanStart && _form != null) view.StartForm.Windows = OfferFor((_form.Goal ?? "").Trim(), _snapshot);
             var formWindow = _form == null ? WindowPick.None : WindowChoice.Held(_form.Window, view.StartForm.Windows);
             view.StartForm.WindowPickMissing = view.StartForm.Windows.Needed && formWindow.IsNone;
-            _craftCheck.Populate(view.CraftCheck, _snapshot, _form == null ? null : _form.Goal,
-                _form == null ? null : ChooseTarget(_form.Goal, _form.Target).Target, _form != null, formWindow.Key);
+            // #1281: the Craft Check judges the chosen set's goal while Contracts are chosen, so staleness compares against that goal, not the typed words.
+            var chosenForCheck = MissionOver ? _folded : null;
+            var checkedGoal = _form == null ? null : chosenForCheck == null ? _form.Goal : chosenForCheck.Goal;
+            _craftCheck.Populate(view.CraftCheck, _snapshot, checkedGoal,
+                _form == null ? null : ChooseTarget(checkedGoal, _form.Target, chosenForCheck == null ? null : chosenForCheck.Target).Target, _form != null, formWindow.Key);
 
             if (mission != null)
             {
