@@ -191,6 +191,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The Debrief's Contract data: what changed since the last Debrief, and the state of each Requirement the flown leg served.</summary>
         private string ContractDebriefText(Mission mission)
         {
+            mission.RequirementMissed = false;
             if (mission.ChosenRequirements.Count == 0) return "";
             var text = "";
             var late = RecheckDeadlines(mission);
