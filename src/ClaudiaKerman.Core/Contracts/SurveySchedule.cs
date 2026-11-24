@@ -27,6 +27,8 @@ namespace ClaudiaKerman.Core.Contracts
         public double Radius;
         /// <summary>One turn of the body, s; 0 for a body that doesn't turn.</summary>
         public double RotationPeriod;
+        /// <summary>#1341: the body's gravitational parameter, m³/s²; the Survey Plane's burn needs it.</summary>
+        public double Gm;
     }
 
     /// <summary>#1307: the craft's orbit, as the Survey Schedule needs it.</summary>
@@ -68,7 +70,7 @@ namespace ClaudiaKerman.Core.Contracts
     /// come in flying order; a waypoint with none follows them, "unreachable" with the inclination that reaches it where the orbit's
     /// tilt can't take the track to its latitude.
     /// </summary>
-    public static class SurveySchedule
+    public static partial class SurveySchedule
     {
         /// <summary>The stock Contracts.cfg's Survey <c>MaximumTriggerRange</c>, m, where the game's settings can't be read.</summary>
         public const double StockTriggerRange = 15000;
