@@ -350,6 +350,22 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ClaudiasDocsTellHerToCoastStraightToEachPassAndReportEachWaypointLeftForALaterPlane()
+        {
+            var tool = PlanningTools.Default().Definitions(ToolOffer.Mission, true).First(t => t.Name == "survey_schedule").Description;
+            var note = MissionPrompts.SurveyScheduleNote;
+
+            Assert.Contains("coast straight to that ut", note);
+            Assert.Contains("never one orbit at a time", note);
+            Assert.Contains("run science", note);
+            Assert.Contains("left for a later plane", note);
+            Assert.Contains("one window shared by every waypoint", note);
+            Assert.Contains("the total wait", note);
+            Assert.Contains("left_for_next_plane", tool);
+            Assert.Contains("43,200 s", tool);
+        }
+
+        [Fact]
         public void ClaudiasDocsTellHerToFlyTheSurveyPlanesNodeWithExecNodeAndQuoteItInTheSequencePlan()
         {
             var tool = PlanningTools.Default().Definitions(ToolOffer.Mission, true).First(t => t.Name == "survey_schedule").Description;

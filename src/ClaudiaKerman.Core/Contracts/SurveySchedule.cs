@@ -53,6 +53,8 @@ namespace ClaudiaKerman.Core.Contracts
         public string OutOfBand = "";
         /// <summary>The orbit never comes over the waypoint: its latitude is beyond the orbit's tilt.</summary>
         public bool Unreachable;
+        /// <summary>#1342: the orbit does pass over it, but after the Survey Plane's <see cref="SurveySchedule.PlaneWindow"/>: it waits for the next Survey Plane. <see cref="Ut"/> is null.</summary>
+        public bool LeftForNextPlane;
         /// <summary>The inclination that would reach it, degrees; null unless <see cref="Unreachable"/>.</summary>
         public double? ReachingInclination;
         /// <summary>#1311: a ground survey's site: 1 for the first landed (with <c>land</c>), 2 and on flown to with <c>site_hop</c>; 0 for an orbital pass.</summary>
@@ -64,7 +66,7 @@ namespace ClaudiaKerman.Core.Contracts
     }
 
     /// <summary>
-    /// #1307: the Survey Schedule of an orbital survey. Looking up to one turn of the body ahead, each waypoint's first pass: the
+    /// #1307: the Survey Schedule of an orbital survey. Looking up to one turn of the body ahead, but listing only the passes within <see cref="PlaneWindow"/> of <c>now</c>, each waypoint's first pass: the
     /// ground track's nearest approach to it, where that comes within the survey's trigger range. The range is measured along the ground, from
     /// the point under the craft to the waypoint, so a pass counts from any orbital altitude. Passes
     /// come in flying order; a waypoint with none follows them, "unreachable" with the inclination that reaches it where the orbit's
@@ -77,6 +79,9 @@ namespace ClaudiaKerman.Core.Contracts
 
         /// <summary>#1311: how near a site <c>land</c> aims to come, m ("about 5 km"); a Contract radius under it is "needs precision".</summary>
         public const double LandAim = 5000;
+
+        /// <summary>#1342: the one window a Survey Plane has, game seconds from the start of its Sequence Plan (12 hours), shared by every waypoint on it.</summary>
+        public const double PlaneWindow = 43200;
 
         /// <summary>
         /// #1311: a ground survey's sites in landing order: the least travel between them, the order the route prices. The first is landed on
@@ -145,6 +150,11 @@ namespace ClaudiaKerman.Core.Contracts
             for (var w = 0; w < waypoints.Count; w++)
             {
                 var waypoint = waypoints[w];
+                if (found[w].HasValue && found[w].Value - now > PlaneWindow)
+                {
+                    missed.Add(new SurveyPass { Waypoint = waypoint, LeftForNextPlane = true });
+                    continue;
+                }
                 if (found[w].HasValue)
                 {
                     var altitude = orbit.Track(found[w].Value).Altitude;
