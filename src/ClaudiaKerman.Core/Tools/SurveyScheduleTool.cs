@@ -37,6 +37,9 @@ namespace ClaudiaKerman.Core.Tools
                     + "each with needs_precision true where the Contract's radius is tighter than land's aim of about 5 km. "
                     + "Quote the pass times, the total wait and the unreachable waypoints in the survey's Sequence Plan and set its expected duration from them; "
                     + "name each needs_precision site in the plan. "
+                    + "Taken from orbit, it also gives survey_plane, the Survey Plane (inclination, lan, passes_over: the waypoints it passes over in one revolution), "
+                    + "and node, the one burn that reaches it (burn_ut, prograde, normal, radial, delta_v), when one is given; no node means the craft's own plane serves. "
+                    + "Plan the survey leg to fly that node with exec_node when one is given (ADDONS:CLAUDIA:SURVEYPLANE() gives it in the script), and quote the Survey Plane and its burn in the Sequence Plan. "
                     + "The craft must orbit the body for the passes; call it again once the survey orbit is flown. The survey leg's script gets the same list from ADDONS:CLAUDIA:SURVEYSCHEDULE().";
             }
         }

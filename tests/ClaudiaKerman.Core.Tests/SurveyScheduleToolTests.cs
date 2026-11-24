@@ -350,6 +350,20 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ClaudiasDocsTellHerToFlyTheSurveyPlanesNodeWithExecNodeAndQuoteItInTheSequencePlan()
+        {
+            var tool = PlanningTools.Default().Definitions(ToolOffer.Mission, true).First(t => t.Name == "survey_schedule").Description;
+            foreach (var docs in new[] { MissionPrompts.SurveyScheduleNote, tool })
+            {
+                Assert.Contains("Survey Plane", docs);
+                Assert.Contains("exec_node", docs);
+                Assert.Contains("when one is given", docs);
+                Assert.Contains("quote the Survey Plane and its burn", docs);
+            }
+            Assert.Contains("ADDONS:CLAUDIA:SURVEYPLANE()", MissionPrompts.SurveyScheduleNote);
+        }
+
+        [Fact]
         public void ClaudiasDocsTellHerToLandAtTheFirstSiteThenSiteHopToEachNextInOrderWithScienceAtEach()
         {
             var note = MissionPrompts.SurveyLandingNote;
