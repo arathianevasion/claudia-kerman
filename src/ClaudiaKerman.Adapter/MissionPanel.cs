@@ -294,15 +294,17 @@ namespace ClaudiaKerman.Adapter
         /// <summary>#1333: the goal Start Mission and Check craft take: the pinned one, or with none pinned the text left unsent in the prompt.</summary>
         private string PendingGoal()
         {
-            return _goal.Length > 0 ? _goal : _typed.Trim();
+            var text = _typed.Trim();
+            return _goal.Length > 0 ? _goal : ClearRules.IsCommand(text) ? "" : text;
         }
 
         /// <summary>#1333: pins the text left unsent as the goal (when none is pinned), as sending it with Enter would, and gives the goal.</summary>
         private string PinPending()
         {
-            if (_goal.Length == 0 && _typed.Trim().Length > 0)
+            var pending = PendingGoal();
+            if (_goal.Length == 0 && pending.Length > 0)
             {
-                _goal = _typed.Trim();
+                _goal = pending;
                 _editingGoal = false;
                 _showAllGoal = false;
                 _typed = "";
