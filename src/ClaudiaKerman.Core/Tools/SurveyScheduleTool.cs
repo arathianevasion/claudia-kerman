@@ -79,16 +79,17 @@ namespace ClaudiaKerman.Core.Tools
             if (landings.Count == 0 && ground.Count > 0) landings = ground.Where(w => w.Body == ground[0].Body).ToList();
             var landBody = landings.Count > 0 ? new BodySystem(snapshot.Bodies).Find(landings[0].Body) : null;
             var hasOrbital = all.Any(IsOrbital);
-            if (!hasOrbital && landBody != null)
-                return Answer(landBody.Name, new List<SurveyPass>(), snapshot.Ut, SurveySchedule.Ground(new SurveyBody { Radius = landBody.Radius }, landings));
-            if (orbit == null) return PlanningJson.Error("the craft has no orbit to schedule passes from");
-            if (orbit.Eccentricity >= 1) return PlanningJson.Error("the Survey Schedule needs a closed orbit");
+            var sites = landBody == null ? new List<SurveyPass>() : SurveySchedule.Ground(new SurveyBody { Radius = landBody.Radius }, landings);
+            var none = new List<SurveyPass>();
+            // The landing order needs no orbit: with no passes to give, or none to be had from this orbit, the sites still go back.
+            if (!hasOrbital && landBody != null) return Answer(landBody.Name, none, snapshot.Ut, sites);
+            var unusable = orbit == null ? "the craft has no orbit to schedule passes from" : orbit.Eccentricity >= 1 ? "the Survey Schedule needs a closed orbit" : null;
+            if (unusable != null) return landBody != null ? Answer(landBody.Name, none, snapshot.Ut, sites) : PlanningJson.Error(unusable);
             var body = new BodySystem(snapshot.Bodies).Find(orbitBody);
             if (body == null) return PlanningJson.Error("the Game Snapshot has no body table entry for " + PlanningJson.Quote(orbitBody ?? ""));
             var waypoints = all.Where(w => IsOrbital(w) && w.Body == body.Name).ToList();
             if (waypoints.Count == 0 && landBody == null) return PlanningJson.Error("no chosen survey Contract has a waypoint to take from orbit round " + body.Name);
-            var sites = landBody == null ? new List<SurveyPass>() : SurveySchedule.Ground(new SurveyBody { Radius = landBody.Radius }, landings);
-            if (waypoints.Count == 0) return Answer(landBody.Name, new List<SurveyPass>(), snapshot.Ut, sites);
+            if (waypoints.Count == 0) return Answer(landBody.Name, none, snapshot.Ut, sites);
             double lonOffset, handed;
             var frame = LandingSiteSearch.Frame(body.Name, api, out lonOffset, out handed);
             if (frame != null) return PlanningJson.Error(frame);

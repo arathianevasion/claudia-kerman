@@ -148,6 +148,19 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AMixedSurveyStillGivesItsLandingsWhenTheCraftHasNoOrbit()
+        {
+            var ground = Waypoint("g", 1, 5); ground.Ground = true;
+            var snapshot = Snapshot(Waypoint("a", 3, 10), ground);
+            snapshot.Orbit = null;
+
+            var answer = Run(snapshot);
+
+            Assert.Equal(1, answer.GetProperty("landings").GetArrayLength());
+            Assert.Equal(0, answer.GetProperty("passes").GetArrayLength());
+        }
+
+        [Fact]
         public void AGroundSurveyAlongsideAnOrbitalOneGivesBothInTheSameAnswer()
         {
             var ground = Waypoint("g", 1, 5); ground.Ground = true;
