@@ -11,7 +11,7 @@
 
 wait until ship:unpacked.
 add node(time:seconds + 60, 0, 0, -59).
-local burned is exec_node(lexicon("stage_limit", 2)).
+local burned is exec_node().
 print "land_suborbital test: burn " + burned:success + ", " + status + ", periapsis " + round(ship:orbit:periapsis) + " m".
 local was is status.
 local result is land(lexicon("target", "any", "daylight", false)).

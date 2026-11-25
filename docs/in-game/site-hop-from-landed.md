@@ -1,0 +1,13 @@
+# site_hop from the ground, and why land_suborbital went wrong (#1355, for #1316)
+
+Human check #1316 asks whether `land`, given a craft on a suborbital arc that ends near its site, flies its powered descent onto the site with no orbit first. Neither `land_suborbital` nor `site_hop_mun` starts where a Site Hop really starts, because the block-test runner could spawn the craft under test only in orbit. It can now also spawn it landed: `start = landed` with `landed_body`, `landed_lat` and `landed_lng` in a `test.cfg`. `land` also reports `started_suborbital` (true when `LANDSTART` answered "arc"), so a test can check it directly. The agent run that wrote this did not launch KSP.
+
+**Why `land_suborbital` failed (2026-11-24):** its `test.ks` called `exec_node(lexicon("stage_limit", 2))`. The lander's only engine is in stage 0, and a craft spawned with nothing fired is at stage 1, so it was already at or below the limit of 2. `exec_node` could not stage into the engine and returned at once without burning. The log shows this: `exec_node` made no warp request, and `LANDSTART` answered `orbit` 3 s after the start. `land` then started from orbit with the test's unflown node still on the flight plan. Both `land_suborbital` and `site_hop_mun` now call `exec_node()` with the default stage limit.
+
+**Block test to fly:** `tests/blocks/site_hop_landed_mun`. `tests/blocks/land_suborbital` is worth one more run now that its burn can light.
+
+1. **It starts on the ground.** The runner's `landed 'Claudia lander test' on Mun at 2.46, 77.2` note shows in `KSP.log`, and the lander comes up standing on its legs, not in orbit. `site_hop_landed test: start LANDED at 2.46, 77.2` prints. If it spawns on a slope and topples, report that with a screenshot. The start site may need moving.
+2. **The hop is planned from there.** `block call SITEHOP` lines read about `15 km`. If the site is dark at touchdown, the craft first warps on the ground. It rises a few metres, pitches east, burns, cuts and coasts on a short arc.
+3. **land takes over on the arc.** `land`'s `block call LANDSTART` line reads `arc ending <n> m from the aim`, not `orbit`. No `phase pass` or deorbit node follows, and the powered descent brings it down near 2.46, 81.5.
+4. **It passes.** `PASS site_hop_landed_mun`, every `ok` line: `test_start` LANDED, `success` true, LANDED, `started_suborbital` true, `hop_km` 14 to 16, `test_hop_m` under 5000, touchdown under 3 m/s, lean under 15 degrees.
+5. **Report on #1316:** pass or fail, and the `LANDSTART` line, the first and last `SITEHOP` lines, `hop_burn_dv`, `test_hop_m`, `touchdown_speed_actual` and `dv_used`. If it fails, also send the `land trace` lines and the `block test: FAIL` lines.

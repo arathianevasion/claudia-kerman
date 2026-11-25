@@ -164,16 +164,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 "local x is land_extra().\n"
                 + "for k in list(\"slope\", \"touchdown_speed_actual\", \"touchdown_h_speed\", \"lean\", \"reversals\", \"distance_to_target\", \"best_effort\",\n"
                 + "  \"burn_start_ut\", \"braking_began_ut\", \"impact_ut\", \"biome\", \"staged_before_braking\", \"stage_left\",\n"
-                + "  \"staged_before_deorbit\", \"lander_dv\", \"lander_need\") { print k + \"=\" + x[k]. }\n"
+                + "  \"staged_before_deorbit\", \"lander_dv\", \"lander_need\", \"started_suborbital\") { print k + \"=\" + x[k]. }\n"
                 + "print x:dropped_underhang:length. print x:underhang_kept:length. print x:underhang_drop_agl. print x:keys:length.");
             Assert.Equal(new[]
             {
                 "slope=-1", "touchdown_speed_actual=-1", "touchdown_h_speed=-1", "lean=-1", "reversals=0", "distance_to_target=-1", "best_effort=False",
                 "burn_start_ut=-1", "braking_began_ut=-1", "impact_ut=-1", "biome=", "staged_before_braking=False", "stage_left=-1",
-                "staged_before_deorbit=False", "lander_dv=-1", "lander_need=-1",
-                // 32 keys: #511 added descent_shape, descent_pe, predicted_dv, actual_dv, predicted_clearance, moved_for_terrain and shape_range;
-                // #596 staged_before_deorbit, lander_dv and lander_need; #712 vertical_fallback; #713 poi and distance_to_poi; #865 settle_s.
-                "0", "0", "-1", "32",
+                "staged_before_deorbit=False", "lander_dv=-1", "lander_need=-1", "started_suborbital=False",
+                // 33 keys: #511 added descent_shape, descent_pe, predicted_dv, actual_dv, predicted_clearance, moved_for_terrain and shape_range;
+                // #596 staged_before_deorbit, lander_dv and lander_need; #712 vertical_fallback; #713 poi and distance_to_poi; #865 settle_s;
+                // #1355 started_suborbital (true when land began on a suborbital arc).
+                "0", "0", "-1", "33",
             }, printed);
         }
 

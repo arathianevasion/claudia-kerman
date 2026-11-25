@@ -270,7 +270,7 @@ namespace ClaudiaKerman.KOS
             }
         }
 
-        /// <summary>Once the Space Center has settled, spawn the craft into orbit and fly to it, or roll it out to the launch pad.</summary>
+        /// <summary>Once the Space Center has settled, spawn the craft into orbit or landed and fly to it, or roll it out to the launch pad.</summary>
         private void InSpaceCenter()
         {
             if (HighLogic.LoadedScene != GameScenes.SPACECENTER || ++_sceneFrames < 30) return;
@@ -285,8 +285,19 @@ namespace ClaudiaKerman.KOS
                     HighLogic.CurrentGame.flagURL, "LaunchPad", new VesselCrewManifest());
                 return;
             }
+            if (_spec.Start == BlockTestStart.Landed)
+            {
+                // #1355: standing on the ground at the test's site, as a Site Hop starts.
+                var ground = FlightGlobals.GetBodyByName(_spec.LandedBody);
+                if (ground == null) throw new InvalidOperationException("no body called '" + _spec.LandedBody + "'");
+                var landed = CraftSpawner.Landed(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft), ground, _spec.LandedLat, _spec.LandedLng, null);
+                _vesselId = landed.persistentId;
+                Note("landed '" + landed.vesselName + "' on " + ground.bodyName + " at " + _spec.LandedLat.ToString("0.###") + ", " + _spec.LandedLng.ToString("0.###") + "; going to Flight");
+                FocusSpawned(landed);
+                return;
+            }
             var ut = Planetarium.GetUniversalTime();
-            var orbit = CraftSpawner.OrbitFor(_spec.OrbitBody, _spec.OrbitAltitude, _spec.OrbitInclination, _spec.OrbitPeriapsis, ut);
+            var orbit =CraftSpawner.OrbitFor(_spec.OrbitBody, _spec.OrbitAltitude, _spec.OrbitInclination, _spec.OrbitPeriapsis, ut);
             var proto = CraftSpawner.IntoOrbit(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft), orbit, null);
             _vesselId = proto.persistentId;
             Note("spawned '" + proto.vesselName + "' in a " + _spec.OrbitAltitude + " m orbit of " + _spec.OrbitBody + "; going to Flight");
@@ -309,6 +320,12 @@ namespace ClaudiaKerman.KOS
                 Note("spawned the target '" + TargetName + "' " + _spec.TargetOrbitAlong + " m along the track, moving " + _spec.TargetOrbitPrograde + " prograde, "
                     + _spec.TargetOrbitNormal + " normal, " + _spec.TargetOrbitRadial + " radial m/s relative");
             }
+            FocusSpawned(proto);
+        }
+
+        /// <summary>Saves the game with the spawned craft in it and goes to Flight focused on it.</summary>
+        private void FocusSpawned(ProtoVessel proto)
+        {
             GamePersistence.SaveGame("persistent", SaveFolder, SaveMode.OVERWRITE);
             _stage = Stage.WaitingForFlight;
             _sceneFrames = 0;
