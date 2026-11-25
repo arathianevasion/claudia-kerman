@@ -297,7 +297,7 @@ namespace ClaudiaKerman.KOS
                 return;
             }
             var ut = Planetarium.GetUniversalTime();
-            var orbit =CraftSpawner.OrbitFor(_spec.OrbitBody, _spec.OrbitAltitude, _spec.OrbitInclination, _spec.OrbitPeriapsis, ut);
+            var orbit = CraftSpawner.OrbitFor(_spec.OrbitBody, _spec.OrbitAltitude, _spec.OrbitInclination, _spec.OrbitPeriapsis, ut);
             var proto = CraftSpawner.IntoOrbit(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft), orbit, null);
             _vesselId = proto.persistentId;
             Note("spawned '" + proto.vesselName + "' in a " + _spec.OrbitAltitude + " m orbit of " + _spec.OrbitBody + "; going to Flight");
