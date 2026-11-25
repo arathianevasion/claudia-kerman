@@ -9,6 +9,7 @@ using ClaudiaKerman.Adapter;
 using ClaudiaKerman.Core;
 using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Tools;
+using ClaudiaKerman.Core.Ui;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -48,6 +49,11 @@ namespace ClaudiaKerman.KOS
         private readonly List<string> _log = new List<string>();
         private Rect _rect = new Rect(80, 240, 640, 0);
         private string _filter = "";
+        /// <summary>#1362: the filter box's control name; while it has focus KSP's keybinds are locked, as in Claudia's own text fields.</summary>
+        private const string FilterControl = "BlockTestFilter";
+        private const string KeyboardLockId = "ClaudiaKermanBlockTests";
+        private readonly TypingFocus _typing = new TypingFocus(FilterControl);
+        private bool _keyboardLocked;
         private Vector2 _scroll;
         private bool _visible = true;
         private readonly DebugRunWindow _bridgeTab = new DebugRunWindow();
@@ -145,9 +151,16 @@ namespace ClaudiaKerman.KOS
         private void OnGUI()
         {
             var scene = HighLogic.LoadedScene;
-            if (scene != GameScenes.MAINMENU && scene != GameScenes.SPACECENTER && scene != GameScenes.FLIGHT) return;
+            if (scene != GameScenes.MAINMENU && scene != GameScenes.SPACECENTER && scene != GameScenes.FLIGHT)
+            {
+                _typing.Reset();
+                ApplyKeyboardLock();
+                return;
+            }
             if (!_visible)
             {
+                _typing.Reset();
+                ApplyKeyboardLock();
                 GUILayout.BeginArea(new Rect(_rect.x, _rect.y, ClaudiaSkin.Scaled(200), ClaudiaSkin.ButtonHeight));
                 if (ClaudiaSkin.SecondaryButton("Block tests (debug)")) _visible = true;
                 GUILayout.EndArea();
@@ -161,6 +174,22 @@ namespace ClaudiaKerman.KOS
             }
             _rect.width = ClaudiaSkin.Scaled(DesignWidth);
             _rect = GUILayout.Window(GetInstanceID(), _rect, Draw, "", ClaudiaSkin.Window, GUILayout.Width(_rect.width));
+            ApplyKeyboardLock();
+        }
+
+        /// <summary>The keyboard lock follows <see cref="_typing"/>; released when focus leaves, the window hides or the scene changes.</summary>
+        private void ApplyKeyboardLock()
+        {
+            if (_typing.Held == _keyboardLocked) return;
+            if (_typing.Held) InputLockManager.SetControlLock(ControlTypes.KEYBOARDINPUT, KeyboardLockId);
+            else InputLockManager.RemoveControlLock(KeyboardLockId);
+            _keyboardLocked = _typing.Held;
+        }
+
+        private void OnDestroy()
+        {
+            _typing.Reset();
+            ApplyKeyboardLock();
         }
 
         private void Draw(int id)
@@ -188,6 +217,7 @@ namespace ClaudiaKerman.KOS
 
             if (_tab == BridgeTab)
             {
+                _typing.Reset();
                 _bridgeTab.Draw();
                 if (ClaudiaSkin.SmallButton("Hide", GUILayout.Width(ClaudiaSkin.Scaled(60)))) _visible = false;
                 GUI.DragWindow();
@@ -197,7 +227,9 @@ namespace ClaudiaKerman.KOS
             // The filter box (#1361): keeps the tests whose names contain the text, on every tab.
             GUILayout.BeginHorizontal();
             GUILayout.Label("Filter", ClaudiaSkin.Body, GUILayout.ExpandWidth(false));
+            GUI.SetNextControlName(FilterControl);
             _filter = GUILayout.TextField(_filter, ClaudiaSkin.TextField, GUILayout.ExpandWidth(true));
+            _typing.Observe(GUI.GetNameOfFocusedControl(), Event.current.type == EventType.Layout);
             if (_filter.Length > 0 && ClaudiaSkin.SmallButton("Clear", GUILayout.Width(ClaudiaSkin.Scaled(60)))) _filter = "";
             GUILayout.EndHorizontal();
 
