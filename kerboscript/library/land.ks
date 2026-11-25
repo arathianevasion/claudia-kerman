@@ -70,7 +70,8 @@
 //| the change_orbit plane changes that reach the site, with their delta-v), a missed pass,
 //| "no site in the <biome> biome" (saying how far the search got), landing outside the biome asked for,
 //| for "vessel" no Target Vessel landed on the body (no burn yet),
-//| not enough delta-v, "terrain on the approach" (before the deorbit burn, or as braking begins, keeping its orbit), "deorbit left periapsis" under the plan,
+//| not enough delta-v, "terrain on the approach" (before the deorbit burn, or as braking begins, keeping its orbit; from an arc, with no orbit
+//| to keep, it brakes on the steepest Descent Shape instead, diverting within max_divert), "deorbit left periapsis" under the plan,
 //| braking that raised periapsis or "is above its predicted path" (the report says if it brought the orbit back to near-circular), "tipped over",
 //| out of fuel, or an abort; a failure in the descent leaves the craft safe but falling, so give it the delta-v (and TWR over 1.5) it needs.
 //| Tool: stage_performance for the delta-v and TWR at the body (and find_landing_site, as above).
@@ -781,24 +782,6 @@ function land_path_ground_ahead {
 function land_over_shape {
   parameter h, h_ref, to_go, v_h, sink.
   return h_ref > 0 and h - h_ref > sink * 2 * to_go / max(1, v_h).
-}
-
-// What land does once it predicts its braking again from the real state as braking begins (#511): "fly" the
-// planned shape (planned_clears), "switch" to the cheapest that clears (best_shape, -1 for none), or, with
-// none clearing, "hold": don't brake, keeping an orbit whose periapsis is above the terrain on the track
-// (pe_clear), or brake on the steepest shape anyway ("steepest") when it isn't, rather than fall into it. Pure.
-function land_repredict_verdict {
-  parameter planned_clears, best_shape, pe_clear.
-  if planned_clears {
-    return "fly".
-  }
-  if best_shape > 0 {
-    return "switch".
-  }
-  if pe_clear {
-    return "hold".
-  }
-  return "steepest".
 }
 
 // After braking aborts (#511): "circularize" back to a near-circular orbit only when the abort leaves
@@ -2358,7 +2341,7 @@ function land_recover_under {
 // land_drop) and then lands clear of (#427). It measures the site along the surface and carries the
 // braking direction round the body (#431). It flies plan's Descent Shape (#511): as braking begins it predicts
 // again from the real state (predict, a delegate to ADDONS:CLAUDIA:BRAKEPATH), switching to the cheapest shape
-// that still clears or, with none, not braking (land_repredict_verdict); it steers by the highest ground on the
+// that still clears or, with none, not braking (ADDONS:CLAUDIA:LANDREPREDICT); it steers by the highest ground on the
 // rest of the predicted path, steering and throttling by ADDONS:CLAUDIA:LANDSTEER,
 // and stops braking that raises periapsis (land_brake_guard) or is above the predicted path (ADDONS:CLAUDIA:LANDGUARD,
 // which near the site comes straight down instead, #712): throttle 0, the orbit brought back to near-circular if it must be (land_recover), safe, traced. Adds the
@@ -2530,7 +2513,7 @@ function land_descend {
           addons:claudia:blocktrace("land", lexicon("phase", "divert", "moved", round(moved), "flat", spot:flat, "dist", round(dist))).
         }
         // Braking predicted again from the real state (#511): the planned shape if it still clears, else the cheapest
-        // that does; with none, it doesn't brake while its periapsis is over the terrain on the track.
+        // that does; with none, it doesn't brake while its periapsis is over the terrain on the track, nor ever from an arc (#1364).
         local now_fig is land_site_figures(here:lat, here:lng, site:lat, site:lng, fall_hdg, body:radius).
         local state is lexicon("lat", site:lat, "lng", site:lng, "heading", fall_hdg, "s", now_fig:along, "alt", altitude,
           "v_h", v_h:mag, "v_up", v_v, "shape", shape).
@@ -2545,8 +2528,8 @@ function land_descend {
             set again to cheapest.
           }
         }
-        local pe_clear is ship:orbit:periapsis > land_path_ground_ahead(predicted, 1e12).
-        local verdict is land_repredict_verdict(planned_clears, best, pe_clear).
+        local verdict is addons:claudia:landrepredict(lexicon("planned_clears", planned_clears, "best_shape", best, "pe", ship:orbit:periapsis,
+          "ground_ahead", land_path_ground_ahead(predicted, 1e12), "arc", extra:started_suborbital)).
         addons:claudia:blocktrace("land", lexicon("phase", "repredict", "verdict", verdict, "planned_shape", shape, "shape", land_or(again, "descent_shape", -1),
           "clearance", round(land_or(again, "predicted_clearance", -1)), "error", again:error, "pe", round(ship:orbit:periapsis))).
         if verdict = "hold" {

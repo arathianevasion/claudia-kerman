@@ -809,18 +809,6 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Fact]
-        public void The_prediction_as_braking_begins_flies_switches_to_a_steeper_shape_or_doesnt_brake()
-        {
-            Assert.Equal("fly", One("land_repredict_verdict(true, -1, true)"));
-            // The planned shape no longer clears: the cheapest that does (BRAKEPATH's "auto").
-            Assert.Equal("switch", One("land_repredict_verdict(false, 0.38, true)"));
-            // None clears and periapsis is over the terrain on the track: no braking, the orbit kept.
-            Assert.Equal("hold", One("land_repredict_verdict(false, -1, true)"));
-            // None clears but the orbit meets the terrain: braking on the steepest shape rather than falling into it.
-            Assert.Equal("steepest", One("land_repredict_verdict(false, -1, false)"));
-        }
-
-        [Fact]
         public void An_abort_under_the_terrain_with_the_delta_v_and_a_pass_left_circularizes_and_otherwise_leaves_the_orbit()
         {
             Assert.Equal("circularize", One("land_recover(true, 900, 120, true)"));
