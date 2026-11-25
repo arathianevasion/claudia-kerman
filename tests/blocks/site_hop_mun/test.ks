@@ -9,7 +9,7 @@
 
 wait until ship:unpacked.
 add node(time:seconds + 60, 0, 0, -59).
-exec_node(lexicon("stage_limit", 2)).
+exec_node().
 local first is land(lexicon("target", "any", "daylight", false)).
 print "site_hop test: first landing " + first:success + ", " + status.
 local here is ship:geoposition.

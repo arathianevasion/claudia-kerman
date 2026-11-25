@@ -54,9 +54,9 @@
 //| Stages off a stage taking the Underhang before the deorbit if the lander has the landing's delta-v (its delta-v lost), else one short of braking before the fall.
 //| Drops any Underhang (parts below the landing legs) at underhang_agl [2000] m above the ground during braking, or earlier if it runs dry, then relights on the lander's engines and lands clear of where the Underhang falls. Fails before the deorbit burn if the lander alone can't fly the last underhang_agl m.
 //| Extra results: dropped_underhang (names of the parts dropped), underhang_kept (Underhang parts it couldn't drop), underhang_drop_agl (m above ground at the drop; -1 if none),
-//| staged_before_deorbit, staged_before_braking (true if it did; stage_left is the stage it left), slope (degrees where it came to rest), touchdown_speed_actual (m/s),
-//| touchdown_h_speed (m/s sideways at touchdown), lean (degrees from upright once settled), settle_s (s it held height until Aligned),
-//| reversals (times it turned back after braking began; 0 normally), vertical_fallback (true if, above its predicted path near the site, it came straight down), poi and distance_to_poi (m from it), distance_to_target
+//| staged_before_deorbit, staged_before_braking (true if it did; stage_left: the stage left), slope (degrees where it came to rest), touchdown_speed_actual (m/s),
+//| touchdown_h_speed (m/s sideways), lean (degrees from upright once settled), settle_s (s it held height until Aligned),
+//| reversals (turn-backs after braking began), started_suborbital (true from an arc), vertical_fallback (true if, above its predicted path near the site, it came straight down), poi and distance_to_poi (m from it), distance_to_target
 //| (m from the site asked for, or the spot chosen for "any" or a biome), best_effort (true if nothing within
 //| max_divert was flat enough and it landed on the least steep spot found), burn_start_ut (when braking was planned to start; -1 if never),
 //| braking_began_ut (when braking began; -1 if never), impact_ut (when the orbit after the deorbit burn meets
@@ -90,7 +90,7 @@ function land_extra {
     "staged_before_braking", false, "stage_left", -1, "dropped_underhang", list(), "underhang_kept", list(), "underhang_drop_agl", -1,
     "passes_missed", 0, "next_pass_ut", -1, "descent_shape", -1, "descent_pe", -1, "predicted_dv", -1, "actual_dv", -1,
     "predicted_clearance", -1, "moved_for_terrain", false, "shape_range", "",
-    "staged_before_deorbit", false, "lander_dv", -1, "lander_need", -1, "vertical_fallback", false, "poi", "", "distance_to_poi", -1).
+    "staged_before_deorbit", false, "lander_dv", -1, "lander_need", -1, "vertical_fallback", false, "poi", "", "distance_to_poi", -1, "started_suborbital", false).
 }
 
 // "" or why an option's value isn't one the block can use.
@@ -1478,7 +1478,7 @@ function land {
   if start:start = "fail" {
     return claudia_finish(ctx, false, start:why, extra).
   }
-  local on_arc is start:start = "arc".
+  set extra:started_suborbital to start:start = "arc".
 
   // #622: staging can't be undone, so a biome the body doesn't have (#591) is refused before it, by the site search's
   // check-only call (block-internal, ADR 0007). A biome with no site is only known after staging (#528).
@@ -1531,7 +1531,7 @@ function land {
   // A site given as coordinates (or "any"'s) may move up to 5 km for terrain; a biome's is chosen for it (#511), the next site taking its place (#528);
   // a "vessel" target's stays beside the vessel (#662).
   local may_move is not by_biome and not by_vessel.
-  if on_arc {
+  if extra:started_suborbital {
     set plan to start:plan. // From the arc (#1309): LANDSTART's plan, with no pass and no burn before braking.
   } else if not by_biome and site:istype("String") {
     // "any": the arrival point of the first pass in daylight, then its descent over that pass alone (#511); if no shape
@@ -1631,7 +1631,7 @@ function land {
   // burn_margin), the stage goes now, in orbit before the deorbit burn, even one that could cover the braking: braking on the
   // whole stack turns slowly and burns the stage's fuel hovering. The lander plans its own pass first (a plan made for the
   // stack is made again for it), and the stage goes only if that plan stands and the lander covers its need; else the stack flies.
-  if under:plan:decouplers:length > 0 and not on_arc {
+  if under:plan:decouplers:length > 0 and not extra:started_suborbital {
     local lander_need is land_dv_needed(plan:predicted_dv, opt:burn_margin, land_deorbit_figures(plan):needed).
     local stage_note is "kept the stack: the lander is short of the need".
     if opt:drop_underhang = "late" {
@@ -1702,7 +1702,7 @@ function land {
   // A site's pass is solved again from the orbit as it is shortly before the deorbit burn (ADR 0006):
   // a pass missed before the burn commits it (a warp that overshot it, an orbit that moved) gives way to
   // the next in the window, up to 2 times, while the orbit is near-circular (#510). The call is inline (ADR 0007).
-  if not site:istype("String") and not on_arc {
+  if not site:istype("String") and not extra:started_suborbital {
     until land_resolve_ut(plan:burn_ut) <= time:seconds {
       local waited is claudia_warp_to(ctx, land_resolve_ut(plan:burn_ut), 30).
       if waited <> "" { return claudia_fail(ctx, waited, extra). }
@@ -1745,7 +1745,7 @@ function land {
   sas off.
 
   // Deorbit: retrograde, half an orbit before the site; none from an arc.
-  if not on_arc {
+  if not extra:started_suborbital {
     local descent_node is node(plan:burn_ut, 0, 0, deorbit_dv).
     add descent_node.
     local flown is claudia_fly_node(ctx, descent_node).
