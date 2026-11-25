@@ -70,8 +70,7 @@
 //| the change_orbit plane changes that reach the site, with their delta-v), a missed pass,
 //| "no site in the <biome> biome" (saying how far the search got), landing outside the biome asked for,
 //| for "vessel" no Target Vessel landed on the body (no burn yet),
-//| not enough delta-v, "terrain on the approach" (before the deorbit burn, or as braking begins, keeping its orbit; from an arc, with no orbit
-//| to keep, it brakes on the steepest Descent Shape instead, diverting within max_divert), "deorbit left periapsis" under the plan,
+//| not enough delta-v, "terrain on the approach" (before the deorbit burn, or as braking begins, keeping its orbit; from an arc it brakes on the steepest Descent Shape instead), "deorbit left periapsis" under the plan,
 //| braking that raised periapsis or "is above its predicted path" (the report says if it brought the orbit back to near-circular), "tipped over",
 //| out of fuel, or an abort; a failure in the descent leaves the craft safe but falling, so give it the delta-v (and TWR over 1.5) it needs.
 //| Tool: stage_performance for the delta-v and TWR at the body (and find_landing_site, as above).
