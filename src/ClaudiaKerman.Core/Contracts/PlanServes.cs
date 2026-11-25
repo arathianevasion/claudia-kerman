@@ -108,6 +108,7 @@ namespace ClaudiaKerman.Core.Contracts
             var whole = Read(snapshot, plan, home);
             var all = whole.Where(t => t.Leg >= from).ToList();
             var touches = all.Where(t => !t.Child).ToList();
+            var wholeTouches = whole.Where(t => !t.Child).ToList();
             var orbitLegs = new Dictionary<string, Touch>();
             var tags = plan.Sequences.Select(_ => new List<string>()).ToList();
             var reading = WordsReading.Read(snapshot, words, home);
@@ -127,17 +128,17 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 var served = new ServedRequirement { Key = requirement.Key, Title = requirement.Title, Words = requirement.Words };
                 result.Record.Add(served);
-                var by = requirement.Manual.Length > 0 ? ManualTouch(snapshot, whole.Where(t => !t.Child).ToList(), requirement, result.Problems, plan, from)
+                var by = requirement.Manual.Length > 0 ? ManualTouch(snapshot, wholeTouches, requirement, result.Problems, plan, from)
                     : requirement.Test != null && requirement.Test.Band != null && requirement.Test.Window != TestWindow.None
                     ? TestTouch(snapshot, touches, requirement, result.Problems, plan, judge, home)
                     : requirement.Orbit != null ? OrbitTouch(snapshot, all, requirement, result.Problems, plan)
-                    : ServingTouch(requirement.ChildMay ? all : requirement.Experiment != null ? whole.Where(t => !t.Child).ToList() : touches, requirement, result.Problems, plan);
+                    : ServingTouch(requirement.ChildMay ? all : requirement.Experiment != null ? wholeTouches : touches, requirement, result.Problems, plan);
                 if (by == null) continue;
                 Touch orbitLeg;
                 var guid = ContractWatch.GuidOf(requirement.Key);
                 if (requirement.Orbit != null) orbitLegs[guid] = by;
                 else if (orbitLegs.TryGetValue(guid, out orbitLeg)) by = orbitLeg;
-                var science = requirement.Experiment == null ? null : ScienceLeg(touches, by, plan, requirement.Experiment, from);
+                var science = requirement.Experiment == null ? null : ScienceLeg(wholeTouches, by, plan, requirement.Experiment, from);
                 // A science leg still to fly serves it where the craft already is (a flown leg got it there): with none still to fly, the flown leg's reach is no service.
                 if (requirement.Experiment != null && !science.HasValue && by.Leg < from) continue;
                 if (requirement.Experiment != null && !science.HasValue)
