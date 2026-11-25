@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System.IO;
+using ClaudiaKerman.Adapter;
 using ClaudiaKerman.Core.Config;
 using ClaudiaKerman.Core.Kos;
 using UnityEngine;
@@ -44,7 +45,7 @@ namespace ClaudiaKerman.KOS
         {
             if (HighLogic.LoadedScene != GameScenes.FLIGHT)
             {
-                GUILayout.Label("The kOS bridge tests need Flight: they run on the active vessel's kOS processor.");
+                GUILayout.Label("The kOS bridge tests need Flight: they run on the active vessel's kOS processor.", ClaudiaSkin.Body);
                 return;
             }
             var vessel = FlightGlobals.ActiveVessel;
@@ -53,22 +54,22 @@ namespace ClaudiaKerman.KOS
 
             GUILayout.Label(target.HasValue
                 ? "Processor: part " + target.Value + " on '" + vessel.vesselName + "' (nearest the root)"
-                : "No kOS processor on the active vessel.");
-            if (!KosInternals.Result.IsCompatible) GUILayout.Label(KosInternals.Result.Message);
+                : "No kOS processor on the active vessel.", ClaudiaSkin.Body);
+            if (!KosInternals.Result.IsCompatible) GUILayout.Label(KosInternals.Result.Message, ClaudiaSkin.Body);
 
             GUILayout.BeginHorizontal();
             foreach (var test in Tests)
             {
-                if (GUILayout.Button(test) && target.HasValue && bridge != null) Run(bridge, target.Value, test);
+                if (ClaudiaSkin.SecondaryButton(test, GUILayout.ExpandWidth(true)) && target.HasValue && bridge != null) Run(bridge, target.Value, test);
             }
             GUILayout.EndHorizontal();
 
-            if (GUILayout.Button("Abort") && bridge != null && _partId.HasValue)
+            if (ClaudiaSkin.SecondaryButton("Abort") && bridge != null && _partId.HasValue)
                 bridge.Abort(_partId.Value, "aborted from the debug window");
 
-            GUILayout.Label(_status);
-            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(160));
-            GUILayout.Label(_result);
+            GUILayout.Label(_status, ClaudiaSkin.Secondary);
+            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(ClaudiaSkin.Scaled(160)));
+            GUILayout.Label(_result, ClaudiaSkin.Secondary);
             GUILayout.EndScrollView();
         }
 

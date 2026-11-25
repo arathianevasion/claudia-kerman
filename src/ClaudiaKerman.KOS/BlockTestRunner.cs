@@ -46,7 +46,8 @@ namespace ClaudiaKerman.KOS
         }
 
         private readonly List<string> _log = new List<string>();
-        private Rect _rect = new Rect(80, 440, 520, 320);
+        private Rect _rect = new Rect(80, 240, 640, 0);
+        private string _filter = "";
         private Vector2 _scroll;
         private bool _visible = true;
         private readonly DebugRunWindow _bridgeTab = new DebugRunWindow();
@@ -88,6 +89,8 @@ namespace ClaudiaKerman.KOS
             {
                 var path = Path.Combine(SaveDirectory, "block-tests.log");
                 _results = BlockTestLog.Latest(File.Exists(path) ? File.ReadAllText(path) : "");
+                // #1361: the window shows the tab of the test run last.
+                _pendingTab = BlockTestList.OpeningTab(TestNames(), _results);
             }
             catch (Exception e)
             {
@@ -133,20 +136,34 @@ namespace ClaudiaKerman.KOS
 
         // ---- The window ----
 
+        /// <summary>#1361: the window's width and its two scrolling areas at design size (before <see cref="ClaudiaSkin.FontScale"/>); the window itself is as tall as its contents.</summary>
+        private const float DesignWidth = 640, DesignListHeight = 240, DesignLogHeight = 180;
+        private float _builtScale;
+
         private void OnGUI()
         {
             var scene = HighLogic.LoadedScene;
             if (scene != GameScenes.MAINMENU && scene != GameScenes.SPACECENTER && scene != GameScenes.FLIGHT) return;
             if (!_visible)
             {
-                if (GUI.Button(new Rect(_rect.x, _rect.y, 160, 22), "Block tests (debug)")) _visible = true;
+                GUILayout.BeginArea(new Rect(_rect.x, _rect.y, ClaudiaSkin.Scaled(200), ClaudiaSkin.ButtonHeight));
+                if (ClaudiaSkin.SecondaryButton("Block tests (debug)")) _visible = true;
+                GUILayout.EndArea();
                 return;
             }
-            _rect = GUILayout.Window(GetInstanceID(), _rect, Draw, "Claudia Kerman: block test runner (debug_tools)");
+            // A new UI scale resizes the window on its next draw; GUILayout.Window never shrinks, so the height starts over.
+            if (_builtScale != ClaudiaSkin.FontScale)
+            {
+                _builtScale = ClaudiaSkin.FontScale;
+                _rect.height = 0;
+            }
+            _rect.width = ClaudiaSkin.Scaled(DesignWidth);
+            _rect = GUILayout.Window(GetInstanceID(), _rect, Draw, "", ClaudiaSkin.Window, GUILayout.Width(_rect.width));
         }
 
         private void Draw(int id)
         {
+            ClaudiaSkin.DrawTitleBar(_rect, "Claudia Kerman: block test runner (debug_tools)", null);
             if (Event.current.type == EventType.Layout && _pendingTab >= 0)
             {
                 if (_pendingTab != _tab) _rect.height = 0; // GUILayout.Window never shrinks after a tall tab
@@ -155,26 +172,39 @@ namespace ClaudiaKerman.KOS
             }
             var tests = TestNames().ToList();
             var counts = new int[3];
-            foreach (var test in tests) counts[TabOf(test)]++;
+            foreach (var test in tests) counts[BlockTestList.TabOf(test, _results)]++;
             var labels = new string[TabNames.Length];
             for (var i = 0; i < labels.Length; i++) labels[i] = i < 3 ? TabNames[i] + " (" + counts[i] + ")" : TabNames[i];
-            var picked = GUILayout.SelectionGrid(_tab, labels, 2);
-            if (picked != _tab) _pendingTab = picked;
+            // Two tabs to a row, as the old selection grid had them.
+            for (var row = 0; row < labels.Length; row += 2)
+            {
+                GUILayout.BeginHorizontal();
+                for (var i = row; i < Math.Min(row + 2, labels.Length); i++)
+                    if (ClaudiaSkin.ToggleButton(_tab == i, labels[i], GUILayout.ExpandWidth(true)) && i != _tab) _pendingTab = i;
+                GUILayout.EndHorizontal();
+            }
 
             if (_tab == BridgeTab)
             {
                 _bridgeTab.Draw();
-                if (GUILayout.Button("Hide", GUILayout.Width(50))) _visible = false;
+                if (ClaudiaSkin.SmallButton("Hide", GUILayout.Width(ClaudiaSkin.Scaled(60)))) _visible = false;
                 GUI.DragWindow();
                 return;
             }
 
+            // The filter box (#1361): keeps the tests whose names contain the text, on every tab.
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Filter", ClaudiaSkin.Body, GUILayout.ExpandWidth(false));
+            _filter = GUILayout.TextField(_filter, ClaudiaSkin.TextField, GUILayout.ExpandWidth(true));
+            if (_filter.Length > 0 && ClaudiaSkin.SmallButton("Clear", GUILayout.Width(ClaudiaSkin.Scaled(60)))) _filter = "";
+            GUILayout.EndHorizontal();
+
             // Rows of a few buttons: one row of every test runs wider than the screen, and the count
             // below says how many there are to run, so a skipped test is easy to spot. Failed and Passed
-            // show a date (and Failed its reason), so they take a row each.
-            var shown = tests.Where(t => TabOf(t) == _tab).ToList();
-            var perRow = _tab == 0 ? 5 : 1;
-            _listScroll[_tab] = GUILayout.BeginScrollView(_listScroll[_tab], GUILayout.Height(200));
+            // show a date (and Failed its reason), so they take a row each. The test run last is first.
+            var shown = BlockTestList.Shown(tests, _results, _tab, _filter);
+            var perRow = _tab == 0 ? 3 : 1;
+            _listScroll[_tab] = GUILayout.BeginScrollView(_listScroll[_tab], GUILayout.Height(ClaudiaSkin.Scaled(DesignListHeight)));
             for (var row = 0; row < shown.Count; row += perRow)
             {
                 GUILayout.BeginHorizontal();
@@ -188,31 +218,24 @@ namespace ClaudiaKerman.KOS
                         label += " (" + entry.Date + ")";
                         if (_tab == 1 && entry.Reason.Length > 0) label += " " + Cut(entry.Reason, 70);
                     }
-                    if (GUILayout.Button(label)) Begin(test);
+                    if (ClaudiaSkin.SecondaryButton(label, GUILayout.ExpandWidth(true))) Begin(test);
                 }
                 GUI.enabled = true;
                 GUILayout.EndHorizontal();
             }
+            if (shown.Count == 0) GUILayout.Label(_filter.Trim().Length > 0 ? "No test on this tab has '" + _filter.Trim() + "' in its name." : "No tests on this tab.", ClaudiaSkin.Secondary);
             GUILayout.EndScrollView();
             GUILayout.BeginHorizontal();
-            GUILayout.Label(tests.Count + " tests shipped");
-            if (GUILayout.Button("Hide", GUILayout.Width(50))) _visible = false;
+            GUILayout.Label(shown.Count + " shown of " + tests.Count + " tests shipped", ClaudiaSkin.Body);
+            if (ClaudiaSkin.SmallButton("Hide", GUILayout.Width(ClaudiaSkin.Scaled(60)))) _visible = false;
             GUILayout.EndHorizontal();
             GUILayout.Label(_stage == Stage.Idle
                 ? "Idle. Running a test loads its own save (" + SaveFolder + "); leave Flight first."
-                : "Running '" + _test + "': " + _stage);
-            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(220));
-            GUILayout.Label(string.Join("\n", _log.ToArray()));
+                : "Running '" + _test + "': " + _stage, ClaudiaSkin.Secondary);
+            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(ClaudiaSkin.Scaled(DesignLogHeight)));
+            GUILayout.Label(string.Join("\n", _log.ToArray()), ClaudiaSkin.Secondary);
             GUILayout.EndScrollView();
             GUI.DragWindow();
-        }
-
-        /// <summary>0 Unvalidated (no result), 1 Failed, 2 Passed: by the test's latest result in block-tests.log.</summary>
-        private int TabOf(string test)
-        {
-            BlockTestLogEntry entry;
-            if (!_results.TryGetValue(test, out entry)) return 0;
-            return entry.Passed ? 2 : 1;
         }
 
         private static string Cut(string text, int max)
