@@ -74,6 +74,14 @@ namespace ClaudiaKerman.Core.Missions
             return mission.ChosenRequirements.Select(r => r.Waypoint).Where(w => SurveyScheduleTool.IsOrbital(w) || SurveyScheduleTool.IsGround(w)).ToList();
         }
 
+        /// <summary>#1350: the survey waypoints the tool's answer is worked out over: those the game still shows unmet. The offer keeps every Chosen one (<see cref="SurveyWaypointsOf"/>).</summary>
+        private List<ClaudiaKerman.Core.Contracts.SurveyWaypoint> UnmetSurveyWaypoints(Mission mission, GameSnapshot snapshot)
+        {
+            var chosen = mission.ChosenRequirements.Where(r => SurveyScheduleTool.IsOrbital(r.Waypoint) || SurveyScheduleTool.IsGround(r.Waypoint)).ToList();
+            if (snapshot.Contracts == null) return chosen.Select(r => r.Waypoint).ToList();
+            return SurveyScheduleTool.Unmet(chosen, mission.Contracts.Read(snapshot, chosen, null));
+        }
+
         /// <summary>
         /// The requests that may come back as a Mission Plan, and so may call propose_mission_plan: the first or a revised plan,
         /// a reduced goal, the Mission Settings, and the player's typed reply or change (to a pending Mission Plan, or a new goal).
@@ -94,7 +102,7 @@ namespace ClaudiaKerman.Core.Missions
                     ? "not available during an Alert; propose_mission_plan is only for a request that asks for a Mission Plan"
                     : "not available during an Alert";
             if (tool == SurveyScheduleTool.ToolName && (snapshot == null || snapshot.SurveyWaypoints.Count == 0))
-                return "not offered: no Chosen Contract is a survey with a waypoint to take from orbit or landed";
+                return "no survey waypoint is left to take from orbit or landed: every one the Chosen Contracts have is met, or none is a survey";
             if (tool == ProposedPlans.ToolName && !TakesMissionPlan(purpose))
                 return "this request doesn't ask for a Mission Plan; propose_mission_plan is only for a request that asks for a Mission Plan, so reply with the kind the mod asked for";
             var where = snapshot != null ? Grounded(snapshot.Situation) : null;
@@ -201,7 +209,7 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.LastEntryPlanned = mission.Plan != null && Entries.IsLastEntry(snapshot, mission.Plan.Sequences, MissionCards.LegInHand(StepsBegun(mission), mission.SequenceCounted));
                 snapshot.MissionGoal = mission.Goal;
                 snapshot.PickedSite = mission.PickedSite;
-                snapshot.SurveyWaypoints = SurveyWaypointsOf(mission);
+                snapshot.SurveyWaypoints = UnmetSurveyWaypoints(mission, snapshot);
             }
             var purpose = turn.Purpose;
             var timeout = _toolCallTimeout;

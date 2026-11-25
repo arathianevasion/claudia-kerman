@@ -72,6 +72,17 @@ namespace ClaudiaKerman.Core.Tools
             return waypoint != null && waypoint.Ground;
         }
 
+        /// <summary>
+        /// #1350: the survey waypoints of the Chosen Requirements the game still shows unmet, for the tool's answer; a met one neither counts towards the
+        /// Survey Plane nor appears as a pass. The reading is the game's, as the Contract watch has it. With no Contracts in the snapshot there is no
+        /// reading to go by, and every waypoint stands. The offer of the tool is not decided here (<c>SurveyWaypointsOf</c>), so it stays stable.
+        /// </summary>
+        internal static List<SurveyWaypoint> Unmet(IEnumerable<ChosenRequirement> chosen, IEnumerable<RequirementReading> readings)
+        {
+            var met = new HashSet<string>(readings.Where(r => r.State == "met" || r.State == "completed").Select(r => r.Key));
+            return chosen.Where(r => !met.Contains(r.Key)).Select(r => r.Waypoint).ToList();
+        }
+
         public ToolOutcome Run(JsonNode input, GameSnapshot snapshot, IPlanningBody api)
         {
             var all = snapshot.SurveyWaypoints ?? new List<SurveyWaypoint>();
