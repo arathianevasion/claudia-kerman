@@ -400,5 +400,49 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("couldn't read", note);
             Assert.Contains("treat it as needing precision", note);
         }
+
+        // ---- #1350: only the waypoints the game still shows unmet ----
+
+        [Fact]
+        public void TheWaypointsTheGameShowsMetAreLeftOutOfTheToolsAnswer()
+        {
+            var chosen = new[] { "a", "b", "c" }.Select(k => new ChosenRequirement { Key = "g/" + k, Waypoint = Waypoint(k, 3, 10) }).ToList();
+            var readings = new List<RequirementReading>
+            {
+                new RequirementReading { Key = "g/a", State = "met" },
+                new RequirementReading { Key = "g/b", State = "completed" },
+                new RequirementReading { Key = "g/c", State = "not met" },
+            };
+
+            var open = SurveyScheduleTool.Unmet(chosen, readings);
+
+            Assert.Equal(new[] { "c" }, open.Select(w => w.Key).ToArray());
+        }
+
+        [Fact]
+        public void With19North0East7OpenFromTheMun14DegreeOrbitTheSurveyPlanePassesOverItAndItsNodeReachesIt()
+        {
+            // #1344: the four met sites left out, only 19.2° N 0.7° E open, a 10 km, 14° orbit with lan 121°.
+            var open = Waypoint("open", 19.2, 0.7);
+            var snapshot = Snapshot(open);
+            snapshot.Orbit = new SnapshotOrbit { Body = "Mun", SemiMajorAxis = MunRadius + 10000, Eccentricity = 0, Inclination = 14, Lan = 121, MeanAnomalyAtEpoch = 0.4, Epoch = snapshot.Ut };
+
+            var answer = Run(snapshot);
+
+            var plane = answer.GetProperty("survey_plane");
+            Assert.Equal(new[] { open.Where() }, plane.GetProperty("passes_over").EnumerateArray().Select(e => e.GetString()).ToArray());
+            Assert.True(answer.TryGetProperty("node", out _));
+            // The craft's own 14° plane can't reach 19.2° N; the node turns it to the Survey Plane, which does.
+            Assert.True(answer.GetProperty("passes").EnumerateArray().Single().GetProperty("unreachable").GetBoolean());
+            Assert.InRange(plane.GetProperty("inclination").GetDouble(), 14.5, 20);
+            Assert.True(answer.GetProperty("node").GetProperty("delta_v").GetDouble() > 0);
+            // The script call's own function, given the same waypoints, agrees with the tool.
+            var body = new SurveyBody { Radius = MunRadius, RotationPeriod = MunRotation, Gm = MunGm };
+            var call = SurveySchedule.Plane(body, snapshot.Orbit, snapshot.Ut, (double x, double y, double z, out double lat, out double lon) => new Game().SurfaceUnder("Mun", x, y, z, out lat, out lon),
+                new List<SurveyWaypoint> { open }, snapshot.SurveyTriggerRange);
+            Assert.Equal(Math.Round(call.Inclination, 1), plane.GetProperty("inclination").GetDouble());
+            Assert.Equal(Math.Round(call.Lan, 1), plane.GetProperty("lan").GetDouble());
+            Assert.Equal(call.Node != null, answer.TryGetProperty("node", out _));
+        }
     }
 }
