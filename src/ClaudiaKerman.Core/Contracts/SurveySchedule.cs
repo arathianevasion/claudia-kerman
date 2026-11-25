@@ -114,6 +114,15 @@ namespace ClaudiaKerman.Core.Contracts
 
         public static List<SurveyPass> For(SurveyBody body, SurveyOrbit orbit, double now, IList<SurveyWaypoint> waypoints, double triggerRange)
         {
+            return For(body, orbit, now, now, waypoints, triggerRange);
+        }
+
+        /// <summary>
+        /// #1351: the passes of an orbit the craft takes up at <paramref name="from"/> (after a node's burn), still inside <see cref="PlaneWindow"/>
+        /// of <paramref name="now"/>, where the Sequence Plan starts.
+        /// </summary>
+        public static List<SurveyPass> For(SurveyBody body, SurveyOrbit orbit, double from, double now, IList<SurveyWaypoint> waypoints, double triggerRange)
+        {
             if (orbit.Period <= 0) throw new ArgumentException("the orbit has no period: it isn't closed");
             var ahead = body.RotationPeriod > 0 ? body.RotationPeriod : orbit.Period;
             var step = orbit.Period / SamplesPerOrbit;
@@ -125,7 +134,7 @@ namespace ClaudiaKerman.Core.Contracts
             var at = new double[waypoints.Count];
             for (var k = 0; k < samples && left > 0; k++)
             {
-                var ut = Math.Min(now + k * step, now + ahead);
+                var ut = Math.Min(from + k * step, from + ahead);
                 var point = orbit.Track(ut);
                 for (var w = 0; w < waypoints.Count; w++)
                 {
@@ -133,7 +142,7 @@ namespace ClaudiaKerman.Core.Contracts
                     var next = Ground(body.Radius, point, waypoints[w]);
                     if (k >= 1 && at[w] <= next && (k == 1 || at[w] <= before[w]))
                     {
-                        var nearest = Nearest(body.Radius, orbit.Track, waypoints[w], Math.Max(now, ut - 2 * step), ut);
+                        var nearest = Nearest(body.Radius, orbit.Track, waypoints[w], Math.Max(from, ut - 2 * step), ut);
                         if (Ground(body.Radius, orbit.Track(nearest), waypoints[w]) <= triggerRange)
                         {
                             found[w] = nearest;

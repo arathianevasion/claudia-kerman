@@ -102,6 +102,30 @@ namespace ClaudiaKerman.Core.Contracts
             return best;
         }
 
+        /// <summary>
+        /// #1351: the Survey Schedule's passes for the orbit after the plane's node burn, reckoned from the burn, within <see cref="PlaneWindow"/> of
+        /// <paramref name="now"/>: the passes of the Survey Plane the schedule hands over. With no node the craft's own orbit stands, so this is the
+        /// schedule's own passes.
+        /// </summary>
+        public static List<SurveyPass> PassesAfterNode(SurveyBody body, SnapshotOrbit orbit, SurveyPlane plane, double now, SurfaceUnder under, IList<SurveyWaypoint> waypoints, double triggerRange)
+        {
+            if (plane.Node == null) throw new ArgumentException("the Survey Plane has no node: the craft's own orbit serves");
+            double lonOffset, handed;
+            var frame = LandingSiteSearch.Frame("the body", under, out lonOffset, out handed);
+            if (frame != null) throw new InvalidOperationException(frame);
+            var conic = Conic.FromElements(body.Gm, orbit.SemiMajorAxis, orbit.Eccentricity, orbit.Inclination, orbit.Lan, orbit.ArgumentOfPeriapsis,
+                orbit.MeanAnomalyAtEpoch, orbit.Epoch);
+            Vec3 r, v;
+            conic.State(plane.Node.Ut, out r, out v);
+            // The node's axes, as Plane() resolves them: prograde along the velocity, normal along the orbit's pole, radial out of both.
+            var forward = v.Normalized;
+            var up = conic.W;
+            var after = Conic.FromState(body.Gm, r, v + plane.Node.Prograde * forward + plane.Node.Normal * up + plane.Node.Radial * Vec3.Cross(forward, up), plane.Node.Ut);
+            var turn = body.RotationPeriod > 0 ? 360 / body.RotationPeriod : 0;
+            return For(body, new SurveyOrbit { Track = SurveyScheduleTool.Track(after, body.Radius, now, turn, lonOffset, handed), Period = after.Period, Inclination = after.Inclination },
+                plane.Node.Ut, now, waypoints, triggerRange);
+        }
+
         /// <summary>The delta-v that turns the velocity into the plane with this normal at this point on the line the planes share, keeping its speed and climb.</summary>
         private static Vec3 Burn(Vec3 r, Vec3 v, Vec3 normal)
         {

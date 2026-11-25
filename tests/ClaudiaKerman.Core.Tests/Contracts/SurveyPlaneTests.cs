@@ -178,6 +178,47 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void ThePassesAfterTheNodeFallOnTheSurveyPlaneWithinTheWindow()
+        {
+            // #1351: from the playtest's 0.9° orbit the schedule gave "0 passes" for the current orbit while handing over a Survey Plane.
+            var orbit = Circular(30000, 0.9, 0, 200);
+            var waypoints = Waypoints(Playtest);
+            var plane = Pick(orbit, waypoints);
+            Assert.NotNull(plane.Node);
+
+            var passes = SurveySchedule.PassesAfterNode(Mun(), orbit, plane, Now, Under, waypoints, Range).Where(p => p.Ut.HasValue).ToList();
+
+            Assert.Equal(plane.Passed.Count, passes.Count);
+            Assert.NotEmpty(passes);
+            double[] r, v;
+            AfterNode(orbit, plane.Node, out r, out v);
+            var a = Math.Sqrt(Dot(r, r));
+            var n = Math.Sqrt(Dot(v, v)) / a;
+            var x = Unit(r);
+            var y = Unit(Cross(Cross(r, v), r));
+            foreach (var pass in passes)
+            {
+                Assert.Contains(pass.Waypoint, plane.Passed);
+                Assert.InRange(pass.Ut.Value, plane.Node.Ut, Now + SurveySchedule.PlaneWindow);
+                // Flown by hand: the craft on the plane after the burn, the Mun turned beneath it, at the pass's UT.
+                var t = pass.Ut.Value - plane.Node.Ut;
+                var c = Add(Add(new double[3], x, Math.Cos(n * t)), y, Math.Sin(n * t));
+                var lat = Math.Asin(c[2]);
+                var lon = Math.Atan2(c[1], c[0]) - 2 * Math.PI * (pass.Ut.Value - Now) / MunTurn;
+                double wl = pass.Waypoint.Latitude * Math.PI / 180, wn = pass.Waypoint.Longitude * Math.PI / 180;
+                var cos = Math.Sin(lat) * Math.Sin(wl) + Math.Cos(lat) * Math.Cos(wl) * Math.Cos(lon - wn);
+                Assert.True(MunRadius * Math.Acos(Math.Max(-1, Math.Min(1, cos))) <= Range + 1, pass.Waypoint.Key + " is not under the Survey Plane at its pass");
+            }
+        }
+
+        [Fact]
+        public void TheSurveySchedulePassesForTheNodeNeedsANode()
+        {
+            var orbit = Circular(30000, 0, 0, 0);
+            Assert.Throws<ArgumentException>(() => SurveySchedule.PassesAfterNode(Mun(), orbit, new SurveyPlane(), Now, Under, Waypoints(Playtest), Range));
+        }
+
+        [Fact]
         public void TheSurveyPlaneForThePlaytestsWaypointAt19DegreesAllowsForTheTriggerRange()
         {
             // #1346: 15 km of ground is about 4.3° of arc, so a plane under 19.2° passes within the trigger range of a waypoint at 19.2° N.
