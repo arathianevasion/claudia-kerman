@@ -149,6 +149,21 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(-12.25, spec.LandedLng);
         }
 
+        // #1363: a landed test can name its hop's target, which the runner moves to flat ground with the start.
+        [Fact]
+        public void ALandedTestCanNameItsHopTarget()
+        {
+            const string landed = "block = site_hop\nstart = landed\nlanded_body = Mun\nlanded_lat = 0.5\nlanded_lng = -12.25\n";
+            var spec = BlockTestSpec.Parse("t", landed + "hop_lat = 0.5\nhop_lng = -8\n");
+            Assert.Equal(0.5, spec.HopLat);
+            Assert.Equal(-8, spec.HopLng);
+            Assert.Null(BlockTestSpec.Parse("t", landed).HopLat);
+            // Half a target, or one with nowhere landed to hop from.
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", landed + "hop_lat = 0.5\n"));
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = land\nhop_lat = 0.5\nhop_lng = -8\n"));
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", landed + "hop_lat = 95\nhop_lng = -8\n"));
+        }
+
         [Fact]
         public void ALandedStartIsRefusedWithoutItsSiteOrWithAnotherStart()
         {

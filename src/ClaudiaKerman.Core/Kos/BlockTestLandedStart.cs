@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace ClaudiaKerman.Core.Kos
@@ -27,14 +29,113 @@ namespace ClaudiaKerman.Core.Kos
         /// <summary>s after the craft is unpacked before the test fails as never settled.</summary>
         public const double GiveUpSeconds = 30;
 
-        /// <summary>Why a landed start at this spot is refused, with its slope (read as <c>land</c> reads it, <see cref="Terrain.Slope"/>); null if the ground is flat enough.</summary>
-        public static string RefuseSite(Terrain.HeightAt height, double radius, double lat, double lng)
+        /// <summary>#1363: m out from the site asked for that the search for flat ground goes.</summary>
+        public const double SearchReach = 10000;
+
+        /// <summary>m between the rings of spots the search reads.</summary>
+        public const double SearchStep = 100;
+
+        /// <summary>m the hop's distance may change by when its target moves to flat ground.</summary>
+        public const double HopTolerance = 2000;
+
+        /// <summary>
+        /// #1363: where a landed test starts and, when it names one, where its hop goes. Each is the nearest spot within
+        /// <see cref="SearchReach"/> of the one asked for whose slope (read as <c>land</c> reads it, <see cref="Terrain.Slope"/>)
+        /// is under <see cref="MaxSlopeDeg"/>. The target's spot must also be within <see cref="HopTolerance"/> of the hop's
+        /// distance asked for, measured from the start's spot. <see cref="Placement.Failure"/> says why there is none.
+        /// </summary>
+        public static Placement Place(Terrain.HeightAt height, double radius, double lat, double lng, double? hopLat, double? hopLng)
         {
-            var slope = Terrain.Slope(height, radius, lat, lng);
-            if (slope <= MaxSlopeDeg) return null;
-            return "the landed start at " + lat.ToString("0.###", CultureInfo.InvariantCulture) + ", " + lng.ToString("0.###", CultureInfo.InvariantCulture)
-                + " slopes " + slope.ToString("0.0", CultureInfo.InvariantCulture) + " degrees, more than " + MaxSlopeDeg.ToString("0", CultureInfo.InvariantCulture)
-                + ": move it to flatter ground";
+            var start = Terrain.Flattest(height, radius, lat, lng, SearchReach, MaxSlopeDeg, SearchStep, null);
+            if (!start.Flat) return Placement.Failed(NoFlatGround("the landed start at " + At(lat, lng), start));
+            var notes = new List<string> { Moved("landed start", lat, lng, start) };
+            if (!hopLat.HasValue || !hopLng.HasValue) return new Placement(start, null, notes, null);
+
+            var asked = Terrain.Distance(lat, lng, hopLat.Value, hopLng.Value, radius);
+            Func<double, double, bool> keepsTheHop = (la, ln) => Math.Abs(Terrain.Distance(start.Lat, start.Lng, la, ln, radius) - asked) <= HopTolerance;
+            var target = Terrain.Flattest(height, radius, hopLat.Value, hopLng.Value, SearchReach, MaxSlopeDeg, SearchStep, keepsTheHop);
+            if (target == null || !target.Flat)
+                return Placement.Failed(NoFlatGround("the hop target at " + At(hopLat.Value, hopLng.Value) + " that keeps the hop within " + Km(HopTolerance)
+                    + " km of the " + Km(asked) + " km asked for", target));
+            notes.Add(Moved("hop target", hopLat.Value, hopLng.Value, target));
+            var hop = Terrain.Distance(start.Lat, start.Lng, target.Lat, target.Lng, radius);
+            notes.Add("the hop is " + Km(hop) + " km, " + Km(asked) + " km asked for");
+            return new Placement(start, target, notes, null);
+        }
+
+        /// <summary>
+        /// #1363: the test script with the moved hop target declared as the global <c>test_hop_target</c>, just after its
+        /// <c>@lazyglobal</c> directive (which must come first), or at the top if it has none.
+        /// </summary>
+        public static string WithHopTarget(string source, Spot target)
+        {
+            var line = "global test_hop_target is latlng(" + target.Lat.ToString("R", CultureInfo.InvariantCulture) + ", "
+                + target.Lng.ToString("R", CultureInfo.InvariantCulture) + ").\n";
+            var lines = (source ?? "").Replace("\r\n", "\n").Split('\n');
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (!lines[i].TrimStart().StartsWith("@lazyglobal", StringComparison.OrdinalIgnoreCase)) continue;
+                return string.Join("\n", lines, 0, i + 1) + "\n" + line + string.Join("\n", lines, i + 1, lines.Length - i - 1);
+            }
+            return line + source;
+        }
+
+        private static string Moved(string what, double lat, double lng, Spot spot)
+        {
+            if (spot.Distance == 0) return "the " + what + " at " + At(lat, lng) + " slopes " + Degrees(spot.Slope) + " degrees: it stays there";
+            return "moved the " + what + " from " + At(lat, lng) + " to " + At(spot.Lat, spot.Lng) + ", " + Km(spot.Distance) + " km away, where the ground slopes "
+                + Degrees(spot.Slope) + " degrees";
+        }
+
+        /// <summary>Why the test can't start: no flat ground near <paramref name="where"/>, naming the flattest slope found (null: no spot searched qualified).</summary>
+        private static string NoFlatGround(string where, Spot flattest)
+        {
+            return "no ground under " + MaxSlopeDeg.ToString("0", CultureInfo.InvariantCulture) + " degrees within " + Km(SearchReach) + " km of " + where
+                + (flattest == null ? ": no spot searched qualifies" : ": the flattest found slopes " + Degrees(flattest.Slope) + " degrees");
+        }
+
+        private static string At(double lat, double lng)
+        {
+            return lat.ToString("0.###", CultureInfo.InvariantCulture) + ", " + lng.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        private static string Km(double metres)
+        {
+            return (metres / 1000).ToString("0.0", CultureInfo.InvariantCulture);
+        }
+
+        private static string Degrees(double slope)
+        {
+            return slope.ToString("0.0", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>#1363: where a landed test spawns and hops to, and the lines to log about it; or why it can't start.</summary>
+        public sealed class Placement
+        {
+            public Placement(Spot start, Spot target, IList<string> notes, string failure)
+            {
+                Start = start;
+                Target = target;
+                Notes = notes;
+                Failure = failure;
+            }
+
+            internal static Placement Failed(string why)
+            {
+                return new Placement(null, null, new List<string>(), why);
+            }
+
+            /// <summary>Where the craft spawns; null when <see cref="Failure"/> is set.</summary>
+            public Spot Start { get; private set; }
+
+            /// <summary>Where the hop goes; null when the test names no hop target, or on a failure.</summary>
+            public Spot Target { get; private set; }
+
+            /// <summary>Lines for the log: where each spot moved to, how far and its slope, and the hop's distance.</summary>
+            public IList<string> Notes { get; private set; }
+
+            /// <summary>Why the test fails before spawning (no flat ground in reach, naming the flattest slope found); null if it can start.</summary>
+            public string Failure { get; private set; }
         }
 
         /// <summary>The reason a test fails when <see cref="Settle"/> gives up: the craft's lean from upright and the ground's slope, in degrees.</summary>

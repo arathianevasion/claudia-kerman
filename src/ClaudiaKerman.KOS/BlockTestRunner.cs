@@ -69,6 +69,8 @@ namespace ClaudiaKerman.KOS
         private int _sceneFrames;
         /// <summary>#1358: a landed start's wait for the craft to come to rest; null for other starts, and once it has.</summary>
         private BlockTestLandedStart.Settle _settle;
+        /// <summary>#1363: a landed test's hop target, moved to flat ground, handed to test.ks as test_hop_target; null for none.</summary>
+        private Spot _hopTarget;
 
         private void Awake()
         {
@@ -249,6 +251,7 @@ namespace ClaudiaKerman.KOS
         private void Begin(string test)
         {
             _test = test;
+            _hopTarget = null;
             _log.Clear();
             try
             {
@@ -315,16 +318,18 @@ namespace ClaudiaKerman.KOS
                 // #1355: standing on the ground at the test's site, as a Site Hop starts.
                 var ground = FlightGlobals.GetBodyByName(_spec.LandedBody);
                 if (ground == null) throw new InvalidOperationException("no body called '" + _spec.LandedBody + "'");
-                // #1358: a lander set down on a slope topples; refuse the site before spawning.
-                var refused = BlockTestLandedStart.RefuseSite(ClaudiaAddon.HeightOn(ground), ground.Radius, _spec.LandedLat, _spec.LandedLng);
-                if (refused != null)
+                // #1358, #1363: a lander set down on a slope topples; move the start, and the hop's target, to flat ground before spawning.
+                var place = BlockTestLandedStart.Place(ClaudiaAddon.HeightOn(ground), ground.Radius, _spec.LandedLat, _spec.LandedLng, _spec.HopLat, _spec.HopLng);
+                if (place.Failure != null)
                 {
-                    Fail(refused);
+                    Fail(place.Failure);
                     return;
                 }
-                var landed = CraftSpawner.Landed(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft), ground, _spec.LandedLat, _spec.LandedLng, null);
+                foreach (var line in place.Notes) Note(line);
+                _hopTarget = place.Target;
+                var landed = CraftSpawner.Landed(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft), ground, place.Start.Lat, place.Start.Lng, null);
                 _vesselId = landed.persistentId;
-                Note("landed '" + landed.vesselName + "' on " + ground.bodyName + " at " + _spec.LandedLat.ToString("0.###") + ", " + _spec.LandedLng.ToString("0.###") + "; going to Flight");
+                Note("landed '" + landed.vesselName + "' on " + ground.bodyName + " at " + place.Start.Lat.ToString("0.###") + ", " + place.Start.Lng.ToString("0.###") + "; going to Flight");
                 _settle = new BlockTestLandedStart.Settle();
                 FocusSpawned(landed);
                 return;
@@ -385,7 +390,9 @@ namespace ClaudiaKerman.KOS
             _stage = Stage.Running;
             _deadline = Time.realtimeSinceStartup + (float)_spec.TimeoutSeconds;
             Note("running " + _spec.Block + " (timeout " + _spec.TimeoutSeconds + " s)");
-            var source = CoreLibrary.Bundle(Resource(_test, "test.ks"));
+            var script = Resource(_test, "test.ks");
+            if (_hopTarget != null) script = BlockTestLandedStart.WithHopTarget(script, _hopTarget);
+            var source = CoreLibrary.Bundle(script);
             // Planning Tools open to this test's processor until Finish (ADR 0006); never to a Mission Script.
             ToolTestGate.Shared.Open(_partId);
             bridge.BeginRun(_partId, "claudia-blocktest:" + _test, source, Judge, reason => Fail("the bridge refused: " + reason));
