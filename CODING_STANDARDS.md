@@ -14,6 +14,7 @@ Things that must always come back to the Artisan. Only the Artisan changes this 
 ## Guardrails
 
 - `pr-boundaries`: one PR per slice (set at setup).
+- An in-game scenario or block test checks its own starting state before the sequence runs: the situation it is named for (landed, orbiting), ground contact settled, slope under the runner's limit, and the stage whose engines the block will burn. It stops with a message naming the failed precondition.
 
 ## Checks
 
