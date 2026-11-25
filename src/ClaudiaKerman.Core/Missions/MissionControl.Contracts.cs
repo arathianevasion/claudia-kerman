@@ -230,6 +230,7 @@ namespace ClaudiaKerman.Core.Missions
             LogToKsp("Plan these: " + string.Join(", ", choice.Guids.ToArray()) + ".");
             var start = _contractStart.Answered(choice.Goal, choice);
             _contractCheck = null;
+            _wordsRefusal = "";
             _folded = choice;
             Start(start);
         }
@@ -268,6 +269,7 @@ namespace ClaudiaKerman.Core.Missions
             LogToKsp("Plan without Contracts: the player's words alone.");
             var start = _contractStart.Answered(_contractCheck.Words, null);
             _contractCheck = null;
+            _wordsRefusal = "";
             Start(start);
         }
 
@@ -326,6 +328,7 @@ namespace ClaudiaKerman.Core.Missions
             LogToKsp("Change Contracts: the Contract Check reopens on the Chosen Contracts still accepted [" + string.Join(", ", ticked.ToArray()) + "]"
                 + (gone.Count > 0 ? "; chosen but not ticked now [" + string.Join(", ", gone.ToArray()) + "]" : "") + "; " + check.Headline(ticked.Count));
             if (onMission) WithdrawMission(mission);
+            _wordsRefusal = "";
             _contractCheck = check;
             _reopened = true;
             _folded = null;
