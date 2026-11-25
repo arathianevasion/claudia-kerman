@@ -47,14 +47,16 @@ namespace ClaudiaKerman.Core.Kos
         public static Placement Place(Terrain.HeightAt height, double radius, double lat, double lng, double? hopLat, double? hopLng)
         {
             var start = Terrain.Flattest(height, radius, lat, lng, SearchReach, MaxSlopeDeg, SearchStep, null);
-            if (!start.Flat) return Placement.Failed(NoFlatGround("landed start", lat, lng, start));
+            if (!start.Flat) return Placement.Failed(NoFlatGround("the landed start at " + At(lat, lng), start));
             var notes = new List<string> { Moved("landed start", lat, lng, start) };
             if (!hopLat.HasValue || !hopLng.HasValue) return new Placement(start, null, notes, null);
 
             var asked = Terrain.Distance(lat, lng, hopLat.Value, hopLng.Value, radius);
             Func<double, double, bool> keepsTheHop = (la, ln) => Math.Abs(Terrain.Distance(start.Lat, start.Lng, la, ln, radius) - asked) <= HopTolerance;
             var target = Terrain.Flattest(height, radius, hopLat.Value, hopLng.Value, SearchReach, MaxSlopeDeg, SearchStep, keepsTheHop);
-            if (target == null || !target.Flat) return Placement.Failed(NoFlatGround("hop target", hopLat.Value, hopLng.Value, target));
+            if (target == null || !target.Flat)
+                return Placement.Failed(NoFlatGround("the hop target at " + At(hopLat.Value, hopLng.Value) + " that keeps the hop within " + Km(HopTolerance)
+                    + " km of the " + Km(asked) + " km asked for", target));
             notes.Add(Moved("hop target", hopLat.Value, hopLng.Value, target));
             var hop = Terrain.Distance(start.Lat, start.Lng, target.Lat, target.Lng, radius);
             notes.Add("the hop is " + Km(hop) + " km, " + Km(asked) + " km asked for");
@@ -85,10 +87,11 @@ namespace ClaudiaKerman.Core.Kos
                 + Degrees(spot.Slope) + " degrees";
         }
 
-        private static string NoFlatGround(string what, double lat, double lng, Spot flattest)
+        /// <summary>Why the test can't start: no flat ground near <paramref name="where"/>, naming the flattest slope found (null: no spot searched qualified).</summary>
+        private static string NoFlatGround(string where, Spot flattest)
         {
-            return "no ground under " + MaxSlopeDeg.ToString("0", CultureInfo.InvariantCulture) + " degrees within " + Km(SearchReach) + " km of the " + what + " at "
-                + At(lat, lng) + (flattest == null ? " that keeps the hop's distance" : ": the flattest found slopes " + Degrees(flattest.Slope) + " degrees");
+            return "no ground under " + MaxSlopeDeg.ToString("0", CultureInfo.InvariantCulture) + " degrees within " + Km(SearchReach) + " km of " + where
+                + (flattest == null ? ": no spot searched qualifies" : ": the flattest found slopes " + Degrees(flattest.Slope) + " degrees");
         }
 
         private static string At(double lat, double lng)

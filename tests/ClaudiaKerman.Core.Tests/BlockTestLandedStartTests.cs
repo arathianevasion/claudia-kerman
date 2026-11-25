@@ -117,6 +117,17 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void FlatGroundThatWouldStretchTheHopPastTwoKilometresDoesNotCount()
+        {
+            // The only flat ground near the target is 3 km beyond it: an 18 km hop for the 15 asked.
+            var targetLng = 77.2 + East(2.46, 15000);
+            var place = BlockTestLandedStart.Place(SteepWithFlats(new[] { 2.46, 77.2, 300.0 }, new[] { 2.46, targetLng + East(2.46, 3000), 200.0 }),
+                Radius, 2.46, 77.2, 2.46, targetLng);
+            Assert.StartsWith("no ground under 5 degrees within 10.0 km of the hop target at 2.46, ", place.Failure);
+            Assert.EndsWith(" that keeps the hop within 2.0 km of the 15.0 km asked for: the flattest found slopes 20.0 degrees", place.Failure);
+        }
+
+        [Fact]
         public void TheTestScriptReadsTheMovedHopTargetAsAGlobalDeclaredAfterItsDirective()
         {
             var target = new Spot(1.25, 80.5, 2, 1000, 1500, true);
