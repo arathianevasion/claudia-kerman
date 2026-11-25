@@ -71,7 +71,7 @@ namespace ClaudiaKerman.KOS
         }
 
         /// <summary>The body's terrain height above sea level, as kOS's GEOPOSITION:TERRAINHEIGHT reads it (sea level over oceans).</summary>
-        private static Terrain.HeightAt HeightOn(CelestialBody body)
+        internal static Terrain.HeightAt HeightOn(CelestialBody body)
         {
             return (lat, lng) =>
             {
