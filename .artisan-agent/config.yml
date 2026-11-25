@@ -76,7 +76,7 @@ team_guardrails_repo:
 #     all: 1.1
 #     claude-opus-5-5: 1.3
 # Retro lesson L3 (run 1038): tickets cost 21-51% of their estimate.
-estimate_multipliers: {'all': 0.6}
+estimate_multipliers: {'all': 1.2}
 
 # Minimum estimate per ticket, in dollars, keyed by model id; "all" covers a
 # model without its own key. The plan step raises a smaller estimate to its
