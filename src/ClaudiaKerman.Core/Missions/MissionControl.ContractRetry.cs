@@ -19,7 +19,7 @@ namespace ClaudiaKerman.Core.Missions
     {
         private sealed partial class Mission
         {
-            /// <summary>#1306: how many Debriefs showed each Requirement not met, by key (not saved: a loaded Mission counts afresh).</summary>
+            /// <summary>#1306: how many Debriefs showed each Requirement not met, by key; saved with the Mission (#1331), and an older save counts afresh.</summary>
             public readonly Dictionary<string, int> RequirementMisses = new Dictionary<string, int>();
         }
 

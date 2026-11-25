@@ -131,6 +131,54 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("", mission.View.AutoModeStop);
         }
 
+        // ---- #1331: the miss counts are saved with the Mission ----
+
+        [Fact]
+        public void ARequirementsMissCountIsSavedWithTheMissionAndRestoredOnLoad()
+        {
+            var transport = Transport();
+            var mission = Running(transport, out var start);
+            Missed(mission, transport, start, Snapshot(EndedAt));
+
+            var saved = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
+            var reloaded = Reloaded(saved);
+
+            Assert.Equal(new Dictionary<string, int> { { Key, 1 } }, Assert.Single(reloaded.ExportStates()).RequirementMisses);
+        }
+
+        [Fact]
+        public void ASaveFromBeforeMissCountsWereSavedLoadsWithCountsOfZero()
+        {
+            var transport = Transport();
+            var mission = Running(transport, out var start);
+            var values = Assert.Single(mission.ExportStates()).ToValues();
+
+            var saved = MissionSaveState.FromValues(values);
+
+            Assert.Empty(saved.RequirementMisses);
+            Assert.Empty(Assert.Single(Reloaded(saved).ExportStates()).RequirementMisses);
+        }
+
+        [Fact]
+        public void UnreadableSavedMissCountsLoadAsCountsOfZero()
+        {
+            var values = new Dictionary<string, string> { { "id", "m1" }, { "requirementMisses", "[{\"key\":" } };
+
+            var saved = MissionSaveState.FromValues(values);
+
+            Assert.Empty(saved.RequirementMisses);
+        }
+
+        private MissionControl Reloaded(MissionSaveState saved)
+        {
+            var client = new ClaudeClient(new CraftCheckRouter(new StreamingFakeTransport()), () => "sk-ant-fake-key-0123456789", l => { });
+            var reloaded = new MissionControl(client, _background, new PlayerConfig { CheckDurationPercent = 1000 }, () => true, new PassingScriptCheck());
+            reloaded.Clock = () => _now;
+            reloaded.Send(new SceneChanged(GameScene.Flight));
+            reloaded.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { saved }));
+            return reloaded;
+        }
+
         private static void AssertStopped(Request request, string why)
         {
             Assert.DoesNotContain(ContractRetry.RetryWords, request.Text);
