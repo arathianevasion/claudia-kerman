@@ -21,7 +21,7 @@ namespace ClaudiaKerman.KOS
         private void AddSurveySuffixes()
         {
             AddSuffix("SURVEYSCHEDULE", new NoArgsSuffix<ListValue>(SurveyScheduleNow,
-                "The Survey Schedule: a list in flying order of lexicons waypoint, lat, lng, ut, altitude, out_of_band, unreachable, left_for_next_plane, reaching_inclination (only passes within 12 game hours of now carry a ut; left_for_next_plane waypoints wait for the next Survey Plane); then a ground survey's sites in landing order with landing, needs_precision"));
+                "The Survey Schedule: a list in flying order of lexicons waypoint, lat, lng, ut, altitude, out_of_band, unreachable, left_for_next_plane, reaching_inclination (only passes within 12 game hours of now carry a ut; left_for_next_plane waypoints wait for the next Survey Plane; when SURVEYPLANE gives a node the passes are those after its burn); then a ground survey's sites in landing order with landing, needs_precision"));
             AddSuffix("SURVEYPLANE", new NoArgsSuffix<Lexicon>(SurveyPlaneNow,
                 "The Survey Plane for the orbital survey's remaining waypoints: a lexicon inclination, lan, passes_over (the waypoints it passes over in one revolution) and node: true with ut, radial, normal, prograde and delta_v of the one burn that reaches it (ADD NODE(ut, radial, normal, prograde), then exec_node), false when the craft's own plane serves. Quote the Survey Plane and its burn in the survey's Sequence Plan"));
         }
