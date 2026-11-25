@@ -420,6 +420,37 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void WordsSentFromThePromptThatDontFitTheCraftSayWhyOnTheCardAndTheHintDoesntAskForWordsAgain()
+        {
+            // #1336: the card used to drop them, logging only, and the hint still told the player to type below.
+            var snapshot = TwoAtTheMunAndAHaul();
+            var mission = Control(snapshot);
+            mission.Send(Start(""));
+            Assert.Equal("", mission.View.ContractCheck.WordsRefusal);
+            foreach (var stage in snapshot.Stages) stage.DeltaVVac *= 0.25;
+
+            mission.Send(new GiveContractWords("Fly to Minmus, capture into orbit and land, then return to Kerbin."));
+
+            var card = mission.View.ContractCheck;
+            Assert.Equal("These words don't fit this craft, so the card didn't take them.", card.WordsRefusal);
+            Assert.False(card.CanPlanWithout);
+            Assert.Equal(0, Requests);
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptWithTheCraftsDeltaVUnknownSayWhyOnTheCard()
+        {
+            var snapshot = TwoAtTheMunAndAHaul();
+            var mission = Control(snapshot);
+            mission.Send(Start(""));
+            snapshot.DeltaVSimulator = false;
+
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+
+            Assert.Equal("The craft's delta-v is unknown, so the card couldn't take these words.", mission.View.ContractCheck.WordsRefusal);
+        }
+
+        [Fact]
         public void WordsSentFromThePromptKeepTheTicksTheCardHad()
         {
             var mission = Control(TwoAtTheMunAndAHaul());
