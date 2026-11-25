@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using ClaudiaKerman.Core.Missions;
 
 namespace ClaudiaKerman.Core.Contracts
 {
@@ -103,6 +104,30 @@ namespace ClaudiaKerman.Core.Contracts
         public static List<SurveyPass> Entries(SurveyBody body, SurveyOrbit orbit, double now, IList<SurveyWaypoint> orbital, IList<SurveyWaypoint> ground, double triggerRange)
         {
             var entries = orbit == null || orbital.Count == 0 ? new List<SurveyPass>() : For(body, orbit, now, orbital, triggerRange);
+            entries.AddRange(Ground(body, ground));
+            return entries;
+        }
+
+        /// <summary>
+        /// #1354: the orbital passes the Survey Schedule hands over, the one function the script call and the <c>survey_schedule</c> Planning Tool
+        /// both run. With a Survey Plane that has a node the passes are those after the burn (<see cref="PassesAfterNode"/>); otherwise the craft's own
+        /// orbit (<paramref name="own"/>) serves. <paramref name="plane"/> is the Survey Plane, for the caller to quote.
+        /// </summary>
+        public static List<SurveyPass> OrbitalPasses(SurveyBody body, SurveyOrbit own, SnapshotOrbit elements, double now, SurfaceUnder under, IList<SurveyWaypoint> orbital,
+            double triggerRange, out SurveyPlane plane)
+        {
+            plane = Plane(body, elements, now, under, orbital, triggerRange);
+            return plane.Node != null ? PassesAfterNode(body, elements, plane, now, under, orbital, triggerRange) : For(body, own, now, orbital, triggerRange);
+        }
+
+        /// <summary>
+        /// #1354: <see cref="Entries(SurveyBody, SurveyOrbit, double, IList{SurveyWaypoint}, IList{SurveyWaypoint}, double)"/> with the orbital passes
+        /// taken through <see cref="OrbitalPasses"/>, so a Survey Plane with a node gives the passes after its burn, as the Planning Tool does.
+        /// </summary>
+        public static List<SurveyPass> Entries(SurveyBody body, SurveyOrbit own, SnapshotOrbit elements, double now, SurfaceUnder under, IList<SurveyWaypoint> orbital,
+            IList<SurveyWaypoint> ground, double triggerRange)
+        {
+            var entries = own == null || orbital.Count == 0 ? new List<SurveyPass>() : OrbitalPasses(body, own, elements, now, under, orbital, triggerRange, out _);
             entries.AddRange(Ground(body, ground));
             return entries;
         }

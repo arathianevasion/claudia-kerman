@@ -114,17 +114,12 @@ namespace ClaudiaKerman.Core.Tools
                 orbit.MeanAnomalyAtEpoch, orbit.Epoch);
             var now = snapshot.Ut;
             var turn = body.RotationPeriod > 0 ? 360 / body.RotationPeriod : 0;
-            var schedule = SurveySchedule.For(new SurveyBody { Radius = body.Radius, RotationPeriod = body.RotationPeriod },
+            SurfaceUnder under = (double x, double y, double z, out double lat, out double lon) => api.SurfaceUnder(body.Name, x, y, z, out lat, out lon);
+            // #1341, #1351, #1354: the passes and the Survey Plane with its node, from the one Core function the script call runs too.
+            SurveyPlane plane;
+            var schedule = SurveySchedule.OrbitalPasses(new SurveyBody { Radius = body.Radius, RotationPeriod = body.RotationPeriod, Gm = body.Gm },
                 new SurveyOrbit { Track = Track(conic, body.Radius, now, turn, lonOffset, handed), Period = conic.Period, Inclination = orbit.Inclination },
-                now, waypoints, snapshot.SurveyTriggerRange);
-            // #1341: the Survey Plane and the node that reaches it, from the same Core function the script call runs.
-            var plane = SurveySchedule.Plane(new SurveyBody { Radius = body.Radius, RotationPeriod = body.RotationPeriod, Gm = body.Gm }, orbit, now,
-                (double x, double y, double z, out double lat, out double lon) => api.SurfaceUnder(body.Name, x, y, z, out lat, out lon),
-                waypoints, snapshot.SurveyTriggerRange);
-            // #1351: with a node, the passes are the Survey Plane's, from the orbit after the burn; without one the craft's own orbit serves.
-            if (plane.Node != null)
-                schedule = SurveySchedule.PassesAfterNode(new SurveyBody { Radius = body.Radius, RotationPeriod = body.RotationPeriod, Gm = body.Gm }, orbit, plane, now,
-                    (double x, double y, double z, out double lat, out double lon) => api.SurfaceUnder(body.Name, x, y, z, out lat, out lon), waypoints, snapshot.SurveyTriggerRange);
+                orbit, now, under, waypoints, snapshot.SurveyTriggerRange, out plane);
             return Answer(body.Name, schedule, now, sites, plane);
         }
 

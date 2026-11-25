@@ -184,6 +184,33 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void WhenTheSurveyPlaneHasANodeTheScriptCallsPassesAreThoseAfterTheBurnAsTheToolGivesThem()
+        {
+            // #1354: SurveySchedule.Entries with the orbit's elements is what ADDONS:CLAUDIA:SURVEYSCHEDULE runs.
+            var waypoints = new[] { Waypoint("a", 10.0, 58.2), Waypoint("b", 12.5, 12.5), Waypoint("c", 7.1, 6.0), Waypoint("d", 13.2, 4.2), Waypoint("e", 19.2, 0.7) };
+            var snapshot = Snapshot(waypoints);
+            var body = new SurveyBody { Radius = MunRadius, RotationPeriod = MunRotation, Gm = MunGm };
+            var own = new SurveyOrbit { Track = ByHand(snapshot), Period = 2 * Math.PI * Math.Sqrt(Sma * Sma * Sma / MunGm), Inclination = Inclination };
+
+            var script = SurveySchedule.Entries(body, own, snapshot.Orbit, snapshot.Ut, UnderGame, waypoints, new List<SurveyWaypoint>(), SurveySchedule.StockTriggerRange);
+            var answer = Run(snapshot);
+
+            Assert.True(answer.GetProperty("passes_after_node").GetBoolean());
+            var tool = answer.GetProperty("passes").EnumerateArray().ToList();
+            Assert.Equal(script.Count, tool.Count);
+            Assert.Contains(script, p => p.Ut.HasValue);
+            var burn = answer.GetProperty("node").GetProperty("burn_ut").GetDouble();
+            for (var i = 0; i < script.Count; i++)
+            {
+                Assert.Equal(script[i].Waypoint.Where(), tool[i].GetProperty("waypoint").GetString());
+                Assert.Equal(script[i].Ut.HasValue, tool[i].TryGetProperty("pass_ut", out _));
+                if (!script[i].Ut.HasValue) continue;
+                Assert.InRange(tool[i].GetProperty("pass_ut").GetDouble(), script[i].Ut.Value - 1, script[i].Ut.Value + 1);
+                Assert.True(script[i].Ut.Value >= burn, "a pass before the burn is for the orbit the craft is about to leave");
+            }
+        }
+
+        [Fact]
         public void WhenTheCraftsOwnPlaneServesTheToolGivesThePlaneAndNoNode()
         {
             // One waypoint under the craft's own track 40° on from its node (it starts 23° on): no plane passes over more.
