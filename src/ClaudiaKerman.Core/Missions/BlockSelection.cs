@@ -25,7 +25,7 @@ namespace ClaudiaKerman.Core.Missions
         /// the base layer names it for the rest. So are rendezvous's (#455): only a goal with another vessel in it flies one; and
         /// dock's (#456), which only a goal that docks flies.
         /// </summary>
-        private static readonly HashSet<string> OnlyWhenNamed = new HashSet<string> { "change_orbit", "rendezvous", "dock" };
+        private static readonly HashSet<string> OnlyWhenNamed = new HashSet<string> { "change_orbit", "rendezvous", "dock", "site_hop" };
 
         /// <summary>Each block's trigger words, matched at the start of a word of the Mission Goal ("land" finds "landing", not "island").</summary>
         private static readonly KeyValuePair<string, string[]>[] Triggers =
@@ -43,6 +43,8 @@ namespace ClaudiaKerman.Core.Missions
             // Docking starts with a rendezvous (#456's dock takes over once the target is loaded).
             Rule("rendezvous", "rendezvous", "dock", "meet", "catch up", "target vessel", "join up"),
             Rule("dock", "dock", "berth"),
+            // A Site Hop (#1310), not a Hop: a hop up from the pad names no second site.
+            Rule("site_hop", "site hop", "site_hop", "hop to", "hop between", "hop across", "hop over to"),
             Rule("science", "science", "experiment", "survey", "biome", "sample", "data", "report", "goo", "thermometer"),
         };
 

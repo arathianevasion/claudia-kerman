@@ -138,6 +138,47 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = launch\nstart = runway\n"));
         }
 
+        // #1355: a test that starts landed at one site, as a Site Hop really does.
+        [Fact]
+        public void ATestThatStartsLandedNamesItsBodyLatitudeAndLongitude()
+        {
+            var spec = BlockTestSpec.Parse("t", "block = site_hop\nstart = landed\nlanded_body = Mun\nlanded_lat = 0.5\nlanded_lng = -12.25\n");
+            Assert.Equal(BlockTestStart.Landed, spec.Start);
+            Assert.Equal("Mun", spec.LandedBody);
+            Assert.Equal(0.5, spec.LandedLat);
+            Assert.Equal(-12.25, spec.LandedLng);
+        }
+
+        // #1363: a landed test can name its hop's target, which the runner moves to flat ground with the start.
+        [Fact]
+        public void ALandedTestCanNameItsHopTarget()
+        {
+            const string landed = "block = site_hop\nstart = landed\nlanded_body = Mun\nlanded_lat = 0.5\nlanded_lng = -12.25\n";
+            var spec = BlockTestSpec.Parse("t", landed + "hop_lat = 0.5\nhop_lng = -8\n");
+            Assert.Equal(0.5, spec.HopLat);
+            Assert.Equal(-8, spec.HopLng);
+            Assert.Null(BlockTestSpec.Parse("t", landed).HopLat);
+            // Half a target, or one with nowhere landed to hop from.
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", landed + "hop_lat = 0.5\n"));
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = land\nhop_lat = 0.5\nhop_lng = -8\n"));
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", landed + "hop_lat = 95\nhop_lng = -8\n"));
+        }
+
+        [Fact]
+        public void ALandedStartIsRefusedWithoutItsSiteOrWithAnotherStart()
+        {
+            // No body, latitude or longitude: nowhere to put the craft.
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = site_hop\nstart = landed\nlanded_body = Mun\nlanded_lng = 10\n"));
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = site_hop\nstart = landed\nlanded_lat = 0\nlanded_lng = 10\n"));
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = site_hop\nstart = landed\nlanded_body = Mun\nlanded_lat = 0\n"));
+            // A site given to a test that starts in orbit would be silently ignored.
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = land\nlanded_body = Mun\nlanded_lat = 0\nlanded_lng = 10\n"));
+            // A latitude off the globe.
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = site_hop\nstart = landed\nlanded_body = Mun\nlanded_lat = 91\nlanded_lng = 10\n"));
+            // The second craft is placed relative to the craft's orbit, which a landed start doesn't have.
+            Assert.Throws<System.FormatException>(() => BlockTestSpec.Parse("t", "block = land\nstart = landed\nlanded_body = Mun\nlanded_lat = 0\nlanded_lng = 10\ntarget_craft = t.craft\ntarget_landed_ahead = 1\n"));
+        }
+
         [Fact]
         public void AMalformedCheckIsRejectedWhenTheSpecIsRead()
         {

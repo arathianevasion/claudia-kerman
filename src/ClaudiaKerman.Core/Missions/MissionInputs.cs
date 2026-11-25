@@ -57,6 +57,26 @@ namespace ClaudiaKerman.Core.Missions
         {
             return new StartMission(goal, SpendingCap, Model, Settings, Remote, Target, Window) { ContractsAnswered = true, Contracts = contracts };
         }
+
+        /// <summary>#1333: the same start with the player's words changed, still to be answered from the card.</summary>
+        internal StartMission WithGoal(string goal)
+        {
+            return new StartMission(goal, SpendingCap, Model, Settings, Remote, Target, Window);
+        }
+    }
+
+    /// <summary>
+    /// #1333: the player sent words from the prompt while the Contract Check card is up: they become the card's words (the card is worked again
+    /// on them, keeping its ticks), so "Plan without Contracts" has something to plan. Nothing when no card is up.
+    /// </summary>
+    public sealed class GiveContractWords : MissionInput
+    {
+        public readonly string Words;
+
+        public GiveContractWords(string words)
+        {
+            Words = words;
+        }
     }
 
     /// <summary>#1022: "Plan these N" on the Contract check card: the ticked Contracts go to Claudia with the player's words.</summary>

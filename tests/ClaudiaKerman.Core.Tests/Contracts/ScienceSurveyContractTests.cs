@@ -27,7 +27,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return ContractCheck.Work(snapshot, words, false, ContractCheckTests.Margin);
         }
 
-        private static SnapshotContract Science(string id, string body, string location)
+        internal static SnapshotContract Science(string id, string body, string location)
         {
             var contract = ContractCheckTests.Fixture("CollectScience.json");
             contract.Guid = id;
@@ -169,6 +169,42 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AChosenSurveyYieldsOneRequirementPerWaypointAndTheRouteWordsNameEach()
+        {
+            var check = Check(ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "0,10", "0,100", "0,-170")));
+
+            var choice = check.Choose(check.TickedGuids);
+
+            Assert.Equal(3, choice.Requirements.Count);
+            Assert.All(choice.Requirements, r => Assert.NotNull(r.Waypoint));
+            Assert.Equal("orbit the Mun; survey 3 waypoints over the Mun in this order: 0.0° N 170.0° W; 0.0° N 100.0° E; 0.0° N 10.0° E; return to Kerbin", choice.RouteWords);
+            Assert.Contains("- survey 3 waypoints over the Mun in this order: 0.0° N 170.0° W; 0.0° N 100.0° E; 0.0° N 10.0° E [serves: ", choice.Section);
+        }
+
+        [Fact]
+        public void AChosenOrbitalSurveyTellsClaudiaToFlyTheSurveyScheduleFromOneAddonCall()
+        {
+            var check = Check(ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "0,10", "0,100", "0,-170")));
+
+            var section = check.Choose(check.TickedGuids).Section;
+
+            Assert.Contains("ADDONS:CLAUDIA:SURVEYSCHEDULE()", section);
+            Assert.Contains("Coast to each pass's ut and run science there", section);
+            Assert.Contains("report each waypoint you skip: each \"unreachable\" one with the inclination that would reach it", section);
+            Assert.Contains("\"below 10 km\" for a pass higher than that", section);
+        }
+
+        [Fact]
+        public void AGroundSurveyGetsTheLandingNoteAndNotThePassNote()
+        {
+            var check = Check(ContractCheckTests.With(Survey("c-g", "2", "GROUND", "crewReport", 0, "0,0", "0,0.5729578")));
+            var section = check.Choose(check.TickedGuids).Section;
+
+            Assert.Contains(MissionPrompts.SurveyLandingNote, section);
+            Assert.DoesNotContain("Coast to each pass's ut", section);
+        }
+
+        [Fact]
         public void TheWaitForThePassCountsAgainstTheDeadline()
         {
             // About 29,000 s to low Mun orbit; the first pass is up to half a turn of the Mun (69,492 s) later. A deadline 60,000 s out
@@ -269,7 +305,38 @@ namespace ClaudiaKerman.Core.Tests.Contracts
                 "Run science over the survey waypoint", "Return to Kerbin");
 
             Assert.Empty(served.Problems);
-            Assert.All(served.Record, r => Assert.Equal(1, r.Leg));
+            // #1304, #1321: the waypoint and collect science are each tied to the leg that runs the science block, not to the capture.
+            Assert.Equal(2, served.Record.Single(r => r.Key.StartsWith("c-s/", StringComparison.Ordinal)).Leg);
+            Assert.Equal(2, served.Record.Single(r => r.Key.StartsWith("c-sci/", StringComparison.Ordinal)).Leg);
+        }
+
+        [Fact]
+        public void EachSurveyWaypointIsTiedToTheLegThatFliesIt()
+        {
+            var snapshot = ContractCheckTests.With(Survey("c-s", "2", "LOW", "crewReport", 30000, "3,10", "-5,60", "8,120"));
+
+            var served = PlanCheck(snapshot, "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit",
+                "Survey: take a crewReport over each waypoint", "Return to Kerbin");
+
+            Assert.Empty(served.Problems);
+            Assert.Equal(3, served.Record.Count);
+            Assert.All(served.Record, r => Assert.Equal(2, r.Leg));
+            Assert.NotEmpty(served.Legs[2]);
+            Assert.Empty(served.Legs[1]);
+        }
+
+        [Fact]
+        public void AScienceLegStillToFlyAfterTheCraftLeftTheBodyInAFlownLegDoesNotServeIt()
+        {
+            var snapshot = ContractCheckTests.With(Science("c-sci", "2", "Space"));
+            var check = Check(snapshot);
+            var plan = new MissionPlan();
+            foreach (var leg in new[] { "Transfer to the Mun and capture into low orbit", "Return to Kerbin", "Run science on the way home" })
+                plan.Sequences.Add(new PlannedSequence { Name = leg, Intent = "Fly it.", DeltaV = 100 });
+
+            var served = PlanServes.Check(snapshot, plan, check.Choose(check.TickedGuids).Requirements, "", "Kerbin", 2);
+
+            Assert.Equal(-1, served.Record.Single().Leg);
         }
 
         [Fact]

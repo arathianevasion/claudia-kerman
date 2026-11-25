@@ -62,25 +62,41 @@ namespace ClaudiaKerman.Core.Kos
         /// </summary>
         public static Spot Flattest(HeightAt height, double radius, double lat, double lng, double reach, double maxSlope)
         {
-            var best = Measure(height, radius, lat, lng, lat, lng);
-            if (best.Slope <= maxSlope) return best.AsFlat(true);
-            var rings = (int)Math.Floor(Math.Max(0, reach) / SearchStep + 1e-9);
+            return Flattest(height, radius, lat, lng, reach, maxSlope, SearchStep, null);
+        }
+
+        /// <summary>
+        /// <see cref="Flattest(HeightAt, double, double, double, double, double)"/> on rings <paramref name="step"/> metres apart,
+        /// counting only the spots <paramref name="allowed"/> (latitude, longitude) passes, when it isn't null. Null if no spot
+        /// searched is allowed.
+        /// </summary>
+        internal static Spot Flattest(HeightAt height, double radius, double lat, double lng, double reach, double maxSlope, double step,
+            Func<double, double, bool> allowed)
+        {
+            Spot best = null;
+            if (allowed == null || allowed(lat, lng))
+            {
+                best = Measure(height, radius, lat, lng, lat, lng);
+                if (best.Slope <= maxSlope) return best.AsFlat(true);
+            }
+            var rings = (int)Math.Floor(Math.Max(0, reach) / step + 1e-9);
             for (var ring = 1; ring <= rings; ring++)
             {
-                var distance = ring * SearchStep;
-                var count = (int)Math.Ceiling(2 * Math.PI * distance / SearchStep);
+                var distance = ring * step;
+                var count = (int)Math.Ceiling(2 * Math.PI * distance / step);
                 Spot flatHere = null;
                 for (var i = 0; i < count; i++)
                 {
                     var angle = 2 * Math.PI * i / count;
                     var at = Offset(lat, lng, distance * Math.Sin(angle), distance * Math.Cos(angle), radius);
+                    if (allowed != null && !allowed(at[0], at[1])) continue;
                     var spot = Measure(height, radius, lat, lng, at[0], at[1]);
-                    if (spot.Slope < best.Slope) best = spot;
+                    if (best == null || spot.Slope < best.Slope) best = spot;
                     if (spot.Slope <= maxSlope && (flatHere == null || spot.Slope < flatHere.Slope)) flatHere = spot;
                 }
                 if (flatHere != null) return flatHere.AsFlat(true);
             }
-            return best.AsFlat(false);
+            return best == null ? null : best.AsFlat(false);
         }
 
         /// <summary>Metres along the surface between two spots (latitudes and longitudes in degrees).</summary>

@@ -34,6 +34,8 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>#1029: Core's timing of the planned part tests, and the chosen Requirements it was last given.</summary>
             public PartTestWatch PartTests;
             public List<ChosenRequirement> PartTestsFrom;
+            /// <summary>#1305: the Debrief request showed a Requirement the leg meant to meet as unmet, so a Nominal reply is held to Off-Nominal; cleared as the Debrief is rated.</summary>
+            public bool RequirementMissed;
         }
 
         /// <summary>#1029: the Mission's part test watch, given the chosen Requirements again when a revised plan changed them.</summary>
@@ -155,6 +157,8 @@ namespace ClaudiaKerman.Core.Missions
             var served = ServedByFlownLeg(mission).Where(r => r.Manual.Length > 0).ToList();
             if (served.Count == 0) return "";
             var readings = mission.Contracts.Read(_snapshot, served, null);
+            mission.RequirementMissed = ContractWatch.Unmet(readings).Count > 0;
+            CountMisses(mission, readings);
             foreach (var reading in readings.Where(r => r.State == "not met"))
             {
                 // #1244: a station never set up keeps its placement's gap.
@@ -188,6 +192,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The Debrief's Contract data: what changed since the last Debrief, and the state of each Requirement the flown leg served.</summary>
         private string ContractDebriefText(Mission mission)
         {
+            mission.RequirementMissed = false;
             if (mission.ChosenRequirements.Count == 0) return "";
             var text = "";
             var late = RecheckDeadlines(mission);
@@ -197,7 +202,12 @@ namespace ClaudiaKerman.Core.Missions
                     + "For a Contract that will miss, propose dropping it, with the reason, in a revised Mission Plan for the player's Approval.\n";
             var served = ServedByFlownLeg(mission);
             if (served.Count > 0)
-                text += ContractWatch.Line(mission.Contracts.Read(_snapshot, served, mission.ContractGaps));
+            {
+                var readings = mission.Contracts.Read(_snapshot, served, mission.ContractGaps);
+                mission.RequirementMissed = ContractWatch.Unmet(readings).Count > 0;
+                CountMisses(mission, readings);
+                text += ContractWatch.Line(readings);
+            }
             text += mission.Contracts.TakeNews();
             return text.Length == 0 ? "" : "\n" + text.TrimEnd('\n');
         }

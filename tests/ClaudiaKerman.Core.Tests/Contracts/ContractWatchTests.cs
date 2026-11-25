@@ -201,6 +201,55 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains(mission.View.Log, e => e.Text == "Contract dropped from the Mission: Explore the Mun: the game failed it.");
         }
 
+        /// <summary>#1352: the revised plan keeps the Contract with a science leg still to fly at the Mun, where an earlier leg already put the craft.</summary>
+        [Fact]
+        public void ApprovingARevisedPlanThatKeepsTheContractKeepsItChosenAndPostsNoDropNotice()
+        {
+            var sciencePlan = new[] { "Transfer to the Mun and capture into low orbit, running science there", "Return to Kerbin" };
+            var transport = Transport(sciencePlan,
+                OffNominalRevise(),
+                ToolUseStreams.ToolUse("again", (ProposedPlans.ToolName, PlanJson("Transfer to the Mun and capture into low orbit, running science there",
+                    "Run science over the Mun again", "Return to Kerbin"))),
+                MissionPlanKind());
+            var mission = Running(transport, out var start, ScienceContract());
+            mission.Send(ScienceAt(EndedAt, "Incomplete"));
+            mission.Send(new KosRunEnded(Finished(), start.RunId, EndedAt));
+            mission.Send(new UtAdvanced(EndedAt + 61));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            var card = mission.View.Log.Last(e => e.Kind == LogKind.MissionPlan);
+            Assert.DoesNotContain("Drops:", card.Text);
+
+            mission.Send(new Approve());
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.StartsWith("Contract dropped from the Mission", StringComparison.Ordinal));
+
+            // Still Chosen: the game completing it afterwards is counted.
+            var done = ScienceAt(EndedAt + 100, "Complete");
+            done.Contracts.Accepted.Clear();
+            done.Contracts.Finished.Add(new FinishedContract { Guid = "c1", State = "Completed" });
+            mission.Send(done);
+            Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Contract complete:", StringComparison.Ordinal));
+        }
+
+        private static SnapshotContract ScienceContract()
+        {
+            var contract = ScienceSurveyContractTests.Science("c1", "2", "Space");
+            contract.State = "Active";
+            return contract;
+        }
+
+        private static GameSnapshot ScienceAt(double ut, string state)
+        {
+            var contract = ScienceContract();
+            contract.Requirements[0].State = state;
+            var snapshot = ContractCheckTests.With(contract);
+            snapshot.Ut = ut;
+            snapshot.Body = "Mun";
+            snapshot.Situation = "ORBITING";
+            return snapshot;
+        }
+
         private static ScriptedResponse OffNominalRevise()
         {
             return Reply("{\"kind\":\"debrief\",\"say\":\"Off-Nominal: the Contract failed.\",\"reply_intent\":\"none\",\"unsure_because\":\"\",\"sequence_plan\":null,\"alert\":null,"
@@ -331,16 +380,16 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             return contract;
         }
 
-        private MissionControl Running(StreamingFakeTransport transport, out StartScript start)
+        private MissionControl Running(StreamingFakeTransport transport, out StartScript start, SnapshotContract contract = null)
         {
-            var mission = AtSequencePlan(transport);
+            var mission = AtSequencePlan(transport, contract);
             mission.Send(new Approve());
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             start = mission.TakeCommands().OfType<StartScript>().Single();
             return mission;
         }
 
-        private MissionControl AtSequencePlan(StreamingFakeTransport transport)
+        private MissionControl AtSequencePlan(StreamingFakeTransport transport, SnapshotContract contract = null)
         {
             var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-fake-key-0123456789", l => { });
             client.Timing.Wait = (d, c) => { };
@@ -348,7 +397,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Clock = () => _now;
             mission.Send(new SaveLoaded(_save.Path));
             mission.Send(new SceneChanged(GameScene.Flight));
-            mission.Send(ContractCheckTests.With(Contract()));
+            mission.Send(ContractCheckTests.With(contract ?? Contract()));
             mission.Send(new StartMission("", 25m, Sonnet));
             mission.Send(new PlanContracts());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
@@ -361,9 +410,14 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         /// <summary>The plan, its reply and the Sequence Plan; then <paramref name="after"/>, or the fixture's Nominal Debrief with none.</summary>
         private static StreamingFakeTransport Transport(params ScriptedResponse[] after)
         {
+            return Transport(new[] { "Transfer to the Mun and capture into low orbit", "Return to Kerbin" }, after);
+        }
+
+        private static StreamingFakeTransport Transport(string[] firstPlan, params ScriptedResponse[] after)
+        {
             var responses = new List<ScriptedResponse>
             {
-                ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, PlanJson("Transfer to the Mun and capture into low orbit", "Return to Kerbin"))),
+                ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, PlanJson(firstPlan))),
                 MissionPlanKind(),
                 ScriptedResponse.Fixture("mission-sequence-plan.sse"),
             };

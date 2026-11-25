@@ -60,11 +60,26 @@ namespace ClaudiaKerman.Core.Missions
         /// Every Mission request's tools list (ADR 0012): the Planning Tools, then the Reply Tool propose_mission_plan. The same
         /// on every request, whatever the turn may call, so the cached prefix never changes.
         /// </summary>
-        private IList<ToolDefinition> MissionTools()
+        private IList<ToolDefinition> MissionTools(Mission mission)
         {
-            var tools = new List<ToolDefinition>(_tools.Definitions(ToolOffer.Mission));
+            // #1308: the Survey Schedule tool only when a Chosen Contract is an orbital survey; every other Mission sends the list it always did.
+            var tools = new List<ToolDefinition>(_tools.Definitions(ToolOffer.Mission, SurveyWaypointsOf(mission).Count > 0));
             tools.Add(ProposedPlans.Definition());
             return tools;
+        }
+
+        /// <summary>#1308: the orbital and ground survey waypoints of the Mission's Chosen Contracts; empty with none chosen or none surveyed.</summary>
+        private static List<ClaudiaKerman.Core.Contracts.SurveyWaypoint> SurveyWaypointsOf(Mission mission)
+        {
+            return mission.ChosenRequirements.Select(r => r.Waypoint).Where(w => SurveyScheduleTool.IsOrbital(w) || SurveyScheduleTool.IsGround(w)).ToList();
+        }
+
+        /// <summary>#1350: the survey waypoints the tool's answer is worked out over: those the game still shows unmet. The offer keeps every Chosen one (<see cref="SurveyWaypointsOf"/>).</summary>
+        private List<ClaudiaKerman.Core.Contracts.SurveyWaypoint> UnmetSurveyWaypoints(Mission mission, GameSnapshot snapshot)
+        {
+            var chosen = mission.ChosenRequirements.Where(r => SurveyScheduleTool.IsOrbital(r.Waypoint) || SurveyScheduleTool.IsGround(r.Waypoint)).ToList();
+            if (snapshot.Contracts == null) return chosen.Select(r => r.Waypoint).ToList();
+            return SurveyScheduleTool.Unmet(chosen, mission.Contracts.Read(snapshot, chosen, null));
         }
 
         /// <summary>
@@ -86,6 +101,8 @@ namespace ClaudiaKerman.Core.Missions
                 return tool == ProposedPlans.ToolName
                     ? "not available during an Alert; propose_mission_plan is only for a request that asks for a Mission Plan"
                     : "not available during an Alert";
+            if (tool == SurveyScheduleTool.ToolName && (snapshot == null || snapshot.SurveyWaypoints.Count == 0))
+                return "no survey waypoint is left to take from orbit or landed: every one the Chosen Contracts have is met, or none is a survey";
             if (tool == ProposedPlans.ToolName && !TakesMissionPlan(purpose))
                 return "this request doesn't ask for a Mission Plan; propose_mission_plan is only for a request that asks for a Mission Plan, so reply with the kind the mod asked for";
             var where = snapshot != null ? Grounded(snapshot.Situation) : null;
@@ -192,6 +209,7 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.LastEntryPlanned = mission.Plan != null && Entries.IsLastEntry(snapshot, mission.Plan.Sequences, MissionCards.LegInHand(StepsBegun(mission), mission.SequenceCounted));
                 snapshot.MissionGoal = mission.Goal;
                 snapshot.PickedSite = mission.PickedSite;
+                snapshot.SurveyWaypoints = UnmetSurveyWaypoints(mission, snapshot);
             }
             var purpose = turn.Purpose;
             var timeout = _toolCallTimeout;

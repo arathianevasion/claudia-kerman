@@ -10,14 +10,17 @@ namespace ClaudiaKerman.Core.Kos
     /// <summary>The latest logged result of one block test: pass or fail, the UTC date of the run and, for a FAIL, the headline's reason.</summary>
     public sealed class BlockTestLogEntry
     {
-        public BlockTestLogEntry(bool passed, string date, string reason)
+        public BlockTestLogEntry(bool passed, string date, string reason, int sequence = 0)
         {
+            Sequence = sequence;
             Passed = passed;
             Date = date;
             Reason = reason;
         }
 
         public bool Passed { get; private set; }
+        /// <summary>#1361: the position of the run's headline in the log; the largest is the run made last.</summary>
+        public int Sequence { get; private set; }
         /// <summary>The run's UTC date, <c>yyyy-MM-dd</c>.</summary>
         public string Date { get; private set; }
         /// <summary>The text after <c>FAIL &lt;test&gt;:</c> in the headline; empty for a PASS or a FAIL with none.</summary>
@@ -37,6 +40,7 @@ namespace ClaudiaKerman.Core.Kos
         {
             var latest = new Dictionary<string, BlockTestLogEntry>(StringComparer.Ordinal);
             if (string.IsNullOrEmpty(logText)) return latest;
+            var sequence = 0;
             foreach (var raw in logText.Split('\n'))
             {
                 var line = raw.TrimEnd('\r');
@@ -59,7 +63,7 @@ namespace ClaudiaKerman.Core.Kos
                 }
                 name = name.Trim();
                 if (name.Length == 0 || name.IndexOf(' ') >= 0) continue;
-                latest[name] = new BlockTestLogEntry(passed, stamp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), passed ? "" : reason);
+                latest[name] = new BlockTestLogEntry(passed, stamp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), passed ? "" : reason, ++sequence);
             }
             return latest;
         }

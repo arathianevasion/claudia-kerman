@@ -575,7 +575,8 @@ namespace ClaudiaKerman.Adapter
             else ClaudiaSkin.DisabledButton("Plan without Contracts", GUILayout.ExpandWidth(false));
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
-            if (!card.CanPlanWithout) GUILayout.Label("Type your own words to plan without Contracts.", ClaudiaSkin.Secondary);
+            if (card.WordsRefusal.Length > 0) GUILayout.Label(card.WordsRefusal, ClaudiaSkin.Secondary);
+            else if (!card.CanPlanWithout) GUILayout.Label(ContractCheckView.PlanWithoutHint, ClaudiaSkin.Secondary);
             ClaudiaSkin.EndCard();
         }
 

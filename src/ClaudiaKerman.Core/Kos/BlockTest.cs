@@ -40,8 +40,24 @@ namespace ClaudiaKerman.Core.Kos
         public string Block { get; private set; }
         public string Craft { get; private set; }
 
-        /// <summary>Where the craft starts: in orbit (the default) or on Kerbin's launch pad (<c>start = launchpad</c>), where the orbit settings don't apply.</summary>
+        /// <summary>
+        /// Where the craft starts: in orbit (the default), on Kerbin's launch pad (<c>start = launchpad</c>), or landed
+        /// (<c>start = landed</c>, #1355) at <see cref="LandedLat"/>, <see cref="LandedLng"/> on <see cref="LandedBody"/>. The
+        /// orbit settings apply only to an orbit start.
+        /// </summary>
         public BlockTestStart Start { get; private set; }
+
+        /// <summary>#1355: the body a <c>start = landed</c> test stands on (<c>landed_body</c>), and where (<c>landed_lat</c>, <c>landed_lng</c>, degrees).</summary>
+        public string LandedBody { get; private set; }
+        public double LandedLat { get; private set; }
+        public double LandedLng { get; private set; }
+
+        /// <summary>
+        /// #1363: where a landed test hops to (<c>hop_lat</c>, <c>hop_lng</c>, degrees), or null. The runner moves it to flat ground
+        /// as it does the start (<see cref="BlockTestLandedStart.Place"/>) and hands it to <c>test.ks</c> as <c>test_hop_target</c>.
+        /// </summary>
+        public double? HopLat { get; private set; }
+        public double? HopLng { get; private set; }
 
         public string OrbitBody { get; private set; }
         public double OrbitAltitude { get; private set; }
@@ -114,6 +130,8 @@ namespace ClaudiaKerman.Core.Kos
                 PartTests = new List<Contracts.ChosenRequirement>(),
             };
             var targetKeys = false;
+            double? landedLat = null, landedLng = null;
+            var landedKeys = false;
             foreach (var raw in (text ?? "").Replace("\r\n", "\n").Split('\n'))
             {
                 var line = raw.Trim();
@@ -129,8 +147,14 @@ namespace ClaudiaKerman.Core.Kos
                     case "start":
                         if (value == "orbit") spec.Start = BlockTestStart.Orbit;
                         else if (value == "launchpad") spec.Start = BlockTestStart.LaunchPad;
-                        else throw new FormatException(name + ": start must be 'orbit' or 'launchpad', not '" + value + "'");
+                        else if (value == "landed") spec.Start = BlockTestStart.Landed;
+                        else throw new FormatException(name + ": start must be 'orbit', 'launchpad' or 'landed', not '" + value + "'");
                         break;
+                    case "landed_body": spec.LandedBody = value; landedKeys = true; break;
+                    case "landed_lat": landedLat = Number(name, value); landedKeys = true; break;
+                    case "landed_lng": landedLng = Number(name, value); landedKeys = true; break;
+                    case "hop_lat": spec.HopLat = Number(name, value); landedKeys = true; break;
+                    case "hop_lng": spec.HopLng = Number(name, value); landedKeys = true; break;
                     case "orbit_body": spec.OrbitBody = value; break;
                     case "orbit_altitude": spec.OrbitAltitude = Number(name, value); break;
                     case "orbit_inclination": spec.OrbitInclination = Number(name, value); break;
@@ -158,6 +182,20 @@ namespace ClaudiaKerman.Core.Kos
                 }
             }
             if (string.IsNullOrEmpty(spec.Block)) throw new FormatException(name + ": no block = ...");
+            if (landedKeys && spec.Start != BlockTestStart.Landed)
+                throw new FormatException(name + ": landed_* and hop_* place the craft on the ground, so they need start = landed");
+            if (spec.Start == BlockTestStart.Landed)
+            {
+                if (string.IsNullOrEmpty(spec.LandedBody) || !landedLat.HasValue || !landedLng.HasValue)
+                    throw new FormatException(name + ": start = landed needs landed_body, landed_lat and landed_lng");
+                if (Math.Abs(landedLat.Value) > 90) throw new FormatException(name + ": landed_lat is between -90 and 90, not " + landedLat.Value);
+                spec.LandedLat = landedLat.Value;
+                spec.LandedLng = landedLng.Value;
+                if (spec.HopLat.HasValue != spec.HopLng.HasValue) throw new FormatException(name + ": a hop target needs both hop_lat and hop_lng");
+                if (spec.HopLat.HasValue && Math.Abs(spec.HopLat.Value) > 90) throw new FormatException(name + ": hop_lat is between -90 and 90, not " + spec.HopLat.Value);
+                if (!string.IsNullOrEmpty(spec.TargetCraft))
+                    throw new FormatException(name + ": target_craft is placed relative to the craft's orbit, which a landed start doesn't have");
+            }
             if (targetKeys && string.IsNullOrEmpty(spec.TargetCraft))
                 throw new FormatException(name + ": target_orbit_* places a second craft, so it needs target_craft = ...");
             if (spec.TargetLanded && string.IsNullOrEmpty(spec.TargetCraft))
@@ -333,6 +371,7 @@ namespace ClaudiaKerman.Core.Kos
     {
         Orbit,
         LaunchPad,
+        Landed,
     }
 
     public sealed class BlockTestResult

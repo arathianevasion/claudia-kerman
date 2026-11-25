@@ -58,7 +58,7 @@ namespace ClaudiaKerman.KOS
 
         /// <summary>
         /// A block test's second craft landed (#662): upright on <paramref name="body"/> at <paramref name="lat"/>,
-        /// <paramref name="lng"/>, its lowest point a metre over the terrain, named <paramref name="name"/>. KSP settles it on the
+        /// <paramref name="lng"/>, its lowest point <see cref="BlockTestLandedStart.SpawnClearance"/> m over the terrain (#1358: a metre dropped and toppled a lander), named <paramref name="name"/>. KSP settles it on the
         /// ground when it loads.
         /// </summary>
         public static ProtoVessel Landed(string craftPath, CelestialBody body, double lat, double lng, string name)
@@ -76,8 +76,8 @@ namespace ClaudiaKerman.KOS
             node.SetValue("splashed", "False", true);
             node.SetValue("lat", lat.ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
             node.SetValue("lon", lng.ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
-            node.SetValue("alt", (terrain + rootHeight + 1).ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
-            node.SetValue("hgt", (rootHeight + 1).ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
+            node.SetValue("alt", (terrain + rootHeight + BlockTestLandedStart.SpawnClearance).ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
+            node.SetValue("hgt", (rootHeight + BlockTestLandedStart.SpawnClearance).ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
             node.SetValue("rot", KSPUtil.WriteQuaternion(rotation), true);
             return HighLogic.CurrentGame.AddVessel(node);
         }

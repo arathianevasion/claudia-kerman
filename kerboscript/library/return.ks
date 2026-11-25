@@ -270,17 +270,11 @@ function return {
 
   if opt:correction {
     local ticked is claudia_tick(ctx, 0).
-    if ticked <> "" {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, ticked, extra).
-    }
+    if ticked <> "" { return claudia_fail(ctx, ticked, extra). }
     // Halfway to reentry, once out of the moon's sphere of influence; sooner if max_duration ends first (#368).
     local mid is (time:seconds + return_reentry_ut(home:orbit)) / 2.
     local waited is return_leave_moon(ctx, mid).
-    if waited <> "" {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, waited, extra).
-    }
+    if waited <> "" { return claudia_fail(ctx, waited, extra). }
     local fixed is lexicon("reason", "", "dv", 0).
     local needed is false.
     if return_aims(opt) {
@@ -301,10 +295,7 @@ function return {
       if ahead:do = "wait" {
         addons:claudia:encounterwatch(ahead:watch).
         set waited to claudia_warp_to(ctx, ahead:wait_ut, 30, { return addons:claudia:encounterwatchdropped. }).
-        if waited <> "" {
-          claudia_make_safe().
-          return claudia_finish(ctx, false, waited, extra).
-        }
+        if waited <> "" { return claudia_fail(ctx, waited, extra). }
       }
       // 300 s to turn to and lead the burn, as before #450.
       local when is addons:claudia:transferstep(lexicon("timing", "correction", "mid", mid, "now", time:seconds,

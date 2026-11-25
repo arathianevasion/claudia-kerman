@@ -67,6 +67,8 @@ namespace ClaudiaKerman.Core.Missions
             WindowPick,
             /// <summary>The plan waits in an orbit that crosses a moon (#867): its Blocker holds until it is re-planned or the orbit fixed.</summary>
             MoonCrossing,
+            /// <summary>Auto Mode only (#1306): a revised Mission Plan that drops a Contract is the player's to approve.</summary>
+            ContractDrop,
         }
 
         /// <summary>The Auto Mode checkbox, in any stage of a Mission in play. Ticking it lets the check below approve a plan that waits.</summary>
@@ -142,6 +144,12 @@ namespace ClaudiaKerman.Core.Missions
                 if (WindowPickMissing(mission))
                 {
                     WaitsForPlayer(mission, AdvanceWait.WindowPick, "");
+                    return;
+                }
+                // #1306: dropping a Contract is the player's call; a Blackout keeps its own rules.
+                if (!mission.Blackout && mission.PlanDrops.Count > 0)
+                {
+                    WaitsForPlayer(mission, AdvanceWait.ContractDrop, "");
                     return;
                 }
             }
@@ -322,6 +330,7 @@ namespace ClaudiaKerman.Core.Missions
                 case AdvanceWait.NoRoom: mission.AutoModeStop = mission.AutoModeRoomStop; break;
                 case AdvanceWait.WindowPick: mission.AutoModeStop = AutoModeWaitsFor("a Transfer Window to pick"); break;
                 case AdvanceWait.MoonCrossing: mission.AutoModeStop = AutoModeWaitsFor("a Blocker: " + mission.Crossing.Reason); break;
+                case AdvanceWait.ContractDrop: mission.AutoModeStop = AutoModeWaitsFor(ContractDropWait); break;
             }
         }
 
@@ -396,6 +405,8 @@ namespace ClaudiaKerman.Core.Missions
                 + ", held $" + Dollars(mission.Held + mission.CompactionCharge) + ", reserve $" + Dollars(reserve)
                 + " for those two requests' worst case: Raise cap to $" + Dollars(needed) + " to carry on, or approve the plan yourself.";
         }
+        /// <summary>#1306: what Auto Mode waits for on a revised Mission Plan that drops a Contract.</summary>
+        private const string ContractDropWait = "a revised Mission Plan that drops a Contract";
         /// <summary>Logged after a plan's card when Auto Mode approves it.</summary>
         private const string AutoModeApprovedNote = "Approved by Auto Mode.";
         /// <summary>Logged instead when Auto Mode approves at a reached Due Time (#967).</summary>

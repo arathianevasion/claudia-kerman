@@ -115,11 +115,14 @@ namespace ClaudiaKerman.Adapter
             }
             ReadTargets(snapshot, vessel);
             snapshot.Contracts = ContractReader.Read();
+            // #1308: survey_schedule's trigger range is the one ADDONS:CLAUDIA:SURVEYSCHEDULE reads, so the two give the same passes.
+            snapshot.SurveyTriggerRange = SurveyWaypointReader.TriggerRange();
             ReadContractVessels(snapshot);
             return snapshot;
         }
 
-        private static SnapshotOrbit OrbitOf(Orbit orbit)
+        /// <summary>The Game Snapshot's elements for a game orbit; #1341: the Survey Plane call reads the craft's orbit the same way, so it and the Planning Tool start from the same elements.</summary>
+        public static SnapshotOrbit OrbitOf(Orbit orbit)
         {
             return new SnapshotOrbit
             {

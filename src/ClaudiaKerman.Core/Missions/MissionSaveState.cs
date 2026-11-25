@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using ClaudiaKerman.Core.Claude;
 
 namespace ClaudiaKerman.Core.Missions
@@ -108,6 +109,8 @@ namespace ClaudiaKerman.Core.Missions
         public string RunEvents = "";
         /// <summary>Game time the current or last run began, s of UT; 0 in older saves.</summary>
         public double RunStartUt;
+        /// <summary>#1343: the UT of the survey's first Sequence Plan at its body; 0 before it.</summary>
+        public double SurveyStartUt;
         /// <summary>#867: the bodies the current or last run's <c>transfer_to</c> calls aimed at, comma-separated; "" for none and in older saves.</summary>
         public string RunTransfers = "";
         /// <summary>#871: the current or last run's Sequence Plan name and intent; "" for none and in older saves.</summary>
@@ -164,6 +167,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>A return this run flew no Course Correction (#899).</summary>
         public bool NoCorrection;
         public Tools.PickedSite PickedSite;
+        /// <summary>#1331: how many Debriefs showed each Contract Requirement not met, by its key (#1306); empty in older saves, which count afresh.</summary>
+        public readonly Dictionary<string, int> RequirementMisses = new Dictionary<string, int>();
         public MissionPlan MissionPlan;
         /// <summary>The current Sequence Plan: the one awaiting Approval, running, or just run.</summary>
         public SequencePlan SequencePlan;
@@ -226,6 +231,7 @@ namespace ClaudiaKerman.Core.Missions
             if (Crossings.Length > 0) values["crossings"] = Crossings;
             if (RunEvents.Length > 0) values["runEvents"] = RunEvents;
             if (RunStartUt != 0) values["runStartUt"] = RunStartUt.ToString("R", CultureInfo.InvariantCulture);
+            if (SurveyStartUt != 0) values["surveyStartUt"] = SurveyStartUt.ToString("R", CultureInfo.InvariantCulture);
             if (RunTransfers.Length > 0) values["runTransfers"] = RunTransfers;
             if (RunWords.Length > 0) values["runWords"] = RunWords;
             if (CrewDeaths.Length > 0) values["crewDeaths"] = CrewDeaths;
@@ -275,6 +281,7 @@ namespace ClaudiaKerman.Core.Missions
             if (WindowPickCarried) values["windowPickCarried"] = "true";
             if (WindowPickSpent) values["windowPickSpent"] = "true";
             if (ReturnWindowUt.HasValue) values["returnWindowUt"] = ReturnWindowUt.Value.ToString("R", CultureInfo.InvariantCulture);
+            if (RequirementMisses.Count > 0) values["requirementMisses"] = WriteMisses(RequirementMisses);
             foreach (var setting in Settings) values[SettingPrefix + setting.Key] = setting.Value;
             for (var i = 0; i < UnsafeProblems.Count; i++) values[UnsafeProblemPrefix + i.ToString(CultureInfo.InvariantCulture)] = UnsafeProblems[i];
             if (QueuedEntries > 0) values["queuedEntries"] = QueuedEntries.ToString(CultureInfo.InvariantCulture);
@@ -349,6 +356,8 @@ namespace ClaudiaKerman.Core.Missions
             };
             double runStart;
             if (double.TryParse(Get(values, "runStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out runStart)) state.RunStartUt = runStart;
+            double surveyStart;
+            if (double.TryParse(Get(values, "surveyStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out surveyStart)) state.SurveyStartUt = surveyStart;
             state.RunTransfers = Get(values, "runTransfers");
             state.RunWords = Get(values, "runWords");
             state.CrewDeaths = Get(values, "crewDeaths");
@@ -411,6 +420,7 @@ namespace ClaudiaKerman.Core.Missions
             for (var i = 0; values.TryGetValue(BlackoutRevisionPrefix + i.ToString(CultureInfo.InvariantCulture), out revision); i++) state.BlackoutRevisions.Add(revision);
             string held;
             for (var i = 0; values.TryGetValue(HeldWordPrefix + i.ToString(CultureInfo.InvariantCulture), out held); i++) state.HeldWords.Add(held);
+            ReadMisses(Get(values, "requirementMisses"), state.RequirementMisses);
             string plans;
             if (values.TryGetValue("plans", out plans))
             {
@@ -423,6 +433,32 @@ namespace ClaudiaKerman.Core.Missions
                 }
             }
             return state;
+        }
+
+        private static string WriteMisses(IDictionary<string, int> misses)
+        {
+            var json = new JsonWriter().BeginArray();
+            foreach (var miss in misses) json.BeginObject().Field("key", miss.Key).Field("misses", (long)miss.Value).EndObject();
+            return json.EndArray().ToString();
+        }
+
+        /// <summary>The counts in <paramref name="text"/> (WriteMisses' JSON) into <paramref name="into"/>; an unreadable text leaves none, so the counts start afresh.</summary>
+        private static void ReadMisses(string text, IDictionary<string, int> into)
+        {
+            if (text.Length == 0) return;
+            try
+            {
+                foreach (var node in JsonReader.Parse(text).Items.Where(n => n.Kind == JsonKind.Object))
+                {
+                    var key = JsonNode.Str(node["key"]);
+                    var count = (int)(JsonNode.Double(node["misses"]) ?? 0);
+                    if (!string.IsNullOrEmpty(key) && count > 0) into[key] = count;
+                }
+            }
+            catch (JsonException)
+            {
+                into.Clear();
+            }
         }
 
         private static string Escape(string text)

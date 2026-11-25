@@ -343,6 +343,34 @@ namespace ClaudiaKerman.Core.Missions
             + "corrective_sequence or revised_plan; for Failed reduced_goal (follow_up_text is the reduced Mission Goal, which the "
             + "player must approve) or end_mission; for Nominal none. If the script printed an error, quote what matters of it in what_happened.";
 
+        /// <summary>
+        /// #1307: in the Contract Route when a chosen survey has waypoints taken from orbit: the Survey Schedule comes from one addon call,
+        /// so the survey leg's script never works out the ground track itself (#1287 put all five scans at the first waypoint).
+        /// </summary>
+        public const string SurveyScheduleNote = "Survey passes: in the survey leg's script, once in the survey orbit, ADDONS:CLAUDIA:SURVEYSCHEDULE() "
+            + "gives the mod's Survey Schedule for the craft's orbit: a list, in flying order, of lexicons with waypoint (\"3.0° N 10.0° E\"), ut, "
+            + "altitude, out_of_band (the Band the pass is outside, e.g. \"below 10 km\" for a pass higher than that; \"\" if inside) and unreachable (with reaching_inclination); a line with no ut has no pass, unless it has a landing number (see Survey landings). Coast to each "
+            + "pass's ut and run science there: coast straight to that ut in one warp, never one orbit at a time looking for a pass, and don't work out the ground track yourself. "
+            + "The schedule lists only the passes within 12 game hours (43,200 s) of now, one window shared by every waypoint on the Survey Plane; a line with left_for_next_plane true passes later and waits for the next Survey Plane. "
+            + "Put each pass in the Script Result, and report each "
+            + "waypoint you skip: each \"unreachable\" one with the inclination that would reach it, each left_for_next_plane one as left for a later plane, and any missed or with no ut. "
+            + "While you write the survey's Sequence Plan, the survey_schedule tool gives you the same schedule: quote the pass times, the total wait "
+            + "(total_wait_s, the window's), each unreachable waypoint and each waypoint left for the next Survey Plane in the plan, and set its expected duration from them (the wait plus the passes' own time). "
+            + "Survey Plane: the survey_schedule tool's survey_plane (and ADDONS:CLAUDIA:SURVEYPLANE() in a script) is the plane, inclination and node, "
+            + "that passes over the most remaining waypoints in one revolution, with node, the one burn that reaches it, when one is given. "
+            + "In the script, when one is given, ADD NODE(ut, radial, normal, prograde) from it and fly it with exec_node, then call SURVEYSCHEDULE() for the passes; "
+            + "with none, the craft's own plane serves. In the Sequence Plan, quote the Survey Plane and its burn (burn time and delta_v).";
+
+        /// <summary>
+        /// #1311: in the Contract Route when a chosen survey has waypoints taken landed: the Survey Schedule gives their landing order, and the
+        /// leg lands at the first with <c>land</c> and flies <c>site_hop</c> to each next.
+        /// </summary>
+        public const string SurveyLandingNote = "Survey landings: the survey_schedule tool (and ADDONS:CLAUDIA:SURVEYSCHEDULE() in a script; its lines with a landing number) "
+            + "gives the landed sites in landing order, each with needs_precision and radius_unknown. Plan the leg to land at the first site with land, then fly site_hop to each next site in landing order, "
+            + "running the science block with the survey's experiment at each (a site on EVA is the player's Manual stretch there). "
+            + "A site marked needs_precision has a Contract radius tighter than land's aim of about 5 km: say so in the plan; don't promise it. "
+            + "A site marked radius_unknown has a Contract radius the mod couldn't read: treat it as needing precision, the same way.";
+
         /// <summary>Added to the Debrief notice when a science call kept data on board (#612): steers the next leg to a transmit-only call.</summary>
         public const string ScienceKeptNoticeLine = " The data is aboard; sending it needs no new landing.";
 

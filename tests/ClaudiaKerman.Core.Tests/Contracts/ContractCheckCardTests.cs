@@ -26,8 +26,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         private StreamingFakeTransport _transport;
         private CraftCheckRouter _router;
 
+        private readonly List<MissionControl> _missions = new List<MissionControl>();
+
         public void Dispose()
         {
+            // A Start with the player's words begins a Craft Check in the background, and it writes under the save's craft-checks
+            // folder; let it finish before the save is deleted, or the delete races it ("Directory not empty", #1323).
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (_missions.Any(m => m.View.CraftCheck.State == CraftCheckState.Running) && DateTime.UtcNow < deadline)
+            {
+                _background.Drain();
+                Thread.Sleep(2);
+            }
+            _background.Drain();
             _save.Dispose();
         }
 
@@ -42,6 +53,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Send(new SceneChanged(GameScene.Flight));
             // A crewed Mission started in Flight: the Mun Shot's crew is Claudia, aboard already.
             mission.Send(snapshot);
+            _missions.Add(mission);
             return mission;
         }
 
@@ -378,6 +390,103 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("Fly to Minmus and capture into orbit.", text);
             Assert.DoesNotContain("Contract Route", text);
             Assert.Equal("Fly to Minmus and capture into orbit.", mission.View.Goal);
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptWithTheCardUpAndEveryContractUntickedLetPlanWithoutContractsPlanThemAlone()
+        {
+            // #1333: the dead end the player met: nothing typed at Start Mission, every Contract unticked, then words given at the prompt.
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(Start(""));
+            foreach (var row in mission.View.ContractCheck.Rows.Where(r => r.Ticked).ToList()) mission.Send(new TickContract(row.Guid, false));
+            Assert.False(mission.View.ContractCheck.CanPlan);
+            Assert.False(mission.View.ContractCheck.CanPlanWithout);
+            Assert.Equal("Type the goal below and press Enter to plan without Contracts.", ContractCheckView.PlanWithoutHint);
+
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+
+            var card = mission.View.ContractCheck;
+            Assert.Equal("Fly to Minmus and capture into orbit.", card.Words);
+            Assert.True(card.CanPlanWithout);
+            Assert.False(card.CanPlan);
+            Assert.Equal("Pick a Contract", card.PlanLabel);
+            Assert.Equal(0, Requests);
+
+            mission.Send(new PlanWithoutContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            var text = Text(Assert.Single(_transport.Requests));
+            Assert.Contains("Fly to Minmus and capture into orbit.", text);
+            Assert.DoesNotContain("Contract Route", text);
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptThatDontFitTheCraftSayWhyOnTheCardAndTheHintDoesntAskForWordsAgain()
+        {
+            // #1336: the card used to drop them, logging only, and the hint still told the player to type below.
+            var snapshot = TwoAtTheMunAndAHaul();
+            var mission = Control(snapshot);
+            mission.Send(Start(""));
+            Assert.Equal("", mission.View.ContractCheck.WordsRefusal);
+            foreach (var stage in snapshot.Stages) stage.DeltaVVac *= 0.25;
+
+            mission.Send(new GiveContractWords("Fly to Minmus, capture into orbit and land, then return to Kerbin."));
+
+            var card = mission.View.ContractCheck;
+            Assert.Equal("These words don't fit this craft, so the card didn't take them.", card.WordsRefusal);
+            Assert.False(card.CanPlanWithout);
+            Assert.Equal(0, Requests);
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptWithTheCraftsDeltaVUnknownSayWhyOnTheCard()
+        {
+            var snapshot = TwoAtTheMunAndAHaul();
+            var mission = Control(snapshot);
+            mission.Send(Start(""));
+            snapshot.DeltaVSimulator = false;
+
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+
+            Assert.Equal("The craft's delta-v is unknown, so the card couldn't take these words.", mission.View.ContractCheck.WordsRefusal);
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptKeepTheTicksTheCardHad()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(Start(""));
+            var before = mission.View.ContractCheck.Rows.Where(r => r.Ticked).Select(r => r.Guid).ToList();
+            Assert.NotEmpty(before);
+
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+
+            Assert.Equal(before, mission.View.ContractCheck.Rows.Where(r => r.Ticked).Select(r => r.Guid).ToList());
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptOnAReopenedCardSetTheCardsWords()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new ChangeContracts());
+            foreach (var row in mission.View.ContractCheck.Rows.Where(r => r.Ticked).ToList()) mission.Send(new TickContract(row.Guid, false));
+            Assert.False(mission.View.ContractCheck.CanPlanWithout);
+
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+
+            Assert.True(mission.View.ContractCheck.CanPlanWithout);
+            Assert.Equal("Fly to Minmus and capture into orbit.", mission.View.ContractCheck.Words);
+        }
+
+        [Fact]
+        public void WordsSentFromThePromptWithNoCardUpDoNothing()
+        {
+            var mission = Control(TwoAtTheMunAndAHaul());
+            mission.Send(new GiveContractWords("Fly to Minmus and capture into orbit."));
+            Assert.Null(mission.View.ContractCheck);
+            Assert.Equal(0, Requests);
         }
 
         [Fact]

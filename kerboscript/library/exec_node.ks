@@ -26,7 +26,7 @@
 //| warped to an hour out first, without turning. Fails with "no maneuver node",
 //| "no thrust", "no usable torque" (no reaction wheel running and no RCS on to turn with), a node
 //| or lead it can't read, "residual <x> m/s is over max_residual", out of fuel, or an abort; on
-//| failure the node is left in place.
+//| failure the node is removed too (node_removed).
 //| Plan the node yourself first (ADD NODE(time, radial, normal, prograde)); the node must be far
 //| enough ahead to turn and start the burn (lead plus about a minute).
 //| Example: `add node(time:seconds + 600, 0, 0, 120). local res is exec_node(). addons:claudia:report(res).`
@@ -103,6 +103,7 @@ function exec_node {
   }
   set extra:node_dv to round(nd:deltav:mag, 3).
   set extra:residual to extra:node_dv.
+  if ctx:nodes0:contains(claudia_node_sig(nd)) { ctx:nodes0:remove(ctx:nodes0:find(claudia_node_sig(nd))). } // The node to fly is this block's: a failure removes it too (#1357).
 
   // The craft turns to the burn on a Coast, on its wheels and RCS: one that can't fails here, before
   // staging changes it. The call is block-internal (ADR 0006, ADR 0007), so it sits in the block.
@@ -127,15 +128,9 @@ function exec_node {
   local burn is claudia_warp_to_burn(ctx, nd, opt:lead, turn:turn_time).
   set extra:turn_s to burn:turn_s.
   set extra:not_aligned to burn:not_aligned.
-  if burn:error <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, burn:error, extra).
-  }
+  if burn:error <> "" { return claudia_fail(ctx, burn:error, extra). }
   local resolved is exec_node_resolve(opt:resolve, nd).
-  if resolved <> "" {
-    claudia_make_safe().
-    return claudia_finish(ctx, false, resolved, extra).
-  }
+  if resolved <> "" { return claudia_fail(ctx, resolved, extra). }
   set extra:node_dv to round(nd:deltav:mag, 3).
 
   local steer is nd:deltav.
@@ -197,9 +192,8 @@ function exec_node {
   if opt:rcs_trim and nd:deltav:mag > opt:max_residual {
     local trimmed is exec_node_rcs_trim(ctx, nd, done_dv).
     if trimmed <> "" {
-      claudia_make_safe().
       set extra:residual to round(nd:deltav:mag, 3).
-      return claudia_finish(ctx, false, trimmed, extra).
+      return claudia_fail(ctx, trimmed, extra).
     }
   }
 
@@ -207,9 +201,8 @@ function exec_node {
   if exec_node_finish(nd:deltav:mag, extra:node_dv, opt:max_residual, opt:finish_fraction) = "short" {
     local trimmed is claudia_trim(ctx, { return nd:deltav. }, done_dv).
     if trimmed <> "" {
-      claudia_make_safe().
       set extra:residual to round(nd:deltav:mag, 3).
-      return claudia_finish(ctx, false, trimmed, extra).
+      return claudia_fail(ctx, trimmed, extra).
     }
   }
 
@@ -229,13 +222,7 @@ function exec_node {
 // "short" over it but within fraction of node_dv (a trim finishes it), else "over" (a failure). Pure.
 function exec_node_finish {
   parameter residual, node_dv, max_residual, fraction.
-  if residual <= max_residual {
-    return "done".
-  }
-  if residual <= fraction * node_dv {
-    return "short".
-  }
-  return "over".
+  return choose "done" if residual <= max_residual else choose "short" if residual <= fraction * node_dv else "over".
 }
 
 // The UT a burn starting at now should have its node at: lead after the start, which is start_ut

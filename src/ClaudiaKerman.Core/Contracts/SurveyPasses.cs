@@ -81,8 +81,7 @@ namespace ClaudiaKerman.Core.Contracts
             if (waypoints.Count == 0) return leg;
             var polar = map.Leg("polar:" + body.Name);
             if (polar != null && waypoints.Any(w => Math.Abs(w.Latitude) >= PolarFrom)) leg.DeltaV += polar.DeltaV;
-            var sites = waypoints.OrderBy(w => w.Key, StringComparer.Ordinal).ToList();
-            var order = sites.Count <= MostSitesToPermute ? Permutations(sites).OrderBy(o => Travel(body, o)).First() : NearestNext(body, sites);
+            var order = LandingOrder(body.Radius, waypoints);
             var ascend = map.Leg("ascend:" + body.Name);
             var land = map.Leg("land:" + body.Name);
             var orbitAndBack = ascend != null && land != null ? ascend.DeltaV + land.DeltaV : double.MaxValue;
@@ -97,6 +96,14 @@ namespace ClaudiaKerman.Core.Contracts
                 leg.DeltaV += Math.Min(hop, orbitAndBack);
             }
             return leg;
+        }
+
+        /// <summary>#1311: the order a ground survey's sites are landed on: least travel between them, as the route prices it; shared with the Survey Schedule.</summary>
+        internal static List<SurveyWaypoint> LandingOrder(double radius, IList<SurveyWaypoint> waypoints)
+        {
+            var body = new SnapshotBody { Radius = radius };
+            var sites = waypoints.OrderBy(w => w.Key, StringComparer.Ordinal).ToList();
+            return sites.Count <= MostSitesToPermute ? Permutations(sites).OrderBy(o => Travel(body, o)).First() : NearestNext(body, sites);
         }
 
         /// <summary>The great-circle distance between two waypoints on the surface, m.</summary>

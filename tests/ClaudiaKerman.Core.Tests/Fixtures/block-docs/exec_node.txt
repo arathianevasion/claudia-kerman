@@ -18,7 +18,7 @@ before the Burn Start (its turn time when the turn was given up); a Burn Start o
 warped to an hour out first, without turning. Fails with "no maneuver node",
 "no thrust", "no usable torque" (no reaction wheel running and no RCS on to turn with), a node
 or lead it can't read, "residual <x> m/s is over max_residual", out of fuel, or an abort; on
-failure the node is left in place.
+failure the node is removed too (node_removed).
 Plan the node yourself first (ADD NODE(time, radial, normal, prograde)); the node must be far
 enough ahead to turn and start the burn (lead plus about a minute).
 Example: `add node(time:seconds + 600, 0, 0, 120). local res is exec_node(). addons:claudia:report(res).`

@@ -161,6 +161,7 @@ namespace ClaudiaKerman.Core.Tools
         public const int MaxResultChars = 3500;
 
         private readonly List<IPlanningTool> _tools;
+        private readonly SurveyScheduleTool _survey = new SurveyScheduleTool();
 
         internal PlanningTools(IEnumerable<IPlanningTool> tools)
         {
@@ -184,9 +185,18 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The tools list for a request kind, in registration order: identical on every request of the kind.</summary>
         public IList<ToolDefinition> Definitions(ToolOffer offer)
         {
-            return _tools.Where(t => offer == ToolOffer.Mission || t.OnCraftCheck)
-                .Select(t => new ToolDefinition { Name = t.Name, Description = t.Description, InputSchemaJson = t.InputSchemaJson, Strict = false })
-                .ToList();
+            return Definitions(offer, false);
+        }
+
+        /// <summary>
+        /// The same, with the Survey Schedule tool (#1308) last when <paramref name="survey"/>: it is offered only on a Mission whose Chosen
+        /// Contracts include an orbital survey, so a flight without one sends the list it always did.
+        /// </summary>
+        public IList<ToolDefinition> Definitions(ToolOffer offer, bool survey)
+        {
+            var tools = _tools.Where(t => offer == ToolOffer.Mission || t.OnCraftCheck).ToList();
+            if (survey && offer == ToolOffer.Mission) tools.Add(_survey);
+            return tools.Select(t => new ToolDefinition { Name = t.Name, Description = t.Description, InputSchemaJson = t.InputSchemaJson, Strict = false }).ToList();
         }
 
         /// <summary>The tool's plain words for the Capcom strip; "calculating" for a name the module doesn't know.</summary>
@@ -231,7 +241,7 @@ namespace ClaudiaKerman.Core.Tools
 
         private IPlanningTool Find(string name)
         {
-            return _tools.FirstOrDefault(t => t.Name == name);
+            return name == SurveyScheduleTool.ToolName ? _survey : _tools.FirstOrDefault(t => t.Name == name);
         }
     }
 

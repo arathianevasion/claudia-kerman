@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Config;
+using ClaudiaKerman.Core.Contracts;
 using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Ui;
@@ -155,6 +156,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is PlanContracts) ContractsPlanned();
             else if (input is TickContract) { if (_contractCheck != null) { _contractCheck.Tick(((TickContract)input).Guid, ((TickContract)input).Ticked); LogEdit("TickContract", ((TickContract)input).Guid); } }
             else if (input is SwapInContract) { if (_contractCheck != null) { _contractCheck.SwapIn(((SwapInContract)input).Guid); LogEdit("SwapInContract", ((SwapInContract)input).Guid); } }
+            else if (input is GiveContractWords) ContractWordsGiven(((GiveContractWords)input).Words);
             else if (input is PlanWithoutContracts) PlannedWithoutContracts();
             else if (input is ChangeContracts) ContractsChanged();
             CheckDue();
@@ -1322,7 +1324,7 @@ namespace ClaudiaKerman.Core.Missions
                 OutputSchemaJson = MissionReply.MissionSchemaJson,
                 NoToolChoice = turn.ToolLimitSent || turn.PlanCallRefused || TakesNoTool(turn.Purpose),
             };
-            request.Tools.AddRange(MissionTools());
+            request.Tools.AddRange(MissionTools(mission));
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission, turn.CompactionBase, turn.CompactedBase));
             request.Messages.AddRange(turn.Messages);
@@ -2138,6 +2140,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             // #867: a Due Time the mod set just now (a window's) was not there for the plan's figures: its wait is judged here, a Blocker with no correction.
             CrossingAtOffer(mission, plan);
+            SurveyBegins(mission);
             if (!mission.SequenceCounted)
             {
                 mission.SequencesProposed++;
@@ -2198,6 +2201,14 @@ namespace ClaudiaKerman.Core.Missions
             {
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, LandingLine.NoCorrectionNotice);
+            }
+            // #1305: so does a Requirement the leg was meant to meet that the game shows unmet; the rebuilt log finds the rule in the request.
+            var missed = mission.RequirementMissed;
+            mission.RequirementMissed = false;
+            if (missed && nominal)
+            {
+                debrief.Outcome = "Off-Nominal";
+                Note(LogKind.Notice, ContractWatch.OffNominalNotice);
             }
             SaveRating(mission, messages, telemetryRated, noCorrection && nominal);
             // Ticking twice is harmless: a Debrief already in a log rebuilt from the transcript has ticked them once.

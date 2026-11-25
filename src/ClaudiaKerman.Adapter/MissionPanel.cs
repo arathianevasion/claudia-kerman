@@ -220,8 +220,8 @@ namespace ClaudiaKerman.Adapter
             _log.SetupModel = model;
             _log.SetupRemote = _setup.Remote;
             _log.Estimate = settingUp && form.Estimates.TryGetValue(model, out estimate) ? estimate : (decimal?)null;
-            _log.CheckAgain = () => _goal.Length > 0 && form.Models.Count > 0 && _view.CraftCheck.State != CraftCheckState.Running
-                ? new RunCraftCheck(_goal, _setup.SpendingCap, model, _setup.Remote, _targetPick, _windowPick) : null;
+            _log.CheckAgain = () => PendingGoal().Length > 0 && form.Models.Count > 0 && _view.CraftCheck.State != CraftCheckState.Running
+                ? new RunCraftCheck(PinPending(), _setup.SpendingCap, model, _setup.Remote, _targetPick, _windowPick) : null;
         }
 
         private void Styles(int rightRoom)
@@ -289,6 +289,27 @@ namespace ClaudiaKerman.Adapter
                 _choice = TargetVessel.Choose(goal, _targetPick, facts);
             }
             return _choice;
+        }
+
+        /// <summary>#1333: the goal Start Mission and Check craft take: the pinned one, or with none pinned the text left unsent in the prompt.</summary>
+        private string PendingGoal()
+        {
+            var text = _typed.Trim();
+            return _goal.Length > 0 ? _goal : ClearRules.IsCommand(text) ? "" : text;
+        }
+
+        /// <summary>#1333: pins the text left unsent as the goal (when none is pinned), as sending it with Enter would, and gives the goal.</summary>
+        private string PinPending()
+        {
+            var pending = PendingGoal();
+            if (_goal.Length == 0 && pending.Length > 0)
+            {
+                _goal = pending;
+                _editingGoal = false;
+                _showAllGoal = false;
+                _typed = "";
+            }
+            return _goal;
         }
 
         private string TargetGoalNow()
@@ -549,6 +570,9 @@ namespace ClaudiaKerman.Adapter
                 _goal = text;
                 _editingGoal = false;
                 _showAllGoal = false;
+                // #1333: with the Contract Check card up, the words are the card's words too.
+                var card = _view.ContractCheck;
+                if (card != null && !card.Folded) _send(new GiveContractWords(text));
             }
             else
             {
@@ -658,20 +682,20 @@ namespace ClaudiaKerman.Adapter
             GUILayout.Space(ClaudiaSkin.Padding);
             // Start Mission runs the Craft Check first; it is closed on a Blocker and until every Warning is acknowledged.
             // #1022: with accepted Contracts, nothing typed is a start too (the Contracts are the goal); pressed again, it posts a new Contract check card.
-            var canStart = _setup.SpendingCap > 0 && (_goal.Length > 0 || form.ContractsAccepted > 0) && form.Models.Count > 0 && check.StartAllowed && !form.WindowPickMissing;
+            var canStart = _setup.SpendingCap > 0 && (PendingGoal().Length > 0 || form.ContractsAccepted > 0) && form.Models.Count > 0 && check.StartAllowed && !form.WindowPickMissing;
             if (canStart)
             {
                 // The goal stays until the Mission has actually started: the Craft Check may still hold it back.
                 if (ClaudiaSkin.PrimaryButton("Start Mission", GUILayout.ExpandWidth(true), GUILayout.MinWidth(0)))
-                    _send(new StartMission(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Settings.Copy(), _setup.Remote, _targetPick, _windowPick));
+                    _send(new StartMission(PinPending(), _setup.SpendingCap, _setup.ModelFor(form), _setup.Settings.Copy(), _setup.Remote, _targetPick, _windowPick));
             }
             else
             {
                 ClaudiaSkin.DisabledButton(MissionWindowRules.StartLabel(_view), GUILayout.ExpandWidth(true), GUILayout.MinWidth(0));
             }
-            GUI.enabled = _goal.Length > 0 && form.Models.Count > 0 && check.State != CraftCheckState.Running;
+            GUI.enabled = PendingGoal().Length > 0 && form.Models.Count > 0 && check.State != CraftCheckState.Running;
             if (ClaudiaSkin.SecondaryButton(check.State == CraftCheckState.None ? "Check craft" : "Check again", GUILayout.ExpandWidth(false)))
-                _send(new RunCraftCheck(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Remote, _targetPick, _windowPick));
+                _send(new RunCraftCheck(PinPending(), _setup.SpendingCap, _setup.ModelFor(form), _setup.Remote, _targetPick, _windowPick));
             GUI.enabled = true;
             GUILayout.Space(ClaudiaSkin.Padding);
             GUILayout.EndHorizontal();

@@ -75,7 +75,7 @@ namespace ClaudiaKerman.Core.Missions
             mission.BlackoutWaitNoted = false;
             const string text = "No link to Kerbin: Blackout. Claudia flies the approved Mission Plan; her messages wait for the link, and yours are held.";
             Note(LogKind.Notice, text);
-            // No screen message of its own: the warp drop (ADR 0004) and the strip's "No link" show the Blackout begin.
+            // No screen message of its own: the strip's "No link" shows the Blackout begin. A link loss neither drops nor holds warp (ADR 0004, changed by #417).
             Event(mission, "blackout", "the link to Kerbin was lost");
             // Abort is disabled: a recommendation on show goes, and Alerts not yet sent are recorded instead. Under Auto Mode
             // the recommendation stays, for the approve-in-advance check to take (MissionControl.AutoMode.cs).

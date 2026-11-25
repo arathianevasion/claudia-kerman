@@ -39,6 +39,8 @@ namespace ClaudiaKerman.Core.Contracts
         public string Vessel = "";
         /// <summary>#1033: the orbit the rendezvous with that vessel matches; null when none.</summary>
         public ContractOrbit RendezvousOrbit;
+        /// <summary>#1304: the survey waypoint it is met at; null for every other kind.</summary>
+        public SurveyWaypoint Waypoint;
     }
 
     /// <summary>The Contract Route's record of one chosen Requirement: the leg of the Mission Plan that serves it, -1 when none does.</summary>
@@ -106,6 +108,7 @@ namespace ClaudiaKerman.Core.Contracts
             var whole = Read(snapshot, plan, home);
             var all = whole.Where(t => t.Leg >= from).ToList();
             var touches = all.Where(t => !t.Child).ToList();
+            var wholeTouches = whole.Where(t => !t.Child).ToList();
             var orbitLegs = new Dictionary<string, Touch>();
             var tags = plan.Sequences.Select(_ => new List<string>()).ToList();
             var reading = WordsReading.Read(snapshot, words, home);
@@ -125,19 +128,24 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 var served = new ServedRequirement { Key = requirement.Key, Title = requirement.Title, Words = requirement.Words };
                 result.Record.Add(served);
-                var by = requirement.Manual.Length > 0 ? ManualTouch(snapshot, whole.Where(t => !t.Child).ToList(), requirement, result.Problems, plan, from)
+                var by = requirement.Manual.Length > 0 ? ManualTouch(snapshot, wholeTouches, requirement, result.Problems, plan, from)
                     : requirement.Test != null && requirement.Test.Band != null && requirement.Test.Window != TestWindow.None
                     ? TestTouch(snapshot, touches, requirement, result.Problems, plan, judge, home)
                     : requirement.Orbit != null ? OrbitTouch(snapshot, all, requirement, result.Problems, plan)
-                    : ServingTouch(requirement.ChildMay ? all : touches, requirement, result.Problems, plan);
+                    : ServingTouch(requirement.ChildMay ? all : requirement.Experiment != null ? wholeTouches : touches, requirement, result.Problems, plan);
                 if (by == null) continue;
                 Touch orbitLeg;
                 var guid = ContractWatch.GuidOf(requirement.Key);
                 if (requirement.Orbit != null) orbitLegs[guid] = by;
                 else if (orbitLegs.TryGetValue(guid, out orbitLeg)) by = orbitLeg;
-                if (requirement.Experiment != null && !RunsScience(touches, by, plan, requirement.Experiment))
+                var science = requirement.Experiment == null ? null : ScienceLeg(wholeTouches, by, plan, requirement.Experiment, from);
+                // A science leg still to fly serves it where the craft already is (a flown leg got it there): with none still to fly, the flown leg's reach is no service.
+                if (requirement.Experiment != null && !science.HasValue && by.Leg < from) continue;
+                if (requirement.Experiment != null && !science.HasValue)
                     result.Problems.Add("\"" + requirement.Title + "\" needs \"" + requirement.Words + "\", but no leg runs the science block there: add a science step to leg "
                         + (by.Leg + 1) + " \"" + plan.Sequences[by.Leg].Name + "\", or a leg after it before the craft leaves");
+                // #1304, #1321: a survey waypoint or collect science is met where the science block runs, so the leg that runs it is the one that serves it.
+                if (science.HasValue) by = new Touch { Leg = science.Value, Order = by.Order, Body = by.Body, Reach = by.Reach, Home = by.Home, Child = by.Child };
                 served.Leg = by.Leg;
                 served.LegName = plan.Sequences[by.Leg].Name;
                 Tag(tags[by.Leg], requirement.Title);
@@ -148,18 +156,18 @@ namespace ClaudiaKerman.Core.Contracts
 
         /// <summary>
         /// #1030: a leg from the one serving it until the craft goes elsewhere says it runs the science block (its words name science, an
-        /// experiment, or the experiment itself), so collect science or a survey waypoint is taken where it is met.
+        /// experiment, or the experiment itself), so collect science or a survey waypoint is taken where it is met. The first such leg; null when none does.
         /// </summary>
-        private static bool RunsScience(IList<Touch> touches, Touch by, MissionPlan plan, string experiment)
+        private static int? ScienceLeg(IList<Touch> touches, Touch by, MissionPlan plan, string experiment, int from)
         {
             var next = touches.FirstOrDefault(t => t.Order > by.Order && t.Leg > by.Leg && (t.Body != by.Body || t.Home != by.Home));
             var end = next == null ? plan.Sequences.Count : next.Leg;
-            for (var leg = by.Leg; leg < end; leg++)
+            for (var leg = Math.Max(by.Leg, from); leg < end; leg++)
             {
                 var words = plan.Sequences[leg].Name + " " + plan.Sequences[leg].Intent;
-                if (ScienceWords.IsMatch(words) || (experiment.Length > 0 && words.IndexOf(experiment, StringComparison.OrdinalIgnoreCase) >= 0)) return true;
+                if (ScienceWords.IsMatch(words) || (experiment.Length > 0 && words.IndexOf(experiment, StringComparison.OrdinalIgnoreCase) >= 0)) return leg;
             }
-            return false;
+            return null;
         }
 
         private static void Tag(List<string> tags, string tag)

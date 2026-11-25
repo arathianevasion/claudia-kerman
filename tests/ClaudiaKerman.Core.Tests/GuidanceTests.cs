@@ -94,7 +94,8 @@ namespace ClaudiaKerman.Core.Tests
             // to 11635 (+90) for #521: fly the proposed plane change before land (human approved 2026-10-29)
             // to 11770 (+135) for #599: a falling craft thrusts horizontal and up, never a prograde node (ticket-mandated, within the run's 60-token prefix allowance)
             // to 11826 (+56) for #788: the capture block's summary line (the player raised the prefix limit for it, 2026-11-05)
-            Assert.InRange(MissionPrompts.BaseLayer.Length, 1, 11826);
+            // to 11916 (+90) for #1310: the new site_hop block's summary line (ticket-mandated new block, not yet human-approved)
+            Assert.InRange(MissionPrompts.BaseLayer.Length, 1, 11916);
         }
 
         [Fact]

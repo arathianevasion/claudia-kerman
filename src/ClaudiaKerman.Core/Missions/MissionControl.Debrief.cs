@@ -265,7 +265,7 @@ namespace ClaudiaKerman.Core.Missions
         private decimal DebriefReserve(Mission mission, Turn turn)
         {
             var probe = new MessagesRequest { Model = mission.Model, MaxTokens = MissionPrompts.MaxTokens, OutputSchemaJson = MissionReply.MissionSchemaJson };
-            probe.Tools.AddRange(MissionTools());
+            probe.Tools.AddRange(MissionTools(mission));
             probe.System.AddRange(mission.System);
             probe.Messages.AddRange(Sent(mission));
             probe.Messages.Add(Message.UserText(turn.UserText));
@@ -609,12 +609,27 @@ namespace ClaudiaKerman.Core.Missions
                 });
                 return;
             }
+            // #1343: orbital survey waypoints still open: the next Survey Plane, or the Contract dropped when no window fits the cap.
+            var survey = SurveyTurn(mission, debrief.Outcome == "Off-Nominal");
+            if (survey != null)
+            {
+                Begin(survey);
+                return;
+            }
+            // #1306: a Requirement open at the craft's body is retried first, or its Contract dropped once a stop says so.
+            var retry = RetryTurn(mission, debrief.Outcome == "Off-Nominal");
+            if (retry != null)
+            {
+                Begin(retry);
+                return;
+            }
             // #983: a corrective sequence flies the step begun again; any other follow-up moves on to the next.
             var fold = debrief.FollowUp == FollowUps.CorrectiveSequence ? "" : FoldLine(mission, StepsBegun(mission) + 1);
             Begin(NextSequenceTurn(debrief.Outcome == "Off-Nominal", fold));
         }
 
         /// <summary>The Sequence Plan request after a Debrief; also the probe the Auto Mode room check prices (MissionControl.AutoMode.cs).</summary>
+        /// <param name="foldLine">#983's fold line, or #1306's retry line.</param>
         private Turn NextSequenceTurn(bool offNominal, string foldLine = "")
         {
             return new Turn
@@ -640,5 +655,15 @@ namespace ClaudiaKerman.Core.Missions
         public const string RevisedPlanAfterOffNominal =
             "The Debrief was Off-Nominal and you proposed a revised Mission Plan. Write it now, with the sequences already flown first, "
             + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs.";
+
+        /// <summary>#1343: no other Survey Plane fits the survey's cap.</summary>
+        public const string RevisedPlanDroppingSurvey =
+            "No room for another Survey Plane: revise the Mission Plan now to drop the survey's Contract, with the sequences already flown first, "
+            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs, under Auto Mode too.";
+
+        /// <summary>#1306: a stop ended the retries of an open Contract Requirement.</summary>
+        public const string RevisedPlanDroppingContract =
+            "No more retries of the open Contract Requirement: revise the Mission Plan now to drop its Contract, with the sequences already flown first, "
+            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs, under Auto Mode too.";
     }
 }
