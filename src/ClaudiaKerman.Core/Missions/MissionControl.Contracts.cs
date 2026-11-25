@@ -27,6 +27,8 @@ namespace ClaudiaKerman.Core.Missions
         private bool _reopened;
         /// <summary>#1292: why the last Change Contracts press did nothing, said on the folded line; "" when it wasn't refused, or once it succeeded or the Contracts are fixed.</summary>
         private string _changeRefusal = "";
+        /// <summary>#1336: why the card refused the words last given at the prompt; "" when it took them.</summary>
+        private string _wordsRefusal = "";
 
         private sealed partial class Mission
         {
@@ -141,6 +143,7 @@ namespace ClaudiaKerman.Core.Missions
             if (start.ContractsAnswered) return false;
             _folded = null;
             _contractCheck = null;
+            _wordsRefusal = "";
             _changeRefusal = "";
             var snapshot = _snapshot;
             if (snapshot == null || snapshot.Contracts == null || snapshot.Contracts.Accepted.Count == 0)
@@ -243,10 +246,13 @@ namespace ClaudiaKerman.Core.Missions
             var check = ContractCheck.Work(_snapshot, words, start.Remote, _config.CraftCheckMarginPercent, GivenTarget(words, start.Target));
             if (!check.Priceable || !check.WordsFit)
             {
+                _wordsRefusal = !check.Priceable ? "The craft's delta-v is unknown, so the card couldn't take these words."
+                    : "These words don't fit this craft, so the card didn't take them.";
                 LogToKsp("Words given at the prompt not taken onto the Contract check card: " + (!check.Priceable ? "the craft's delta-v isn't known." : "they don't fit the craft."));
                 return;
             }
             check.TickOnly(Ticked());
+            _wordsRefusal = "";
             _contractCheck = check;
             _contractStart = start;
             LogToKsp("Words given at the prompt are now the Contract check card's words.");
@@ -389,6 +395,7 @@ namespace ClaudiaKerman.Core.Missions
                 CanPlan = ticked.Count > 0 && check.SetFits,
                 Shortfall = check.Problem,
                 CanPlanWithout = check.Words.Length > 0,
+                WordsRefusal = _wordsRefusal,
             };
         }
     }

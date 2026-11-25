@@ -345,6 +345,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>"Plan without Contracts" needs words of the player's to plan.</summary>
         public bool CanPlanWithout;
         /// <summary>#1333: under a greyed "Plan without Contracts", how to give it words.</summary>
+        /// <summary>#1336: why the card refused the words the player gave at the prompt; "" when it took them. Shown in place of the hint.</summary>
+        public string WordsRefusal = "";
         public const string PlanWithoutHint = "Type the goal below and press Enter to plan without Contracts.";
     }
 
