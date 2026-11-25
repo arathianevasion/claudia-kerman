@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Adapter;
 using ClaudiaKerman.Core.Contracts;
@@ -38,15 +39,7 @@ namespace ClaudiaKerman.KOS
             var body = orbit.referenceBody;
             var orbital = SurveyWaypointReader.Orbital(body.bodyName);
             if (orbital.Count == 0) throw new KOSException("SURVEYPLANE: no accepted survey has a waypoint to take from orbit round " + body.bodyName);
-            SurfaceUnder under = (double x, double y, double z, out double latitude, out double longitude) =>
-            {
-                // As the Planning Tools read the frame (PlanningBody.SurfaceUnder): elements' vectors go into the game through Planetarium.Zup.
-                var game = Planetarium.Zup.WorldToLocal(new Vector3d(x, y, z));
-                var at = body.GetLatitudeAndLongitude(game.xzy, true);
-                latitude = at.x;
-                longitude = at.y;
-                return true;
-            };
+            var under = UnderFrame(body);
             SurveyPlane plane;
             try
             {
@@ -75,6 +68,19 @@ namespace ClaudiaKerman.KOS
             return result;
         }
 
+        /// <summary>As the Planning Tools read the frame (PlanningBody.SurfaceUnder): elements' vectors go into the game through Planetarium.Zup.</summary>
+        private static SurfaceUnder UnderFrame(CelestialBody body)
+        {
+            return (double x, double y, double z, out double latitude, out double longitude) =>
+            {
+                var game = Planetarium.Zup.WorldToLocal(new Vector3d(x, y, z));
+                var at = body.GetLatitudeAndLongitude(game.xzy, true);
+                latitude = at.x;
+                longitude = at.y;
+                return true;
+            };
+        }
+
         private ListValue SurveyScheduleNow()
         {
             var vessel = shared.Vessel;
@@ -95,9 +101,18 @@ namespace ClaudiaKerman.KOS
                 var turned = turn > 0 ? (ut - now) * 360 / turn : 0;
                 return new TrackPoint { Latitude = body.GetLatitude(at), Longitude = body.GetLongitude(at) - turned, Altitude = body.GetAltitude(at) };
             };
-            var entries = SurveySchedule.Entries(new SurveyBody { Radius = body.Radius, RotationPeriod = turn },
-                closed ? new SurveyOrbit { Track = track, Period = orbit.period, Inclination = orbit.inclination } : null, now, orbital, ground,
-                SurveyWaypointReader.TriggerRange());
+            // #1354: with a node on the Survey Plane the passes are those after the burn, as in the Planning Tool (the one Core function).
+            List<SurveyPass> entries;
+            try
+            {
+                entries = SurveySchedule.Entries(new SurveyBody { Radius = body.Radius, RotationPeriod = turn, Gm = body.gravParameter },
+                    closed ? new SurveyOrbit { Track = track, Period = orbit.period, Inclination = orbit.inclination } : null,
+                    closed ? SnapshotReader.OrbitOf(orbit) : null, now, UnderFrame(body), orbital, ground, SurveyWaypointReader.TriggerRange());
+            }
+            catch (System.InvalidOperationException e)
+            {
+                throw new KOSException("SURVEYSCHEDULE: " + e.Message);
+            }
             var list = new ListValue();
             foreach (var pass in entries)
             {
