@@ -116,6 +116,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): seconds until a closed orbit or an inbound hyperbolic path falls to r_fall, from ecc, sma, mu, r_fall, ta (degrees); 0 under it now, -1 never"));
             AddSuffix("LANDSTART", new OneArgsSuffix<Lexicon, Lexicon>(LandStartCall,
                 "Core Library only (land, once): where land starts from (orbit, arc or fail), from situation, ecc, sma, mu, r_fall, radius, day, fall_s, end_lat, end_lng, now, descent_shape and target; lexicon start, why, end_m and an arc's plan"));
+            AddSuffix("LANDREPREDICT", new OneArgsSuffix<StringValue, Lexicon>(LandRepredictCall,
+                "Core Library only (land, as braking begins): fly, switch, hold or steepest, from planned_clears, best_shape, pe, ground_ahead and arc (an arc never holds)"));
             AddSuffix("SITEHOP", new OneArgsSuffix<Lexicon, Lexicon>(SiteHopCall,
                 "Core Library only (site_hop, before liftoff and each tick of its burn): the arc to the site, from mu, day, lat, lng, r, agl, vel_up, vel_north, vel_east, accel, target_lat, target_lng, target_r and (before liftoff) dv and now; lexicon why, km, need, speed, heading, pitch, tof, steer_heading, steer_pitch, throttle, err, done, wait, liftoff_ut (a daylight touchdown, #1322)"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
@@ -844,6 +846,14 @@ namespace ClaudiaKerman.KOS
                 () => (string)start["start"] == "fail" ? "fail: " + start["why"]
                     : (string)start["start"] == "orbit" ? "orbit"
                     : string.Format(CultureInfo.InvariantCulture, "arc ending {0:0} m from the aim", start["end_m"]));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:LANDREPREDICT</c> (#511, #1364, ADR 0014): <see cref="BlockCalls.LandRepredict"/>, pure; the log line is the verdict. A failure (logged by Guarded) answers "steepest": braking rather than falling.</summary>
+        private StringValue LandRepredictCall(Lexicon input)
+        {
+            var verdict = "steepest";
+            var answer = Guarded("LANDREPREDICT", () => new StringValue(verdict = BlockCalls.LandRepredict(KosValues.ToDictionary(input))), () => verdict);
+            return answer as StringValue ?? new StringValue("steepest");
         }
 
         /// <summary>
