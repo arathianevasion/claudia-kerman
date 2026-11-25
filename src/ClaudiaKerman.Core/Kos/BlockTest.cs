@@ -52,6 +52,13 @@ namespace ClaudiaKerman.Core.Kos
         public double LandedLat { get; private set; }
         public double LandedLng { get; private set; }
 
+        /// <summary>
+        /// #1363: where a landed test hops to (<c>hop_lat</c>, <c>hop_lng</c>, degrees), or null. The runner moves it to flat ground
+        /// as it does the start (<see cref="BlockTestLandedStart.Place"/>) and hands it to <c>test.ks</c> as <c>test_hop_target</c>.
+        /// </summary>
+        public double? HopLat { get; private set; }
+        public double? HopLng { get; private set; }
+
         public string OrbitBody { get; private set; }
         public double OrbitAltitude { get; private set; }
         public double OrbitInclination { get; private set; }
@@ -146,6 +153,8 @@ namespace ClaudiaKerman.Core.Kos
                     case "landed_body": spec.LandedBody = value; landedKeys = true; break;
                     case "landed_lat": landedLat = Number(name, value); landedKeys = true; break;
                     case "landed_lng": landedLng = Number(name, value); landedKeys = true; break;
+                    case "hop_lat": spec.HopLat = Number(name, value); landedKeys = true; break;
+                    case "hop_lng": spec.HopLng = Number(name, value); landedKeys = true; break;
                     case "orbit_body": spec.OrbitBody = value; break;
                     case "orbit_altitude": spec.OrbitAltitude = Number(name, value); break;
                     case "orbit_inclination": spec.OrbitInclination = Number(name, value); break;
@@ -174,7 +183,7 @@ namespace ClaudiaKerman.Core.Kos
             }
             if (string.IsNullOrEmpty(spec.Block)) throw new FormatException(name + ": no block = ...");
             if (landedKeys && spec.Start != BlockTestStart.Landed)
-                throw new FormatException(name + ": landed_* places the craft on the ground, so it needs start = landed");
+                throw new FormatException(name + ": landed_* and hop_* place the craft on the ground, so they need start = landed");
             if (spec.Start == BlockTestStart.Landed)
             {
                 if (string.IsNullOrEmpty(spec.LandedBody) || !landedLat.HasValue || !landedLng.HasValue)
@@ -182,6 +191,8 @@ namespace ClaudiaKerman.Core.Kos
                 if (Math.Abs(landedLat.Value) > 90) throw new FormatException(name + ": landed_lat is between -90 and 90, not " + landedLat.Value);
                 spec.LandedLat = landedLat.Value;
                 spec.LandedLng = landedLng.Value;
+                if (spec.HopLat.HasValue != spec.HopLng.HasValue) throw new FormatException(name + ": a hop target needs both hop_lat and hop_lng");
+                if (spec.HopLat.HasValue && Math.Abs(spec.HopLat.Value) > 90) throw new FormatException(name + ": hop_lat is between -90 and 90, not " + spec.HopLat.Value);
                 if (!string.IsNullOrEmpty(spec.TargetCraft))
                     throw new FormatException(name + ": target_craft is placed relative to the craft's orbit, which a landed start doesn't have");
             }
