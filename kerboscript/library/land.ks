@@ -1456,7 +1456,7 @@ function land {
   local fall_s is addons:claudia:falleta(lexicon("ecc", ship:orbit:eccentricity, "sma", ship:orbit:semimajoraxis, "mu", body:mu, "r_fall", r_fall, "ta", ship:orbit:trueanomaly)).
   local arc_end is body:geopositionof(positionat(ship, time:seconds + max(0, fall_s))).
   local start is addons:claudia:landstart(lexicon("situation", status, "ecc", ship:orbit:eccentricity, "sma", ship:orbit:semimajoraxis, "mu", body:mu, "r_fall", r_fall, "radius", body:radius,
-    "day", body:rotationperiod, "fall_s", fall_s, "end_lat", arc_end:lat, "end_lng", arc_end:lng, "now", time:seconds, "descent_shape", opt:descent_shape, "target", choose "biome" if by_biome else site)).
+    "day", body:rotationperiod, "fall_s", fall_s, "end_lat", arc_end:lat, "end_lng", arc_end:lng, "now", time:seconds, "nodes", claudia_node_sigs(allnodes), "descent_shape", opt:descent_shape, "target", choose "biome" if by_biome else site)).
   if start:start = "fail" {
     return claudia_finish(ctx, false, start:why, extra).
   }

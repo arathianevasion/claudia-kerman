@@ -101,7 +101,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private const string Fakes =
             "global tnow is 1000.\n"
             + "function test_begin { parameter block, opts, block_defaults, md.\n"
-            + "  return lexicon(\"block\", block, \"error\", \"\", \"opt\", opts, \"parts\", test_parts:length, \"dropped\", list(), \"drop_tried\", list(),\n"
+            + "  return lexicon(\"block\", block, \"error\", \"\", \"opt\", opts, \"nodes0\", list(), \"parts\", test_parts:length, \"dropped\", list(), \"drop_tried\", list(),\n"
             + "    \"drop_tries\", lexicon(), \"drop_ut\", 0, \"drop_key\", \"\", \"drop_scan\", 0, \"drop_mode\", \"full\"). }\n"
             + "function test_finish { parameter ctx, success, reason, extra. print \"dropped \" + ctx:dropped:join(\",\"). return ctx. }\n"
             + "function test_safe { }\n"
@@ -143,7 +143,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             b.Append("global test_parts is list(" + string.Join(", ", s.Select(p => "p_" + p.Uid)) + ").\n");
             b.Append("global test_free is " + free + ".\n");
             b.Append(Fakes).Append(ExecNode()).Append('\n').Append(DropEmpty()).Append('\n');
-            b.Append("test_exec_node(lexicon(\"node\", lexicon(\"deltav\", lexicon(\"mag\", 950)), \"lead\", \"half_burn\", \"stop_at_min\", \"\", \"resolve\", \"\", "
+            b.Append("test_exec_node(lexicon(\"node\", lexicon(\"time\", 100, \"radialout\", 0, \"normal\", 0, \"prograde\", 950, \"deltav\", lexicon(\"mag\", 950)), \"lead\", \"half_burn\", \"stop_at_min\", \"\", \"resolve\", \"\", "
                 + "\"max_duration\", 100, \"stage_limit\", 0, \"drop_empty\", " + dropEmpty + ")).\n");
             return KosHarness.Run(CoreLibrary.Bundle(b.ToString())).ToArray();
         }

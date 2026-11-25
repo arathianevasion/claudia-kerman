@@ -26,7 +26,7 @@
 //| warped to an hour out first, without turning. Fails with "no maneuver node",
 //| "no thrust", "no usable torque" (no reaction wheel running and no RCS on to turn with), a node
 //| or lead it can't read, "residual <x> m/s is over max_residual", out of fuel, or an abort; on
-//| failure the node is left in place.
+//| failure the node is removed too (node_removed).
 //| Plan the node yourself first (ADD NODE(time, radial, normal, prograde)); the node must be far
 //| enough ahead to turn and start the burn (lead plus about a minute).
 //| Example: `add node(time:seconds + 600, 0, 0, 120). local res is exec_node(). addons:claudia:report(res).`
@@ -103,6 +103,7 @@ function exec_node {
   }
   set extra:node_dv to round(nd:deltav:mag, 3).
   set extra:residual to extra:node_dv.
+  if ctx:nodes0:contains(claudia_node_sig(nd)) { ctx:nodes0:remove(ctx:nodes0:find(claudia_node_sig(nd))). } // The node to fly is this block's: a failure removes it too (#1357).
 
   // The craft turns to the burn on a Coast, on its wheels and RCS: one that can't fails here, before
   // staging changes it. The call is block-internal (ADR 0006, ADR 0007), so it sits in the block.
@@ -221,13 +222,7 @@ function exec_node {
 // "short" over it but within fraction of node_dv (a trim finishes it), else "over" (a failure). Pure.
 function exec_node_finish {
   parameter residual, node_dv, max_residual, fraction.
-  if residual <= max_residual {
-    return "done".
-  }
-  if residual <= fraction * node_dv {
-    return "short".
-  }
-  return "over".
+  return choose "done" if residual <= max_residual else choose "short" if residual <= fraction * node_dv else "over".
 }
 
 // The UT a burn starting at now should have its node at: lead after the start, which is start_ut

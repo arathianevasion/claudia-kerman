@@ -39,6 +39,39 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ANodeLandDidNotPlanRefusesTheStartFromAnOrbitAndFromAnArc()
+        {
+            // #1357: land plans its own burns after this check, so any node planned now is another's (#1316: a stale -59 m/s node that exec_node flew as land's deorbit).
+            var stray = new List<object> { "100|0|0|-59" };
+            var orbit = Orbit("ORBITING", 0.002);
+            orbit["nodes"] = stray;
+            var arc = Arc(0, 20.9, 300, new[] { 0.0, 20.4 });
+            arc["nodes"] = stray;
+            foreach (var ask in new[] { orbit, arc })
+            {
+                var said = BlockCalls.LandStart(ask);
+                Assert.Equal("fail", said["start"]);
+                Assert.Equal("land won't start with a maneuver node it didn't plan: one at UT 100 for 59 m/s; remove it first", said["why"]);
+            }
+        }
+
+        [Fact]
+        public void SeveralStrayNodesAreCountedAndTheFirstNamed()
+        {
+            var orbit = Orbit("ORBITING", 0.002);
+            orbit["nodes"] = new List<object> { "100|0|0|-59", "500|3|4|0" };
+            Assert.Equal("land won't start with 2 maneuver nodes it didn't plan: the first at UT 100 for 59 m/s; remove them first", BlockCalls.LandStart(orbit)["why"]);
+        }
+
+        [Fact]
+        public void NoNodesStartsAsBefore()
+        {
+            var orbit = Orbit("ORBITING", 0.002);
+            orbit["nodes"] = new List<object>();
+            Assert.Equal("orbit", BlockCalls.LandStart(orbit)["start"]);
+        }
+
+        [Fact]
         public void ANearCircularOrbitStartsAsBefore()
         {
             Assert.Equal("orbit", BlockCalls.LandStart(Orbit("ORBITING", 0.1))["start"]);
