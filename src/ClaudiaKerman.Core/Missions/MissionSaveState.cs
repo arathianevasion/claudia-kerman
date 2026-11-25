@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using ClaudiaKerman.Core.Claude;
 
 namespace ClaudiaKerman.Core.Missions
@@ -166,6 +167,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>A return this run flew no Course Correction (#899).</summary>
         public bool NoCorrection;
         public Tools.PickedSite PickedSite;
+        /// <summary>#1331: how many Debriefs showed each Contract Requirement not met, by its key (#1306); empty in older saves, which count afresh.</summary>
+        public readonly Dictionary<string, int> RequirementMisses = new Dictionary<string, int>();
         public MissionPlan MissionPlan;
         /// <summary>The current Sequence Plan: the one awaiting Approval, running, or just run.</summary>
         public SequencePlan SequencePlan;
@@ -278,6 +281,7 @@ namespace ClaudiaKerman.Core.Missions
             if (WindowPickCarried) values["windowPickCarried"] = "true";
             if (WindowPickSpent) values["windowPickSpent"] = "true";
             if (ReturnWindowUt.HasValue) values["returnWindowUt"] = ReturnWindowUt.Value.ToString("R", CultureInfo.InvariantCulture);
+            if (RequirementMisses.Count > 0) values["requirementMisses"] = WriteMisses(RequirementMisses);
             foreach (var setting in Settings) values[SettingPrefix + setting.Key] = setting.Value;
             for (var i = 0; i < UnsafeProblems.Count; i++) values[UnsafeProblemPrefix + i.ToString(CultureInfo.InvariantCulture)] = UnsafeProblems[i];
             if (QueuedEntries > 0) values["queuedEntries"] = QueuedEntries.ToString(CultureInfo.InvariantCulture);
@@ -416,6 +420,7 @@ namespace ClaudiaKerman.Core.Missions
             for (var i = 0; values.TryGetValue(BlackoutRevisionPrefix + i.ToString(CultureInfo.InvariantCulture), out revision); i++) state.BlackoutRevisions.Add(revision);
             string held;
             for (var i = 0; values.TryGetValue(HeldWordPrefix + i.ToString(CultureInfo.InvariantCulture), out held); i++) state.HeldWords.Add(held);
+            ReadMisses(Get(values, "requirementMisses"), state.RequirementMisses);
             string plans;
             if (values.TryGetValue("plans", out plans))
             {
@@ -428,6 +433,32 @@ namespace ClaudiaKerman.Core.Missions
                 }
             }
             return state;
+        }
+
+        private static string WriteMisses(IDictionary<string, int> misses)
+        {
+            var json = new JsonWriter().BeginArray();
+            foreach (var miss in misses) json.BeginObject().Field("key", miss.Key).Field("misses", (long)miss.Value).EndObject();
+            return json.EndArray().ToString();
+        }
+
+        /// <summary>The counts in <paramref name="text"/> (WriteMisses' JSON) into <paramref name="into"/>; an unreadable text leaves none, so the counts start afresh.</summary>
+        private static void ReadMisses(string text, IDictionary<string, int> into)
+        {
+            if (text.Length == 0) return;
+            try
+            {
+                foreach (var node in JsonReader.Parse(text).Items.Where(n => n.Kind == JsonKind.Object))
+                {
+                    var key = JsonNode.Str(node["key"]);
+                    var count = (int)(JsonNode.Double(node["misses"]) ?? 0);
+                    if (!string.IsNullOrEmpty(key) && count > 0) into[key] = count;
+                }
+            }
+            catch (JsonException)
+            {
+                into.Clear();
+            }
         }
 
         private static string Escape(string text)

@@ -153,6 +153,7 @@ namespace ClaudiaKerman.Core.Missions
             state.HeldWords.AddRange(mission.HeldWords);
             if (mission.UnsafeProblems != null) state.UnsafeProblems.AddRange(mission.UnsafeProblems);
             foreach (var setting in mission.Settings) state.Settings[setting.Key] = setting.Value;
+            foreach (var miss in mission.RequirementMisses) state.RequirementMisses[miss.Key] = miss.Value;
             return state;
         }
 
@@ -555,6 +556,7 @@ namespace ClaudiaKerman.Core.Missions
             mission.SeparationAfter = state.SeparationAfter;
             mission.Blocks.Restore(state.BlockTrail);
             mission.ScriptError = state.ScriptError ?? "";
+            foreach (var miss in state.RequirementMisses) mission.RequirementMisses[miss.Key] = miss.Value;
 
             // The conversation is the transcript's, whole: turns past the save's marker are kept.
             var transcript = MissionStore.ReadTranscript(mission.Folder);
