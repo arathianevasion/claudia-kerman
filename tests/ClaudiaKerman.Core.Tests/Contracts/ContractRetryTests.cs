@@ -159,6 +159,16 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Empty(Assert.Single(Reloaded(saved).ExportStates()).RequirementMisses);
         }
 
+        [Fact]
+        public void UnreadableSavedMissCountsLoadAsCountsOfZero()
+        {
+            var values = new Dictionary<string, string> { { "id", "m1" }, { "requirementMisses", "[{\"key\":" } };
+
+            var saved = MissionSaveState.FromValues(values);
+
+            Assert.Empty(saved.RequirementMisses);
+        }
+
         private MissionControl Reloaded(MissionSaveState saved)
         {
             var client = new ClaudeClient(new CraftCheckRouter(new StreamingFakeTransport()), () => "sk-ant-fake-key-0123456789", l => { });
