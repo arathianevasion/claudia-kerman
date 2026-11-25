@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Andrew Watson
 //
 // site_hop block test from the ground (#1355): the Mission Script the debug block test runner starts (bundled with the
-// Core Library). The runner lands the lander on the Mun at 1.153, 79.031 (#1358: East Crater, where f623 touched down) and
-// starts this once it has settled; site_hop plans and flies a suborbital hop to 1.153, 83.33, about 15 km east, and
+// Core Library). The runner lands the lander on the Mun at 2.46, 77.2 and
+// starts this (#1358) once it has settled; site_hop plans and flies a suborbital hop to 2.46, 81.5, about 15 km east, and
 // land's powered descent takes over on the arc.
 
 @lazyglobal off.
@@ -13,7 +13,7 @@ wait until ship:unpacked.
 local started is status.
 local start_slope is round(addons:claudia:slope(ship:geoposition), 1).
 print "site_hop_landed test: start " + started + " at " + round(ship:geoposition:lat, 3) + ", " + round(ship:geoposition:lng, 3).
-local site is latlng(1.153, 83.33).
+local site is latlng(2.46, 81.5).
 local site_slope is round(addons:claudia:slope(site), 1).
 print "site_hop_landed test: slope " + start_slope + " at the start, " + site_slope + " at the site".
 local result is site_hop(lexicon("target", site)).
