@@ -104,6 +104,11 @@ namespace ClaudiaKerman.Core.Tests
             var call = SurveySchedule.For(new SurveyBody { Radius = MunRadius, RotationPeriod = MunRotation },
                 new SurveyOrbit { Track = ByHand(snapshot), Period = 2 * Math.PI * Math.Sqrt(Sma * Sma * Sma / MunGm), Inclination = Inclination },
                 snapshot.Ut, waypoints, SurveySchedule.StockTriggerRange);
+            // #1351: where a node is handed over the passes are the Survey Plane's, from the orbit after the burn.
+            var body = new SurveyBody { Radius = MunRadius, RotationPeriod = MunRotation, Gm = MunGm };
+            SurfaceUnder under = (double x, double y, double z, out double lat, out double lon) => new Game().SurfaceUnder("Mun", x, y, z, out lat, out lon);
+            var plane = SurveySchedule.Plane(body, snapshot.Orbit, snapshot.Ut, under, waypoints, SurveySchedule.StockTriggerRange);
+            if (plane.Node != null) call = SurveySchedule.PassesAfterNode(body, snapshot.Orbit, plane, snapshot.Ut, under, waypoints, SurveySchedule.StockTriggerRange);
 
             var answer = Run(snapshot);
 
@@ -163,6 +168,22 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void WhenTheToolGivesANodeItsPassesAreForTheOrbitAfterTheBurnAndMarkedSo()
+        {
+            var waypoints = new[] { Waypoint("a", 10.0, 58.2), Waypoint("b", 12.5, 12.5), Waypoint("c", 7.1, 6.0), Waypoint("d", 13.2, 4.2), Waypoint("e", 19.2, 0.7) };
+            var snapshot = Snapshot(waypoints);
+
+            var answer = Run(snapshot);
+
+            Assert.True(answer.TryGetProperty("node", out var node));
+            Assert.True(answer.GetProperty("passes_after_node").GetBoolean());
+            var burn = node.GetProperty("burn_ut").GetDouble();
+            var timed = answer.GetProperty("passes").EnumerateArray().Where(p => p.TryGetProperty("pass_ut", out _)).ToList();
+            Assert.Equal(answer.GetProperty("survey_plane").GetProperty("passes_over").GetArrayLength(), timed.Count);
+            Assert.All(timed, p => Assert.InRange(p.GetProperty("pass_ut").GetDouble(), burn, snapshot.Ut + SurveySchedule.PlaneWindow));
+        }
+
+        [Fact]
         public void WhenTheCraftsOwnPlaneServesTheToolGivesThePlaneAndNoNode()
         {
             // One waypoint under the craft's own track 40° on from its node (it starts 23° on): no plane passes over more.
@@ -172,6 +193,7 @@ namespace ClaudiaKerman.Core.Tests
 
             Assert.Equal(20, answer.GetProperty("survey_plane").GetProperty("inclination").GetDouble());
             Assert.False(answer.TryGetProperty("node", out _));
+            Assert.False(answer.TryGetProperty("passes_after_node", out _));
         }
 
         [Fact]
@@ -257,10 +279,13 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void WithNoPassAtAllTheToolGivesNoTotalWaitRatherThanZero()
         {
-            var answer = Run(Snapshot(Waypoint("far", 60, 50)));
+            // #1351: an orbital waypoint always has a pass on the Survey Plane the tool hands over; a survey of landings alone has none.
+            var site = Waypoint("g", 0, 10); site.Ground = true;
+
+            var answer = Run(Snapshot(site));
 
             Assert.False(answer.TryGetProperty("total_wait_s", out _));
-            Assert.Equal(1, answer.GetProperty("unreachable_count").GetInt32());
+            Assert.Empty(answer.GetProperty("passes").EnumerateArray());
         }
 
         // ---- offered only for a survey ----
@@ -433,7 +458,10 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(new[] { open.Where() }, plane.GetProperty("passes_over").EnumerateArray().Select(e => e.GetString()).ToArray());
             Assert.True(answer.TryGetProperty("node", out _));
             // The craft's own 14° plane can't reach 19.2° N; the node turns it to the Survey Plane, which does.
-            Assert.True(answer.GetProperty("passes").EnumerateArray().Single().GetProperty("unreachable").GetBoolean());
+            // #1351: its pass is on the Survey Plane, after the burn, not "unreachable" from the orbit it leaves.
+            var pass = answer.GetProperty("passes").EnumerateArray().Single();
+            Assert.False(pass.GetProperty("unreachable").GetBoolean());
+            Assert.True(pass.GetProperty("pass_ut").GetDouble() > answer.GetProperty("node").GetProperty("burn_ut").GetDouble());
             Assert.InRange(plane.GetProperty("inclination").GetDouble(), 14.5, 20);
             Assert.True(answer.GetProperty("node").GetProperty("delta_v").GetDouble() > 0);
             // The script call's own function, given the same waypoints, agrees with the tool.
