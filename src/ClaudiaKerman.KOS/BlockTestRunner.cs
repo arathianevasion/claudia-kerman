@@ -66,6 +66,8 @@ namespace ClaudiaKerman.KOS
         private uint _partId;
         private float _deadline;
         private int _sceneFrames;
+        /// <summary>#1358: a landed start's wait for the craft to come to rest; null for other starts, and once it has.</summary>
+        private BlockTestLandedStart.Settle _settle;
 
         private void Awake()
         {
@@ -290,9 +292,17 @@ namespace ClaudiaKerman.KOS
                 // #1355: standing on the ground at the test's site, as a Site Hop starts.
                 var ground = FlightGlobals.GetBodyByName(_spec.LandedBody);
                 if (ground == null) throw new InvalidOperationException("no body called '" + _spec.LandedBody + "'");
+                // #1358: a lander set down on a slope topples; refuse the site before spawning.
+                var refused = BlockTestLandedStart.RefuseSite(ClaudiaAddon.HeightOn(ground), ground.Radius, _spec.LandedLat, _spec.LandedLng);
+                if (refused != null)
+                {
+                    Fail(refused);
+                    return;
+                }
                 var landed = CraftSpawner.Landed(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft), ground, _spec.LandedLat, _spec.LandedLng, null);
                 _vesselId = landed.persistentId;
                 Note("landed '" + landed.vesselName + "' on " + ground.bodyName + " at " + _spec.LandedLat.ToString("0.###") + ", " + _spec.LandedLng.ToString("0.###") + "; going to Flight");
+                _settle = new BlockTestLandedStart.Settle();
                 FocusSpawned(landed);
                 return;
             }
@@ -339,6 +349,7 @@ namespace ClaudiaKerman.KOS
             var vessel = FlightGlobals.ActiveVessel;
             var bridge = KosBridge.Instance;
             if (vessel == null || (_vesselId != 0 && vessel.persistentId != _vesselId) || vessel.packed || bridge == null || ++_sceneFrames < 60) return;
+            if (_settle != null && !Settled(vessel)) return;
 
             var processor = KosBridge.ChooseProcessor(vessel, null);
             if (!processor.HasValue)
@@ -355,6 +366,29 @@ namespace ClaudiaKerman.KOS
             // Planning Tools open to this test's processor until Finish (ADR 0006); never to a Mission Script.
             ToolTestGate.Shared.Open(_partId);
             bridge.BeginRun(_partId, "claudia-blocktest:" + _test, source, Judge, reason => Fail("the bridge refused: " + reason));
+        }
+
+        /// <summary>
+        /// #1358: whether a landed start's craft has come to rest (LANDED and still for a few seconds of game time), noting it in the log
+        /// when it has; fails the test, with the craft's lean and the ground's slope, if it doesn't in time.
+        /// </summary>
+        private bool Settled(Vessel vessel)
+        {
+            if (_sceneFrames == 60) Note("waiting for '" + vessel.vesselName + "' to settle: LANDED under " + BlockTestLandedStart.SettleSpeed + " m/s for "
+                + BlockTestLandedStart.SettleSeconds + " s, at most " + BlockTestLandedStart.GiveUpSeconds + " s");
+            var state = _settle.Step(Time.time, vessel.Landed, vessel.srfSpeed);
+            if (state == BlockTestLandedStart.SettleState.Waiting) return false;
+            var lean = Vector3.Angle(vessel.ReferenceTransform.up, vessel.upAxis);
+            var body = vessel.mainBody;
+            var slope = Terrain.Slope(ClaudiaAddon.HeightOn(body), body.Radius, vessel.latitude, vessel.longitude);
+            _settle = null;
+            if (state == BlockTestLandedStart.SettleState.NeverSettled)
+            {
+                Fail(BlockTestLandedStart.NeverSettled(lean, slope));
+                return false;
+            }
+            Note("settled: LANDED and still, leaning " + lean.ToString("0.0") + " degrees on ground sloping " + slope.ToString("0.0") + " degrees");
+            return true;
         }
 
         /// <summary>Sets the unpacked craft spinning about its pitch (right) axis at rate degrees per second: a tumbling start.</summary>
@@ -398,6 +432,7 @@ namespace ClaudiaKerman.KOS
         private void Finish(BlockTestResult result)
         {
             _stage = Stage.Idle;
+            _settle = null;
             ToolTestGate.Shared.Close();
             MissionDriver.BlockTestTargetId = null;
             MissionDriver.BlockTestPlan = null;
