@@ -67,5 +67,12 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             Assert.Equal(new[] { "stopped at the warp removes 1" }, Fly(""));
         }
+
+        [Fact]
+        public void Land_hands_the_flight_plans_nodes_to_LANDSTART_before_it_plans_any_of_its_own()
+        {
+            var land = CoreLibrary.Blocks.Single(b => b.Name == "land").Source;
+            Assert.Contains("\"nodes\", claudia_node_sigs(allnodes)", land);
+        }
     }
 }
