@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 //
-// Building Block site_hop (#1310): a Site Hop. Core's SITEHOP (ADR 0014) gives the arc, reach check and burn ticks; this reads the
-// state, steers, throttles and stages, then hands the descent to land (land.ks).
+// Building Block site_hop (#1310): a Site Hop. Core's SITEHOP (ADR 0014) gives the arc, reach check and burn ticks; this reads the state, steers, throttles and stages, then hands the descent to land.
 
 @lazyglobal off.
 
 //| site_hop(options): from landed, flies an arc to a site on the same body and lands there.
-//| It waits on the ground, warping, until a liftoff gives a touchdown in Daylight at the site (no wait if one now would), then
+//| It stages into its engines first, as ascend does. It waits on the ground, warping, until a liftoff gives a touchdown in Daylight at the site (no wait if one now would), then
 //| one burn onto the least-speed arc that comes down on the site, then land's powered descent from it; aims for about 5 km of it.
 //| Options: target [required]: the site, a LATLNG or lexicon("lat", …, "lng", …), at least 1 km away; and land's descent
 //|   options (max_slope, max_divert, max_overshoot, touchdown_speed, gear_alt, burn_margin, descent_shape), passed on to it, plus the common ones.
@@ -38,6 +37,7 @@ function site_hop {
   local why is ctx:error.
   if why = "" and not t:istype("Lexicon") and not t:istype("GeoCoordinates") { set why to "target must be a LATLNG or a lexicon of lat and lng". }
   if why = "" and not claudia_on_ground() { set why to "site_hop starts landed, not " + status. }
+  if why = "" { set why to claudia_stage_into_engines(ctx, true). }
   if why <> "" { return claudia_finish(ctx, false, why, extra). }
   local ask is site_hop_state(t).
   set ask:dv to ship:deltav:current.
