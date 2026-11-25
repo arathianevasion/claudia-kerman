@@ -326,6 +326,20 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void AScienceLegStillToFlyAfterTheCraftLeftTheBodyInAFlownLegDoesNotServeIt()
+        {
+            var snapshot = ContractCheckTests.With(Science("c-sci", "2", "Space"));
+            var check = Check(snapshot);
+            var plan = new MissionPlan();
+            foreach (var leg in new[] { "Transfer to the Mun and capture into low orbit", "Return to Kerbin", "Run science on the way home" })
+                plan.Sequences.Add(new PlannedSequence { Name = leg, Intent = "Fly it.", DeltaV = 100 });
+
+            var served = PlanServes.Check(snapshot, plan, check.Choose(check.TickedGuids).Requirements, "", "Kerbin", 2);
+
+            Assert.Equal(-1, served.Record.Single().Leg);
+        }
+
+        [Fact]
         public void ScienceRunAfterLeavingTheBodyDoesNotServeIt()
         {
             var snapshot = ContractCheckTests.With(Science("c-sci", "2", "Space"));
