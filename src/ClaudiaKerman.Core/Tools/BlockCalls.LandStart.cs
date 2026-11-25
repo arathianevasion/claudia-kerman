@@ -31,6 +31,8 @@ namespace ClaudiaKerman.Core.Tools
             var site = ask.TryGetValue("target", out raw) ? raw as IDictionary<string, object> : null;
             var target = site != null ? "site" : raw as string ?? "";
             var ecc = Number(ask, "ecc", 0);
+            var stray = StrayNodes(ask.TryGetValue("nodes", out raw) ? raw as System.Collections.IEnumerable : null);
+            if (stray != "") return LandStartFails(stray);
             if (situation == "ORBITING" && ecc <= 0.1) return new Dictionary<string, object> { { "start", "orbit" }, { "why", "" } };
             var fallS = Number(ask, "fall_s", -1);
             if (situation != "SUB_ORBITAL" || fallS < 0)
@@ -66,6 +68,19 @@ namespace ClaudiaKerman.Core.Tools
                 { "figures", new Dictionary<string, object> { { "deorbit_dv", 0.0 }, { "v_pe", vEnd }, { "needed", 1.2 * vEnd + 100 } } },
             };
             return new Dictionary<string, object> { { "start", "arc" }, { "why", "" }, { "end_m", endM }, { "plan", plan } };
+        }
+
+        /// <summary>Why land won't start with maneuver nodes it didn't plan (#1357), from their kOS signs "time|radialout|normal|prograde" (claudia_node_sigs); "" with none.</summary>
+        private static string StrayNodes(System.Collections.IEnumerable sigs)
+        {
+            var nodes = new List<string>();
+            if (sigs != null) foreach (var sig in sigs) nodes.Add(sig as string ?? "");
+            if (nodes.Count == 0) return "";
+            var part = nodes[0].Split('|');
+            double Part(int i) => part.Length > i && double.TryParse(part[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;
+            var dv = Math.Sqrt(Part(1) * Part(1) + Part(2) * Part(2) + Part(3) * Part(3));
+            return string.Format(CultureInfo.InvariantCulture, "land won't start with {0} it didn't plan: {1} at UT {2:0.#} for {3:0.#} m/s; remove {4} first",
+                nodes.Count == 1 ? "a maneuver node" : nodes.Count + " maneuver nodes", nodes.Count == 1 ? "one" : "the first", Part(0), dv, nodes.Count == 1 ? "it" : "them");
         }
 
         private static IDictionary<string, object> LandStartFails(string why)
