@@ -61,6 +61,8 @@ namespace ClaudiaKerman.Core.Missions
             public HashSet<string> Ended;
             public List<string> Asked;
             public int FirstUnflown;
+            /// <summary>#1378: the Contract Route's bodies away from home, in the order flown, that the first Mission Plan is held to; empty with no Chosen Contract, or once the first plan is approved.</summary>
+            public List<string> RouteBodies;
         }
 
         private static ContractInputs ContractInputsOf(Mission mission)
@@ -71,6 +73,8 @@ namespace ClaudiaKerman.Core.Missions
                 Droppable = new Dictionary<string, string>(mission.Contracts.Droppable), Completed = new HashSet<string>(mission.Contracts.Completed),
                 Asked = mission.PlayerAsked.ToList(), Ended = new HashSet<string>(mission.Contracts.Ended),
                 FirstUnflown = mission.Plan == null ? 0 : MissionCards.LegInHand(StepsBegun(mission), mission.SequenceCounted),
+                RouteBodies = BeforeFirstApproval(mission) && mission.Chosen != null
+                    ? mission.Chosen.Visits.Where(v => v.Kind == BodyVisitKind.Away).Select(v => v.Body).ToList() : new List<string>(),
             };
         }
 
@@ -81,12 +85,15 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #1024: the chosen Contract Requirements a proposed Mission Plan leaves unserved or can't meet, as findings for Claudia; the Serves
-        /// tags and the Contract Route's record are made when the plan is offered (<see cref="OfferMissionPlan"/>).
+        /// tags and the Contract Route's record are made when the plan is offered (<see cref="OfferMissionPlan"/>). #1378: the first plan
+        /// is also held to the Contract Route's Body Visits, one visit per body in the Route's order (ADR 0022).
         /// </summary>
         private static IList<string> ContractProblems(GameSnapshot snapshot, MissionPlan plan, ContractInputs inputs)
         {
             if (snapshot == null || (inputs.Chosen.Count == 0 && inputs.Asked.Count == 0)) return new string[0];
-            return Replan(snapshot, plan, inputs).Problems;
+            var problems = Replan(snapshot, plan, inputs).Problems;
+            if (inputs.RouteBodies.Count > 0) problems.AddRange(RouteHold.Problems(snapshot, plan, inputs.RouteBodies, CraftCheckFlow.HomeBody));
+            return problems;
         }
 
         /// <summary>#1024: the plan's Serves tags and the Contract Route's record, set on the Mission as the plan is offered.</summary>
