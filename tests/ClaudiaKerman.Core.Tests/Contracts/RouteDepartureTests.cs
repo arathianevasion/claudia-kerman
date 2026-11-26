@@ -118,7 +118,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
         private string Answers
         {
-            get { return string.Join("\n", _transport.Requests.Select(r => r.Body)).Replace("\\\\\\\"", "\"").Replace("\\\"", "\""); }
+            get { return string.Join("\n", _transport.RequestsSoFar().Select(r => r.Body)).Replace("\\\\\\\"", "\"").Replace("\\\"", "\""); }
         }
 
         private static string Offered(MissionControl mission)
@@ -184,6 +184,15 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.NotEqual(MissionStage.AwaitingPlanApproval, mission.View.Stage);
             Assert.DoesNotContain("Leaves the Contract Route", Offered(mission));
             Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("leaves the Contract Route"));
+        }
+
+        [Fact]
+        public void TheContractRouteSectionTellsClaudiaWhenAndHowToNameADeparture()
+        {
+            Proposing(PlanJson(null, MunFirst));
+
+            var first = _transport.RequestsSoFar().First().Body.Replace("\\\"", "\"");
+            Assert.Contains("To leave the Route on purpose (another order of bodies, or a body twice) because it flies better, say in route_departure what departs and why", first);
         }
 
         private const string ContractRouteLeaveHint = "say in route_departure what departs and why";
