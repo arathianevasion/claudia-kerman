@@ -14,8 +14,10 @@ namespace ClaudiaKerman.Core.Contracts
     {
         /// <summary>The route's delta-v, m/s, by the Craft Check's route pricer (<see cref="PlanLegs"/>) on the Delta-v Map's figures.</summary>
         public double DeltaV;
-        /// <summary>The bodies in the order flown.</summary>
+        /// <summary>The bodies in the order flown; #1381: a body twice where the player's words ask for a repeat (<see cref="Again"/>).</summary>
         public List<string> Order = new List<string>();
+        /// <summary>#1381: the places in <see cref="Order"/> that are a repeat the player's words ask for, and how far it goes; it serves only the words.</summary>
+        public readonly Dictionary<int, ContractReach> Again = new Dictionary<int, ContractReach>();
         /// <summary>When the craft is past, in orbit round or landed on each body (UT, s), by the estimate.</summary>
         public readonly Dictionary<string, double> FlybyUt = new Dictionary<string, double>();
         public readonly Dictionary<string, double> OrbitUt = new Dictionary<string, double>();
@@ -48,6 +50,12 @@ namespace ClaudiaKerman.Core.Contracts
         public double Rendezvous;
         /// <summary>#1033: when the craft is in the Contract's vessel's orbit (UT, s), by its Requirement's key.</summary>
         public readonly Dictionary<string, double> RendezvousUt = new Dictionary<string, double>();
+
+        /// <summary>#1377: the route's bodies as Body Visits holding <paramref name="chosen"/>, each Requirement with its Contract's title.</summary>
+        public List<BodyVisit> Visits(IEnumerable<KeyValuePair<string, ReadRequirement>> chosen, string home)
+        {
+            return BodyVisits.Of(this, chosen, home);
+        }
 
         /// <summary>When the leg serving <paramref name="requirement"/> finishes; null when the route doesn't serve it.</summary>
         public double? DoneUt(ReadRequirement requirement, string home)
@@ -137,7 +145,7 @@ namespace ClaudiaKerman.Core.Contracts
             PricedRoute best = null, bestKept = null;
             foreach (var order in orders)
             {
-                var route = Price(order, needs, home, surveys, satellites, telescopes, meets);
+                var route = Price(WithRepeats(order), needs, home, surveys, satellites, telescopes, meets);
                 if (best == null || route.DeltaV < best.DeltaV) best = route;
                 if (keeps(route) && (bestKept == null || route.DeltaV < bestKept.DeltaV)) bestKept = route;
             }
@@ -202,13 +210,26 @@ namespace ClaudiaKerman.Core.Contracts
             return route;
         }
 
-        private PricedRoute Price(IList<string> order, IDictionary<string, ContractReach> needs, bool home, List<SurveyWaypoint> surveys, List<ContractOrbit> satellites, List<SolarPlacement> telescopes, List<ContractOrbit> meets)
+        /// <summary>#1381: <paramref name="order"/> with each repeat the words ask for flown after the last visit so far of the body before it.</summary>
+        private List<KeyValuePair<string, ContractReach?>> WithRepeats(IList<string> order)
         {
-            var key = string.Join(",", order.Select(b => b + ":" + (int)needs[b]).ToArray()) + "|" + home + "|" + string.Join(",", surveys.Select(w => w.Key).Concat(satellites.Select(o => o.Key)).Concat(telescopes.Select(t => t.Key)).Concat(meets.Select(m => "meet:" + m.Key)).OrderBy(k => k, StringComparer.Ordinal).ToArray());
+            var flown = order.Select(b => new KeyValuePair<string, ContractReach?>(b, null)).ToList();
+            foreach (var repeat in Reading.Repeats.Where(r => order.Contains(r.Body)))
+            {
+                var after = flown.FindLastIndex(v => v.Key == repeat.After);
+                flown.Insert(after < 0 ? flown.Count : after + 1, new KeyValuePair<string, ContractReach?>(repeat.Body, repeat.Reach));
+            }
+            return flown;
+        }
+
+        private PricedRoute Price(IList<KeyValuePair<string, ContractReach?>> visits, IDictionary<string, ContractReach> needs, bool home, List<SurveyWaypoint> surveys, List<ContractOrbit> satellites, List<SolarPlacement> telescopes, List<ContractOrbit> meets)
+        {
+            var order = visits.Select(v => v.Key).ToList();
+            var key = string.Join(",", visits.Select(v => v.Key + ":" + (int)(v.Value ?? needs[v.Key]) + (v.Value.HasValue ? "+" : "")).ToArray()) + "|" + home + "|" + string.Join(",", surveys.Select(w => w.Key).Concat(satellites.Select(o => o.Key)).Concat(telescopes.Select(t => t.Key)).Concat(meets.Select(m => "meet:" + m.Key)).OrderBy(k => k, StringComparer.Ordinal).ToArray());
             PricedRoute cached;
             if (_priced.TryGetValue(key, out cached)) return cached;
             var legs = new List<PlannedSequence>();
-            var route = new PricedRoute { Order = order.ToList() };
+            var route = new PricedRoute { Order = order };
             var ut = _snapshot.Ut;
             var at = Start();
             if (_snapshot.IsGrounded)
@@ -224,17 +245,28 @@ namespace ClaudiaKerman.Core.Contracts
             for (var i = 0; i < order.Count; i++)
             {
                 var body = order[i];
-                var reach = needs[body];
+                var again = visits[i].Value;
+                var reach = again ?? needs[body];
                 var named = ContractKinds.Named(body);
-                if (body != at)
+                if (body != at) ut += Wait(at, body) + Transfer(at, body);
+                var transfer = again.HasValue ? "Transfer back to " : "Transfer to ";
+                if (reach == ContractReach.Flyby) legs.Add(Sequence(transfer + named + " for a flyby"));
+                else if (reach == ContractReach.Orbit) legs.Add(Sequence(transfer + named + " and capture into low orbit"));
+                else legs.Add(Sequence(transfer + named + ", capture into low orbit and land"));
+                if (again.HasValue)
                 {
-                    ut += Wait(at, body) + Transfer(at, body);
-                    route.FlybyUt[body] = ut;
+                    // #1381 (ADR 0022): a repeat serves only the words; the Contract work, and its times, are the first visit's.
+                    route.Again[i] = reach;
+                    ut += reach == ContractReach.Land ? SurfaceSeconds : 0;
+                    if (reach == ContractReach.Land && (i < order.Count - 1 || home || _words.Count > 0))
+                    {
+                        legs.Add(Sequence("Ascend from " + named + " to low orbit"));
+                        ut += SurfaceSeconds;
+                    }
+                    at = body;
+                    continue;
                 }
-                else route.FlybyUt[body] = ut;
-                if (reach == ContractReach.Flyby) legs.Add(Sequence("Transfer to " + named + " for a flyby"));
-                else if (reach == ContractReach.Orbit) legs.Add(Sequence("Transfer to " + named + " and capture into low orbit"));
-                else legs.Add(Sequence("Transfer to " + named + ", capture into low orbit and land"));
+                route.FlybyUt[body] = ut;
                 if (reach >= ContractReach.Orbit) route.OrbitUt[body] = ut;
                 Satellites(route, body, satellites.Where(o => o.Body == body).ToList(), false, ut);
                 if (reach >= ContractReach.Orbit) Meet(route, body, meets.Where(o => o.Body == body).ToList(), false, ut);

@@ -118,6 +118,13 @@ namespace ClaudiaKerman.Core.Contracts
                 var leg = touches.FirstOrDefault(t => !t.Home && t.Body == need.Key && t.Reach >= need.Value);
                 if (leg != null) Tag(tags[leg.Leg], ContractCheck.WordsTag);
             }
+            // #1381: a repeat the words ask for serves them where the craft is back at the body after the one before it.
+            foreach (var repeat in reading.Repeats)
+            {
+                var leg = touches.FirstOrDefault(t => !t.Home && t.Body == repeat.Body && t.Reach >= repeat.Reach
+                    && wholeTouches.Any(w => !w.Home && w.Body == repeat.After && w.Order < t.Order && wholeTouches.Any(u => !u.Home && u.Body == repeat.Body && u.Order < w.Order)));
+                if (leg != null) Tag(tags[leg.Leg], ContractCheck.WordsTag);
+            }
             if (SequenceWords.ReturnHome.IsMatch(words ?? ""))
             {
                 var back = touches.FirstOrDefault(t => t.Home);
@@ -152,6 +159,13 @@ namespace ClaudiaKerman.Core.Contracts
             }
             result.Legs.AddRange(tags.Select(t => t.ToArray()));
             return result;
+        }
+
+        /// <summary>#1378: the bodies the craft itself reaches away from home, leg by leg in the plan's order, for <see cref="RouteHold"/>; #1379: from leg <paramref name="from"/> on.</summary>
+        public static List<RouteHold.Reached> BodiesReached(GameSnapshot snapshot, MissionPlan plan, string home, int from = 0)
+        {
+            return Read(snapshot, plan, home).Where(t => t.Leg >= from && !t.Child && !t.Home && t.Body != home)
+                .Select(t => new RouteHold.Reached { Leg = t.Leg, Body = t.Body, Reach = t.Reach }).ToList();
         }
 
         /// <summary>

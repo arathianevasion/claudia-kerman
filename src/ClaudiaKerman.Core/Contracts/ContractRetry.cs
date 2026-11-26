@@ -44,7 +44,7 @@ namespace ClaudiaKerman.Core.Contracts
         {
             return "Contract Requirements missed and still open at " + body + " (the mod's reading of the game, data): " + Named(open) + ". "
                 + StopWords + ": " + why + ". Propose dropping their Contracts instead, with the reason: a revised Mission Plan with no leg that serves them. "
-                + "It waits for the player's Approval, under Auto Mode too.\n";
+                + "It waits for the player's Approval; under Auto Mode it is approved at once and the drop is posted with its reason.\n";
         }
 
         /// <summary>The chat notice from the second miss of the same Requirement; Auto Mode carries on.</summary>

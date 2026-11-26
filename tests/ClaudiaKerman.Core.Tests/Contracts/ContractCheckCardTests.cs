@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -307,11 +308,53 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("Contract Route", text);
             Assert.Contains("Also run a crew report in Mun orbit.", text);
             Assert.Contains("land on the Mun", text);
-            Assert.Contains("(phase: Mun)", text);
+            Assert.Contains("land on the Mun (", text);
             Assert.Contains("not yet: low-flying surveys need an aircraft over the waypoint", text);
             // The card folds to its one line, which stays in the Mission's transcript.
             Assert.True(mission.View.ContractCheck.Folded);
             Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Mission Control · Contract check: 2 of 3 Contracts chosen", StringComparison.Ordinal));
+        }
+
+        /// <summary>#1377: the Game Snapshot recorded with the Ferry Contract of Mission m20261126-040610-a4b7, both tourists aboard.</summary>
+        private static GameSnapshot TheFerry()
+        {
+            return GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "contracts", "TourismContract-1fbf2657-ut545547.json")));
+        }
+
+        [Fact]
+        public void TheFerryIsReadAsOneMunVisitOneMinmusVisitThenHomeWithBothTourists()
+        {
+            var mission = Control(TheFerry());
+            mission.Send(Start(""));
+            mission.Send(new PlanContracts());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var text = Text(Assert.Single(_transport.Requests));
+            var visits = text.Split('\n').SkipWhile(l => !l.StartsWith("The Route by Body Visit", StringComparison.Ordinal)).Skip(1).TakeWhile(l => l.Length > 1 && char.IsDigit(l[0])).ToList();
+            const string Ferry = "(\"Ferry two tourists safely to their destination.\", open)";
+            Assert.Equal(new[]
+            {
+                "1. Kerbin, the launch: orbit Kerbin " + Ferry,
+                "2. the Mun: fly by the Mun " + Ferry + "; orbit the Mun " + Ferry,
+                "3. Minmus: orbit Minmus " + Ferry + "; fly by Minmus " + Ferry,
+                "4. Kerbin, the return home: bring tourist Milgun Kerman home " + Ferry + "; bring tourist Maxdin Kerman home " + Ferry,
+            }, visits);
+            Assert.DoesNotContain("(phase: ", text);
+            Assert.DoesNotContain("in the phase given", text);
+            Assert.Contains("Write the Mission Plan as these Body Visits, one per body in the Route's order", text);
+        }
+
+        [Fact]
+        public void AMissionWithNoChosenContractGetsThePlayersWordsAsItsGoalAndNoBodyVisits()
+        {
+            var mission = Control(ContractCheckTests.Pad());
+            mission.Send(Start("Orbit the Mun."));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var text = Text(Assert.Single(_transport.Requests));
+            Assert.Contains("Mission Goal, in the player's words (quoted data): \"Orbit the Mun.\"\n", text);
+            Assert.DoesNotContain("Contract Route", text);
+            Assert.DoesNotContain("Body Visit", text);
         }
 
         [Fact]

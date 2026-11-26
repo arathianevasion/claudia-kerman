@@ -279,7 +279,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
             var section = check.Choose(check.TickedGuids).Section;
 
-            Assert.Contains("place a Sentinel telescope in solar orbit near Kerbin's orbit (phase: Solar orbit near Kerbin; completes after the Mission: the telescope maps 8 asteroids near Kerbin, about 80 days)", section);
+            Assert.Contains("1. Kerbin, the launch: place a Sentinel telescope in solar orbit near Kerbin's orbit (", section);
+            Assert.Contains(", open; completes after the Mission: the telescope maps 8 asteroids near Kerbin, about 80 days)", section);
             Assert.Contains("Plan the placement only; no leg waits for them.", section);
         }
 

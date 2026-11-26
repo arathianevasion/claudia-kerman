@@ -546,6 +546,7 @@ namespace ClaudiaKerman.Core.Missions
                     json.BeginObject().Field("name", c.Name).Field("separation_stage", c.SeparationStage).Field("vessel_id", c.VesselId).EndObject();
                 json.EndArray();
                 Strings(json, "goal_steps", mission.GoalSteps);
+                if (mission.RouteDeparture.Length > 0) json.Field("route_departure", mission.RouteDeparture);
                 json.EndObject();
             }
             json.Name("sequence_plan");

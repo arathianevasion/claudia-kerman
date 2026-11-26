@@ -659,11 +659,11 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>#1343: no other Survey Plane fits the survey's cap.</summary>
         public const string RevisedPlanDroppingSurvey =
             "No room for another Survey Plane: revise the Mission Plan now to drop the survey's Contract, with the sequences already flown first, "
-            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs, under Auto Mode too.";
+            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player approves it before anything runs; under Auto Mode it is approved at once and the drop is posted with its reason.";
 
         /// <summary>#1306: a stop ended the retries of an open Contract Requirement.</summary>
         public const string RevisedPlanDroppingContract =
             "No more retries of the open Contract Requirement: revise the Mission Plan now to drop its Contract, with the sequences already flown first, "
-            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs, under Auto Mode too.";
+            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player approves it before anything runs; under Auto Mode it is approved at once and the drop is posted with its reason.";
     }
 }

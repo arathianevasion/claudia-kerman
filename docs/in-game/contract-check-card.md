@@ -17,7 +17,7 @@ With accepted exploration (world-first) Contracts, Start Mission now posts Missi
 1. Press "Plan these N".
 2. The card folds to one line: "Mission Control · Contract check: N of 3 Contracts chosen · route … m/s · … m/s to spare · ✓ …".
 3. The Craft Check runs on the Contracts' route ("Contracts: orbit the Mun; …; return to Kerbin") and the Mission starts; the folded line stays in the Mission's transcript.
-4. Claudia's Mission Plan is the Mission's first request. In its stream dump, the request has a "Contract Route" section with each chosen Contract's Requirements and phases, and "No words typed".
+4. Claudia's Mission Plan is the Mission's first request. In its stream dump, the request has a "Contract Route" section listing the Route by Body Visit (each body once, each Requirement with its Contract and "open"), with no "(phase: …)" tags, and "No words typed".
 
 ## Check 3: your words, and Plan without Contracts
 

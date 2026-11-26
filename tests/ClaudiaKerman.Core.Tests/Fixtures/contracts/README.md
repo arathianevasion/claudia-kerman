@@ -42,5 +42,6 @@ Captured by the Adapter in the Career Test save (KSP 1.12, 2026-11-14), copied b
 | `ExplorationContract-36a2d4f7-ut24.json` | ExplorationContract, SCIENCE over Kerbin | as above |
 | `PartTest-20ebfabe-ut789.json` | PartTest, haul of the RT-10 "Hammer" FLYING at 51–56 km, 100–260 m/s | the PartTest Requirement's `body` is the body's name (`Kerbin`); the conditions are its siblings, ReachDestination's `dest` an index |
 | `SurveyContract-9f444a7c-ut789.json` | SurveyContract, a gravity scan high over the Mun | each waypoint's `band` is the game's `FlightBand` number (`3`, HIGH; the Contract's own `targetBand` is the name); `targetBody` an index |
+| `TourismContract-1fbf2657-ut545547.json` | TourismContract, the Ferry of Mission m20261126-040610-a4b7 (2026-11-26): two tourists, the Mun, Kerbin orbit and Minmus (#1377) | captured after #1260, so it carries its `title`; each KerbalDestinationParameter's `targetBody` an index, with its `kerbalName` |
 
 `../contract-card/2026-11-19-career-test.json` is the whole Game Snapshot of the Artisan's flight of 2026-11-19 (build e01560f), with its four accepted Contracts: the three above, its PartTest Requirement by then `Complete` (the part aboard), and an ORBIT exploration Contract over Kerbin.

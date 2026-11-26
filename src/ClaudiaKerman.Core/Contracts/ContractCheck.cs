@@ -99,6 +99,8 @@ namespace ClaudiaKerman.Core.Contracts
         public string RouteWords = "";
         /// <summary>#1036: the route's legs and what each serves.</summary>
         public List<RouteLeg> Legs = new List<RouteLeg>();
+        /// <summary>#1377: the Contract Route's bodies as Body Visits, in the order flown, each holding its Chosen Requirements.</summary>
+        public List<BodyVisit> Visits = new List<BodyVisit>();
         /// <summary>#1024: every Contract Requirement chosen, which the Mission's plan proposal is checked against.</summary>
         public List<ChosenRequirement> Requirements = new List<ChosenRequirement>();
         /// <summary>#1033: the vessel of the chosen Target Vessel Contract, the Mission's Target Vessel (ADR 0013's amendment); null when none is chosen.</summary>
@@ -458,8 +460,16 @@ namespace ClaudiaKerman.Core.Contracts
         {
             var needs = _routes.Needs(ContractNeeds(set));
             var legs = new List<RouteLeg>();
-            foreach (var body in route.Order)
+            for (var i = 0; i < route.Order.Count; i++)
             {
+                var body = route.Order[i];
+                ContractReach again;
+                // #1381: a repeat the words ask for serves only them.
+                if (route.Again.TryGetValue(i, out again))
+                {
+                    legs.Add(new RouteLeg { Text = Step(body, again) + " again", Serves = new[] { WordsTag } });
+                    continue;
+                }
                 var serves = new List<string>();
                 if (_routes.Reading.Needs.ContainsKey(body)) serves.Add(WordsTag);
                 serves.AddRange(set.Where(p => p.Requirements.Any(r => !r.Return && r.Body == body)).Select(p => p.Title));
@@ -886,8 +896,8 @@ namespace ClaudiaKerman.Core.Contracts
         // ---- The hand-off ----
 
         /// <summary>
-        /// The set the player ticked, priced as it is (no new search), with the request's compact Contract Route section: the Contracts, each
-        /// Contract Requirement and its phase, the set and the reasons for the rest. Never the raw saved settings.
+        /// The set the player ticked, priced as it is (no new search), with the request's compact Contract Route section: the Contracts, the
+        /// Route by Body Visit (#1377), the set and the reasons for the rest. Never the raw saved settings.
         /// </summary>
         public ContractChoice Choose(IEnumerable<string> guids)
         {
@@ -912,6 +922,7 @@ namespace ClaudiaKerman.Core.Contracts
                 choice.TargetGuid = meet.Contract.Guid;
                 choice.TargetTitle = meet.Title;
             }
+            choice.Visits = route.Visits(set.SelectMany(p => p.Requirements.Select(r => new KeyValuePair<string, ReadRequirement>(p.Title, r))), _home);
             choice.Legs = LegsOf(set, route);
             choice.RouteWords = string.Join("; ", choice.Legs.Select(l => l.Text).ToArray());
             var spare = CraftDeltaV - route.DeltaV * (1 + ReservePercent / 100.0);
@@ -932,15 +943,9 @@ namespace ClaudiaKerman.Core.Contracts
             }
             if (route.Waypoints.Any(w => !w.Ground)) text.Append(MissionPrompts.SurveyScheduleNote).Append('\n');
             if (route.Waypoints.Any(w => w.Ground)) text.Append(MissionPrompts.SurveyLandingNote).Append('\n');
-            text.Append("The Contracts:\n");
-            foreach (var planned in set)
-            {
-                text.Append("- ").Append(MissionPrompts.Quoted(planned.Title));
-                if (planned.Contract.DeadlineUt.HasValue) text.Append(", deadline ").Append(KerbinTime.ShortDate(planned.Contract.DeadlineUt.Value));
-                text.Append(": ").Append(string.Join("; ", planned.Requirements.Select(r => r.Words + " (phase: " + r.Phase + (r.AfterMission != null ? "; " + CompletesAfter + ": " + r.AfterMission.Words : "") + ")").ToArray()));
-                if (planned.Note.Length > 0) text.Append(" (").Append(planned.Note).Append(")");
-                text.Append('\n');
-            }
+            text.Append("The Contracts: ").Append(string.Join("; ", set.Select(p => MissionPrompts.Quoted(p.Title)
+                + (p.Contract.DeadlineUt.HasValue ? ", deadline " + KerbinTime.ShortDate(p.Contract.DeadlineUt.Value) : "") + (p.Note.Length > 0 ? " (" + p.Note + ")" : "")).ToArray())).Append(".\n");
+            AppendVisits(text, choice.Visits, set);
             var left = NotThisFlight.Where(l => !chosen.Contains(l.Guid)).Select(l => MissionPrompts.Quoted(l.Title) + ": " + l.Reason)
                 .Concat(_planned.Where(p => !chosen.Contains(p.Contract.Guid) && NotThisFlight.All(l => l.Guid != p.Contract.Guid)).Select(p => MissionPrompts.Quoted(p.Title) + ": the player left it out"))
                 .ToList();
@@ -971,7 +976,7 @@ namespace ClaudiaKerman.Core.Contracts
                     .Append(string.Join("; ", choice.Requirements.Where(r => r.AfterMission != null).Select(r => r.AfterMission.Words).ToArray()))
                     .Append("). Plan the placement only; no leg waits for them.\n");
             if (choice.Requirements.Any(r => r.Experiment == ""))
-                text.Append("Collect science: run the science block in the phase given.\n");
+                text.Append("Collect science: run the science block at its Body Visit.\n");
             if (route.HopAp.HasValue)
                 text.Append("Fly the hop straight up, as it is priced: launch with target_ap ").Append(Math.Round(route.HopAp.Value).ToString(CultureInfo.InvariantCulture))
                     .Append(" and turn_start_speed 100000.\n");
@@ -980,9 +985,34 @@ namespace ClaudiaKerman.Core.Contracts
                 text.Append("Part tests: the mod runs each in its block at the moment its conditions hold (")
                     .Append(string.Join("; ", tests.Select(r => r.Words + " in " + (r.Test.Window == TestWindow.Ascent ? "launch" : "reentry")).ToArray()))
                     .Append("); never stage for a test.\n");
-            text.Append("Plan the Mission to serve every chosen Contract Requirement in the phase given, with the player's words; never add a Contract the player didn't ask for (one they ask for later is added by naming its title in a revised plan's why).\n");
+            text.Append("Write the Mission Plan as these Body Visits, one per body in the Route's order, each serving its open Requirements there, with the player's words (a body twice only where the player's words ask); never add a Contract the player didn't ask for (one they ask for later is added by naming its title in a revised plan's why).\n");
+            // #1380 (ADR 0022): a departure she names is hers to propose; the player approves it, or Auto Mode flies it and posts her reason.
+            text.Append("To leave the Route on purpose (another order of bodies, or a body twice) because it flies better, say in route_departure what departs and why: "
+                + "the player approves it, or under Auto Mode it flies at once and your reason is posted. A departure with no route_departure is sent back.\n");
             choice.Section = text.ToString();
             return choice;
+        }
+
+        /// <summary>
+        /// #1377: the request's Route by Body Visit, in order: each Chosen Requirement with its Contract and whether it is met or open;
+        /// one that completes after the Mission says so.
+        /// </summary>
+        private static void AppendVisits(StringBuilder text, List<BodyVisit> visits, IList<Planned> set)
+        {
+            var after = set.SelectMany(p => p.Requirements).Where(r => r.AfterMission != null).GroupBy(r => r.Requirement.Key).ToDictionary(g => g.Key, g => g.First().AfterMission.Words);
+            text.Append("The Route by Body Visit, in the order flown (each Chosen Requirement with its Contract, met or open as the game shows it):\n");
+            for (var i = 0; i < visits.Count; i++)
+            {
+                var visit = visits[i];
+                text.Append(i + 1).Append(". ").Append(ContractKinds.Named(visit.Body))
+                    .Append(visit.Kind == BodyVisitKind.Launch ? ", the launch" : visit.Kind == BodyVisitKind.Return ? ", the return home" : visit.Kind == BodyVisitKind.Again ? ", again for the player's words" : "").Append(": ");
+                text.Append(visit.Requirements.Count == 0 ? "no Contract Requirement" : string.Join("; ", visit.Requirements.Select(r =>
+                {
+                    string completes;
+                    return r.Words + " (" + MissionPrompts.Quoted(r.Title) + ", " + (r.Met ? "met" : "open") + (after.TryGetValue(r.Key, out completes) ? "; " + CompletesAfter + ": " + completes : "") + ")";
+                }).ToArray()));
+                text.Append('\n');
+            }
         }
 
         private static PartTestSpec TestOf(ReadRequirement read, Dictionary<string, TestWindow> windows)

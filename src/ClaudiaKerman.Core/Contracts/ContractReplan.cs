@@ -53,10 +53,32 @@ namespace ClaudiaKerman.Core.Contracts
             AddAsked(snapshot, plan, chosen, home, asked, result);
             var served = PlanServes.Check(snapshot, plan, kept.Concat(result.Added).ToList(), words, home);
             result.Problems.AddRange(served.Problems);
+            result.Problems.AddRange(ServingNothing(snapshot, plan, kept.Concat(result.Added).ToList(), words, home, asked, firstUnflown));
             result.Legs = served.Legs;
             result.Record = served.Record.Select(r => retries.FirstOrDefault(x => x.Key == r.Key) ?? r).ToList();
             MoveTags(served.Record, result.Record, result.Legs);
             return result;
+        }
+
+        /// <summary>
+        /// #1379 (ADR 0022): a leg still to fly that takes the craft to a body away from home and serves no Requirement still open (the game
+        /// doesn't show it met) and none of the player's words is sent back. Launch and return are legs at home, so they are never read here.
+        /// </summary>
+        private static List<string> ServingNothing(GameSnapshot snapshot, MissionPlan plan, IList<ChosenRequirement> kept, string words, string home, IList<string> asked, int firstUnflown)
+        {
+            var problems = new List<string>();
+            if (kept.Count == 0) return problems;
+            var open = kept.Where(r => !MetInGame(snapshot, ContractWatch.GuidOf(r.Key), r.Key)).ToList();
+            var tags = PlanServes.Check(snapshot, plan, open, string.Join("\n", new[] { words ?? "" }.Concat(asked).ToArray()), home, firstUnflown).Legs;
+            // A body with a Requirement still open keeps its legs: one may set up the work another serves (a transfer, then the science there).
+            var wanted = new HashSet<string>(open.Select(r => r.Body).Concat(open.Where(r => r.Orbit != null).Select(r => r.Orbit.Body)));
+            var reached = PlanServes.BodiesReached(snapshot, plan, home, firstUnflown);
+            // #1381 (ADR 0022): a flyby on the way to the next Body Visit serves that visit.
+            var passing = new HashSet<int>(reached.Where((r, i) => { var next = RouteHold.PassedOnTheWay(reached, i); return next != null && (wanted.Contains(next.Body) || tags[next.Leg].Length > 0); }).Select(r => r.Leg));
+            foreach (var leg in reached.Where(r => !wanted.Contains(r.Body) && !passing.Contains(r.Leg)).Select(r => r.Leg).Distinct())
+                if (tags[leg].Length == 0)
+                    problems.Add("leg " + (leg + 1) + " \"" + plan.Sequences[leg].Name + "\" serves no Requirement still open and none of your words: take it out, or say which open Requirement it serves");
+            return problems;
         }
 
         private static bool MetInGame(GameSnapshot snapshot, string guid, string key)
