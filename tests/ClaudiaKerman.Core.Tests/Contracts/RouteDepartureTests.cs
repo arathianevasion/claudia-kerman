@@ -27,8 +27,8 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         private const double LaunchedAt = 448444;
         private const string Reason = "Minmus first: its window opens now and the Mun's comes round again before Minmus is done";
         private static readonly string[] FirstPlan = { "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit", "Return to Kerbin" };
-        private static readonly string[] MinmusFirst = { "Transfer to Minmus and capture into low orbit", "Transfer to the Mun and capture into low orbit", "Return to Kerbin" };
-        private static readonly string[] MunFirst = { "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit", "Return to Kerbin" };
+        private static readonly string[] MinmusFirst = { "Launch to low Kerbin orbit", "Transfer to Minmus and capture into low orbit", "Transfer to the Mun and capture into low orbit", "Return to Kerbin" };
+        private static readonly string[] MunFirst = { "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit", "Return to Kerbin" };
         private readonly Background _background = new Background(e => throw new Exception("background error", e));
         private readonly TempDir _save = new TempDir();
         private StreamingFakeTransport _transport;
@@ -47,12 +47,12 @@ namespace ClaudiaKerman.Core.Tests.Contracts
                 + (departure == null ? "" : ",\"route_departure\":" + JsonSerializer.Serialize(departure)) + "}";
         }
 
-        private static GameSnapshot Exploration(double ut)
+        private static GameSnapshot Exploration(double? ut = null)
         {
             var contract = ContractCheckTests.Exploration("c1", 10000, "Mun:ORBIT", "Minmus:ORBIT");
             contract.State = "Active";
             var snapshot = ContractCheckTests.With(contract);
-            snapshot.Ut = ut;
+            if (ut.HasValue) snapshot.Ut = ut.Value;
             return snapshot;
         }
 
@@ -65,7 +65,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mission.Clock = () => new DateTime(2026, 11, 26, 12, 0, 0, DateTimeKind.Utc);
             mission.Send(new SaveLoaded(_save.Path));
             mission.Send(new SceneChanged(GameScene.Flight));
-            mission.Send(Exploration(0));
+            mission.Send(Exploration());
             mission.Send(new StartMission("", 25m, Sonnet));
             mission.Send(new PlanContracts());
             return mission;
@@ -134,13 +134,59 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void WithoutAutoModeAFirstPlanThatLeavesTheRouteWithAReasonIsOfferedAndWaitsForApproval()
         {
-            var mission = Proposing(PlanJson(Reason, new[] { "Launch to low Kerbin orbit" }.Concat(MinmusFirst).ToArray()));
-            mission.Send(new UtAdvanced(120));
+            var mission = Proposing(PlanJson(Reason, MinmusFirst));
+            mission.Send(new UtAdvanced(LaunchedAt - 60));
 
             Assert.DoesNotContain("before the Mun", Answers);
             Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
             Assert.Contains("Leaves the Contract Route: " + Reason, Offered(mission));
         }
+
+        [Fact]
+        public void UnderAutoModeARevisionThatLeavesTheRouteWithAReasonIsApprovedAtOnceAndAnnounced()
+        {
+            var mission = Revising(true, PlanJson(Reason, MinmusFirst));
+
+            Assert.DoesNotContain("before the Mun", Answers);
+            Assert.NotEqual(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            Assert.Equal("", mission.View.AutoModeStop);
+            var notice = "The approved Mission Plan leaves the Contract Route: " + Reason;
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text == notice);
+            Assert.Contains(notice, EventLog);
+        }
+
+        [Fact]
+        public void UnderAutoModeADepartureWithNoReasonIsSentBack()
+        {
+            var mission = Revising(true, PlanJson(null, MinmusFirst), PlanJson(null, MunFirst));
+
+            Assert.Contains("the plan flies Minmus before the Mun, but the Contract Route flies the Mun first", Answers);
+            Assert.Contains(ContractRouteLeaveHint, Answers);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("leaves the Contract Route"));
+        }
+
+        [Fact]
+        public void WithoutAutoModeADepartureWithNoReasonIsSentBack()
+        {
+            var mission = Revising(false, PlanJson("none", MinmusFirst), PlanJson(null, MunFirst));
+
+            Assert.Contains("the plan flies Minmus before the Mun", Answers);
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            Assert.DoesNotContain("Leaves the Contract Route", Offered(mission));
+        }
+
+        [Fact]
+        public void UnderAutoModeARevisionThatFollowsTheRouteIsApprovedWithNoDepartureAnnounced()
+        {
+            // A reason given for a plan that doesn't leave the Route is no departure.
+            var mission = Revising(true, PlanJson(Reason, MunFirst));
+
+            Assert.NotEqual(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            Assert.DoesNotContain("Leaves the Contract Route", Offered(mission));
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("leaves the Contract Route"));
+        }
+
+        private const string ContractRouteLeaveHint = "say in route_departure what departs and why";
 
         private void DrainUntil(MissionControl mission, Func<MissionView, bool> condition)
         {
