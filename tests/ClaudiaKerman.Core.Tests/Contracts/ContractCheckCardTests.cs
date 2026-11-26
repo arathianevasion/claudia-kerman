@@ -352,7 +352,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
             var text = Text(Assert.Single(_transport.Requests));
-            Assert.Contains("Mission Goal, in the player's words (quoted data): ", text);
+            Assert.Contains("Mission Goal, in the player's words (quoted data): \"Orbit the Mun.\"\n", text);
             Assert.DoesNotContain("Contract Route", text);
             Assert.DoesNotContain("Body Visit", text);
         }

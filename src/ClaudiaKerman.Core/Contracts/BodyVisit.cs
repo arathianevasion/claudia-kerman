@@ -6,13 +6,13 @@ using System.Linq;
 
 namespace ClaudiaKerman.Core.Contracts
 {
-    /// <summary>#1377: where a Body Visit falls in the Contract Route.</summary>
-    public enum BodyVisitStop
+    /// <summary>#1377: which kind of Body Visit: home's launch, a body away from home, or home's return.</summary>
+    public enum BodyVisitKind
     {
         /// <summary>Home at the start: the launch, and the work done in orbit round home.</summary>
         Launch,
         /// <summary>A body away from home, visited once.</summary>
-        Visit,
+        Away,
         /// <summary>Home at the end: the return, and what is met once the craft is home again.</summary>
         Return,
     }
@@ -36,7 +36,7 @@ namespace ClaudiaKerman.Core.Contracts
     public sealed class BodyVisit
     {
         public string Body = "";
-        public BodyVisitStop Stop;
+        public BodyVisitKind Kind;
         public List<VisitRequirement> Requirements = new List<VisitRequirement>();
     }
 
@@ -49,9 +49,9 @@ namespace ClaudiaKerman.Core.Contracts
         /// </summary>
         public static List<BodyVisit> Of(PricedRoute route, IEnumerable<KeyValuePair<string, ReadRequirement>> chosen, string home)
         {
-            var launch = new BodyVisit { Body = home, Stop = BodyVisitStop.Launch };
-            var away = route.Order.Where(b => b != home).Distinct().Select(b => new BodyVisit { Body = b, Stop = BodyVisitStop.Visit }).ToList();
-            var back = new BodyVisit { Body = home, Stop = BodyVisitStop.Return };
+            var launch = new BodyVisit { Body = home, Kind = BodyVisitKind.Launch };
+            var away = route.Order.Where(b => b != home).Distinct().Select(b => new BodyVisit { Body = b, Kind = BodyVisitKind.Away }).ToList();
+            var back = new BodyVisit { Body = home, Kind = BodyVisitKind.Return };
             var held = new Dictionary<BodyVisit, List<KeyValuePair<string, ReadRequirement>>>();
             foreach (var one in chosen)
             {

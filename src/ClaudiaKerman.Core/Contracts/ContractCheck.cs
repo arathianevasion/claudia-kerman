@@ -994,7 +994,7 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 var visit = visits[i];
                 text.Append(i + 1).Append(". ").Append(ContractKinds.Named(visit.Body))
-                    .Append(visit.Stop == BodyVisitStop.Launch ? ", the launch" : visit.Stop == BodyVisitStop.Return ? ", the return home" : "").Append(": ");
+                    .Append(visit.Kind == BodyVisitKind.Launch ? ", the launch" : visit.Kind == BodyVisitKind.Return ? ", the return home" : "").Append(": ");
                 text.Append(visit.Requirements.Count == 0 ? "no Contract Requirement" : string.Join("; ", visit.Requirements.Select(r =>
                 {
                     string completes;

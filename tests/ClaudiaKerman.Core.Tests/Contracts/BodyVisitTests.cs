@@ -43,7 +43,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             var choice = Chosen(orbits, MunAndMinmusScans());
 
             Assert.Equal(new[] { "Mun", "Minmus", "Kerbin" }, choice.Visits.Select(v => v.Body));
-            Assert.Equal(BodyVisitStop.Return, choice.Visits[2].Stop);
+            Assert.Equal(BodyVisitKind.Return, choice.Visits[2].Kind);
             Assert.Empty(choice.Visits[2].Requirements);
 
             var mun = choice.Visits[0].Requirements;
@@ -51,6 +51,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Equal("orbit the Mun", mun[0].Words);
             Assert.Equal("Orbit the Mun and Minmus", mun[0].Title);
             Assert.All(mun.Skip(1), r => Assert.StartsWith("take a crewReport over the waypoint", r.Words));
+            Assert.All(mun.Skip(1), r => Assert.EndsWith("over the Mun", r.Words));
             Assert.All(mun.Skip(1), r => Assert.Equal("Scan the Mun and Minmus", r.Title));
 
             var minmus = choice.Visits[1].Requirements;
@@ -85,7 +86,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
 
             var visits = route.Visits(read.Select(r => new KeyValuePair<string, ReadRequirement>("Tour", r)), "Kerbin");
 
-            Assert.Equal(new[] { BodyVisitStop.Launch, BodyVisitStop.Visit, BodyVisitStop.Return }, visits.Select(v => v.Stop));
+            Assert.Equal(new[] { BodyVisitKind.Launch, BodyVisitKind.Away, BodyVisitKind.Return }, visits.Select(v => v.Kind));
             Assert.Equal(new[] { "Kerbin", "Mun", "Kerbin" }, visits.Select(v => v.Body));
             Assert.Equal("orbit Kerbin", visits[0].Requirements.Single().Words);
             Assert.Equal("fly by the Mun", visits[1].Requirements.Single().Words);
