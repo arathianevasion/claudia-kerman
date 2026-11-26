@@ -72,7 +72,10 @@ namespace ClaudiaKerman.Core.Contracts
             var tags = PlanServes.Check(snapshot, plan, open, string.Join("\n", new[] { words ?? "" }.Concat(asked).ToArray()), home, firstUnflown).Legs;
             // A body with a Requirement still open keeps its legs: one may set up the work another serves (a transfer, then the science there).
             var wanted = new HashSet<string>(open.Select(r => r.Body).Concat(open.Where(r => r.Orbit != null).Select(r => r.Orbit.Body)));
-            foreach (var leg in PlanServes.BodiesReached(snapshot, plan, home, firstUnflown).Where(r => !wanted.Contains(r.Body)).Select(r => r.Leg).Distinct())
+            var reached = PlanServes.BodiesReached(snapshot, plan, home, firstUnflown);
+            // #1381 (ADR 0022): a flyby on the way to the next Body Visit serves that visit.
+            var passing = new HashSet<int>(reached.Where((r, i) => { var next = RouteHold.PassedOnTheWay(reached, i); return next != null && (wanted.Contains(next.Body) || tags[next.Leg].Length > 0); }).Select(r => r.Leg));
+            foreach (var leg in reached.Where(r => !wanted.Contains(r.Body) && !passing.Contains(r.Leg)).Select(r => r.Leg).Distinct())
                 if (tags[leg].Length == 0)
                     problems.Add("leg " + (leg + 1) + " \"" + plan.Sequences[leg].Name + "\" serves no Requirement still open and none of your words: take it out, or say which open Requirement it serves");
             return problems;

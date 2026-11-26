@@ -118,6 +118,13 @@ namespace ClaudiaKerman.Core.Contracts
                 var leg = touches.FirstOrDefault(t => !t.Home && t.Body == need.Key && t.Reach >= need.Value);
                 if (leg != null) Tag(tags[leg.Leg], ContractCheck.WordsTag);
             }
+            // #1381: a repeat the words ask for serves them where the craft is back at the body after the one before it.
+            foreach (var repeat in reading.Repeats)
+            {
+                var leg = touches.FirstOrDefault(t => !t.Home && t.Body == repeat.Body && t.Reach >= repeat.Reach
+                    && wholeTouches.Any(w => !w.Home && w.Body == repeat.After && w.Order < t.Order && wholeTouches.Any(u => !u.Home && u.Body == repeat.Body && u.Order < w.Order)));
+                if (leg != null) Tag(tags[leg.Leg], ContractCheck.WordsTag);
+            }
             if (SequenceWords.ReturnHome.IsMatch(words ?? ""))
             {
                 var back = touches.FirstOrDefault(t => t.Home);

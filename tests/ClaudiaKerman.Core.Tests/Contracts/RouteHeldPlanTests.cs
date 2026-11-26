@@ -158,6 +158,68 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("Transfer to the Mun for a flyby on the way home", Offered(mission));
         }
 
+        private const string BackToTheMun = "Orbit the Mun, then orbit Minmus, then back to the Mun, and come home.";
+
+        private static readonly string[] MunMinmusMunHome =
+        {
+            "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit", "Transfer back to the Mun and capture into low orbit", "Return to Kerbin",
+        };
+
+        [Fact]
+        public void WordsAskingToGoBackToTheMun_GiveTwoMunVisitsWithTheContractWorkAtTheFirst_AndThePlanPasses()
+        {
+            var mission = Proposing(ContractCheckTests.With(ContractCheckTests.Exploration("c1", 10000, "Mun:ORBIT")), MunMinmusMunHome);
+            mission.Send(new StartMission(BackToTheMun, 25m, Sonnet));
+            mission.Send(new PlanContracts());
+            DrainUntilOffered(mission);
+
+            var request = _transport.Requests[0].Body.Replace("\\\"", "\"");
+            Assert.Matches(@"1\. the Mun: [^\\]*orbit[^\\]*open", request);
+            Assert.Contains("2. Minmus: no Contract Requirement", request);
+            Assert.Contains("3. the Mun, again for the player's words: no Contract Requirement", request);
+            Assert.Equal(2, _transport.Requests.Count);
+            Assert.Contains("Transfer back to the Mun and capture into low orbit", Offered(mission));
+        }
+
+        [Fact]
+        public void TheRepeatTheWordsAskForServesTheWords_EvenAtABodyWithNoContractWork()
+        {
+            var mission = Proposing(ContractCheckTests.With(ContractCheckTests.Exploration("c1", 10000, "Minmus:ORBIT")), MunMinmusMunHome);
+            mission.Send(new StartMission(BackToTheMun, 25m, Sonnet));
+            mission.Send(new PlanContracts());
+            DrainUntilOffered(mission);
+
+            Assert.DoesNotContain("serves no Requirement", Answers);
+            Assert.Contains("Transfer back to the Mun and capture into low orbit", Offered(mission));
+        }
+
+        [Fact]
+        public void WithoutWordsAskingForIt_TheSameRepeatIsSentBack()
+        {
+            var mission = Proposing(ContractCheckTests.With(ContractCheckTests.Exploration("c1", 10000, "Mun:ORBIT")), MunMinmusMunHome,
+                new[] { "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit", "Return to Kerbin" });
+            mission.Send(new StartMission("Orbit the Mun, then orbit Minmus, and come home.", 25m, Sonnet));
+            mission.Send(new PlanContracts());
+            DrainUntilOffered(mission);
+
+            Assert.Contains("leg 4 \"Transfer back to the Mun and capture into low orbit\" visits the Mun a second time", Answers);
+            Assert.DoesNotContain("Transfer back to the Mun", Offered(mission));
+        }
+
+        [Fact]
+        public void AFlybyOfABodyOnTheWayToTheNextBodyVisitIsAcceptedAndIsNotAVisit()
+        {
+            var mission = Proposing(ContractCheckTests.With(ContractCheckTests.Exploration("c1", 10000, "Minmus:ORBIT")),
+                new[] { "Launch to low Kerbin orbit", "Transfer to the Mun for a flyby", "Transfer to Minmus and capture into low orbit", "Return to Kerbin" });
+            mission.Send(new StartMission("", 25m, Sonnet));
+            mission.Send(new PlanContracts());
+            DrainUntilOffered(mission);
+
+            Assert.DoesNotContain("serves no Requirement", Answers);
+            Assert.DoesNotContain("a second time", Answers);
+            Assert.Contains("Transfer to the Mun for a flyby", Offered(mission));
+        }
+
         [Fact]
         public void AMissionWithNoChosenContractAcceptsAPlanThatRepeatsABody()
         {

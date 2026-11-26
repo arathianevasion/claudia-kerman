@@ -50,9 +50,15 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         /// <summary>The first plan flown to the Mun, then a Debrief asking for a revised plan; Claudia then proposes each revision in turn.</summary>
         private MissionControl Revising(params string[][] revisions)
         {
+            return Revising("", FirstPlan, revisions);
+        }
+
+        /// <summary>#1381: as above, from the player's <paramref name="words"/> and <paramref name="firstPlan"/>.</summary>
+        private MissionControl Revising(string words, string[] firstPlan, params string[][] revisions)
+        {
             var responses = new List<ScriptedResponse>
             {
-                ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, ContractWatchTests.PlanJson(FirstPlan))),
+                ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, ContractWatchTests.PlanJson(firstPlan))),
                 ContractWatchTests.MissionPlanKind(),
                 ScriptedResponse.Fixture("mission-sequence-plan.sse"),
                 ContractWatchTests.Reply("{\"kind\":\"debrief\",\"say\":\"Off-Nominal.\",\"reply_intent\":\"none\",\"unsure_because\":\"\",\"sequence_plan\":null,\"alert\":null,"
@@ -70,7 +76,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             var contract = ContractCheckTests.Exploration("c1", 10000, "Mun:ORBIT", "Minmus:ORBIT");
             contract.State = "Active";
             mission.Send(ContractCheckTests.With(contract));
-            mission.Send(new StartMission("", 25m, Sonnet));
+            mission.Send(new StartMission(words, 25m, Sonnet));
             mission.Send(new PlanContracts());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
@@ -109,6 +115,23 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.DoesNotContain("serves no Requirement", Answers);
             Assert.DoesNotContain("a second time", Answers);
             Assert.Contains("Transfer to Minmus and capture into low orbit", mission.View.Log.Last(e => e.Kind == LogKind.MissionPlan).Text);
+        }
+
+        private const string BackToTheMun = "Orbit the Mun, then orbit Minmus, then back to the Mun, and come home.";
+
+        [Fact]
+        public void ARevisionKeepsTheRepeatTheWordsAskFor_ButAnotherMunVisitIsSentBack()
+        {
+            var mission = Revising(BackToTheMun,
+                new[] { "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit", "Transfer back to the Mun and capture into low orbit", "Return to Kerbin" },
+                new[] { "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit", "Transfer back to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit again", "Transfer back to the Mun and capture into low orbit again", "Return to Kerbin" },
+                new[] { "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit", "Transfer back to the Mun and capture into low orbit", "Return to Kerbin" });
+
+            Assert.Contains("leg 5 \"Transfer back to the Mun and capture into low orbit again\" visits the Mun a second time", Answers);
+            Assert.DoesNotContain("leg 3 \"Transfer back to the Mun and capture into low orbit\" serves no", Answers);
+            var offered = mission.View.Log.Last(e => e.Kind == LogKind.MissionPlan).Text;
+            Assert.Contains("Transfer back to the Mun and capture into low orbit", offered);
+            Assert.DoesNotContain("capture into low orbit again", offered);
         }
 
         private void DrainUntil(MissionControl mission, Func<MissionView, bool> condition)

@@ -66,7 +66,7 @@ namespace ClaudiaKerman.Core.Missions
             public HashSet<string> Ended;
             public List<string> Asked;
             public int FirstUnflown;
-            /// <summary>#1378, #1379: the Contract Route's bodies away from home that still have an open Requirement, in the order flown, that a proposed plan's legs still to fly are held to; empty with no Chosen Contract.</summary>
+            /// <summary>#1378, #1379: the Contract Route's bodies away from home that still have an open Requirement (#1381: or are a repeat the words ask for), in the order flown, that a proposed plan's legs still to fly are held to; empty with no Chosen Contract.</summary>
             public List<string> RouteBodies;
         }
 
@@ -79,8 +79,14 @@ namespace ClaudiaKerman.Core.Missions
                 Asked = mission.PlayerAsked.ToList(), Ended = new HashSet<string>(mission.Contracts.Ended),
                 FirstUnflown = mission.Plan == null ? 0 : MissionCards.LegInHand(StepsBegun(mission), mission.SequenceCounted),
                 RouteBodies = mission.Chosen == null ? new List<string>() : mission.Chosen.Visits
-                    .Where(v => v.Kind == BodyVisitKind.Away && v.Requirements.Any(r => !MetNow(snapshot, mission, r.Key))).Select(v => v.Body).ToList(),
+                    .Where(v => v.Kind == BodyVisitKind.Again || (v.Kind == BodyVisitKind.Away && (v.Requirements.Any(r => !MetNow(snapshot, mission, r.Key)) || Repeated(mission, v.Body)))).Select(v => v.Body).ToList(),
             };
+        }
+
+        /// <summary>#1381: the Route visits <paramref name="body"/> again for the player's words, so its first visit is held too.</summary>
+        private static bool Repeated(Mission mission, string body)
+        {
+            return mission.Chosen.Visits.Any(v => v.Kind == BodyVisitKind.Again && v.Body == body);
         }
 
         /// <summary>#1379: the Requirement is met: its Contract is completed, or the game shows it Complete.</summary>
