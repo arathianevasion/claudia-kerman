@@ -460,8 +460,16 @@ namespace ClaudiaKerman.Core.Contracts
         {
             var needs = _routes.Needs(ContractNeeds(set));
             var legs = new List<RouteLeg>();
-            foreach (var body in route.Order)
+            for (var i = 0; i < route.Order.Count; i++)
             {
+                var body = route.Order[i];
+                ContractReach again;
+                // #1381: a repeat the words ask for serves only them.
+                if (route.Again.TryGetValue(i, out again))
+                {
+                    legs.Add(new RouteLeg { Text = Step(body, again) + " again", Serves = new[] { WordsTag } });
+                    continue;
+                }
                 var serves = new List<string>();
                 if (_routes.Reading.Needs.ContainsKey(body)) serves.Add(WordsTag);
                 serves.AddRange(set.Where(p => p.Requirements.Any(r => !r.Return && r.Body == body)).Select(p => p.Title));
@@ -997,7 +1005,7 @@ namespace ClaudiaKerman.Core.Contracts
             {
                 var visit = visits[i];
                 text.Append(i + 1).Append(". ").Append(ContractKinds.Named(visit.Body))
-                    .Append(visit.Kind == BodyVisitKind.Launch ? ", the launch" : visit.Kind == BodyVisitKind.Return ? ", the return home" : "").Append(": ");
+                    .Append(visit.Kind == BodyVisitKind.Launch ? ", the launch" : visit.Kind == BodyVisitKind.Return ? ", the return home" : visit.Kind == BodyVisitKind.Again ? ", again for the player's words" : "").Append(": ");
                 text.Append(visit.Requirements.Count == 0 ? "no Contract Requirement" : string.Join("; ", visit.Requirements.Select(r =>
                 {
                     string completes;

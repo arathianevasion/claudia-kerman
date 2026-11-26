@@ -11,6 +11,7 @@ namespace ClaudiaKerman.Core.Contracts
     /// #1378 (ADR 0022): a proposed Mission Plan held to the Contract Route's Body Visits. Away from home, each body is visited once, in the
     /// Route's order. The plan's visits are read from its legs as the plan check reads them: legs in a row at one body are one visit (its first leg names it), and
     /// a flyby is passing the body, not a visit, unless the plan never stops there. A body the Route doesn't visit isn't ordered here.
+    /// #1381: a body may be visited as often as the Route visits it (a repeat the player's words ask for); such a body is held by that count, not by its place.
     /// </summary>
     internal static class RouteHold
     {
@@ -30,18 +31,24 @@ namespace ClaudiaKerman.Core.Contracts
             var problems = new List<string>();
             var visits = Visits(PlanServes.BodiesReached(snapshot, plan, home, from));
             var firstVisits = new List<Reached>();
+            var seen = new Dictionary<string, int>();
             foreach (var visit in visits)
             {
+                int times;
+                seen[visit.Body] = times = (seen.TryGetValue(visit.Body, out times) ? times : 0) + 1;
                 var firstVisit = firstVisits.FirstOrDefault(v => v.Body == visit.Body);
                 if (firstVisit == null)
                 {
                     firstVisits.Add(visit);
                     continue;
                 }
+                // #1381 (ADR 0022): a repeat the player's words ask for is on the Route.
+                if (times <= route.Count(b => b == visit.Body)) continue;
                 problems.Add("leg " + (visit.Leg + 1) + " \"" + plan.Sequences[visit.Leg].Name + "\" visits " + ContractKinds.Named(visit.Body) + " a second time: the Contract Route has one Body Visit there, "
                     + "so serve its Requirements in the visit at leg " + (firstVisit.Leg + 1) + " and take the second visit out");
             }
-            var order = firstVisits.Select(v => v.Body).Where(route.Contains).ToList();
+            // #1381: a body the Route visits again is held by how often it is visited, not by where.
+            var order = firstVisits.Select(v => v.Body).Where(b => route.Count(r => r == b) == 1).ToList();
             for (var i = 0; i + 1 < order.Count; i++)
             {
                 if (route.IndexOf(order[i]) < route.IndexOf(order[i + 1])) continue;

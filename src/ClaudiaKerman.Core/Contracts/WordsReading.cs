@@ -25,6 +25,8 @@ namespace ClaudiaKerman.Core.Contracts
         private static readonly Regex Negated = new Regex(@"\b(?:don['’]?t|do\s+not|never|no|not|without|avoid(?:ing)?|skip(?:ping)?)\b", RegexOptions.IgnoreCase);
         private static readonly Regex Only = new Regex(@"\b(?:only|just|merely)\b", RegexOptions.IgnoreCase);
         private static readonly Regex Orbit = new Regex(@"\borbit(?:s|ing|ed)?\b", RegexOptions.IgnoreCase);
+        /// <summary>#1381: words that ask to visit a body again: "orbit the Mun again", "fly back to the Mun", "return to the Mun".</summary>
+        private static readonly Regex Again = new Regex(@"\b(?:again|back\s+to|return(?:s|ing)?\s+to|revisit(?:s|ing)?)\b", RegexOptions.IgnoreCase);
         private static readonly Regex Goes = new Regex(@"\b(?:(?:go|fly|head|travel|transfer|get|burn)\s+(?:back\s+)?to|transfer|intercept|visit)\b", RegexOptions.IgnoreCase);
 
         /// <summary>The furthest the words take each body.</summary>
@@ -39,6 +41,12 @@ namespace ClaudiaKerman.Core.Contracts
 
         /// <summary>#1060: the bodies the words put in an order, as (earlier, later) pairs: "then", "before" and "after" order what they join.</summary>
         public readonly List<KeyValuePair<string, string>> Precedes = new List<KeyValuePair<string, string>>();
+
+        /// <summary>
+        /// #1381 (ADR 0022): the visits the words ask for again, in the words' order: a body already needed, named again with "again" or "back
+        /// to" after another body. A repeat serves only the words: it adds no need and orders nothing; the Route flies it after <see cref="WordsRepeat.After"/>.
+        /// </summary>
+        public readonly List<WordsRepeat> Repeats = new List<WordsRepeat>();
 
         public static WordsReading Read(GameSnapshot snapshot, string words, string home)
         {
@@ -113,6 +121,18 @@ namespace ClaudiaKerman.Core.Contracts
                 // "fly to Minmus and capture into orbit": the clause that names no body is about the one before it.
                 if (named.Count == 0 && !namesHome && lastBody != null && reach != ContractReach.Flyby) named = new List<string> { lastBody };
                 if (named.Count == 0) continue;
+                // #1381: "fly back to the Mun and orbit it": a clause naming no body after a repeat is about the repeat.
+                var repeat = read.Repeats.Count > 0 && read.Repeats[read.Repeats.Count - 1].Body == lastBody && !bodies.Any(b => Names(clause, b)) ? read.Repeats[read.Repeats.Count - 1] : null;
+                if (repeat == null && named.Count == 1 && lastBody != null && lastBody != named[0] && read.Needs.ContainsKey(named[0]) && Again.IsMatch(clause))
+                    read.Repeats.Add(repeat = new WordsRepeat { Body = named[0], After = lastBody, Reach = reach.Value });
+                if (repeat != null)
+                {
+                    read.Consumed.Add(clause);
+                    if (reach.Value > repeat.Reach) repeat.Reach = reach.Value;
+                    lastBody = repeat.Body;
+                    join = 0;
+                    continue;
+                }
                 read.Need(named, reach.Value, clause);
                 if (join != 0) read.Order(previous, named, join > 0);
                 join = 0;
@@ -169,5 +189,13 @@ namespace ClaudiaKerman.Core.Contracts
             }
             return null;
         }
+    }
+
+    /// <summary>#1381: a visit the player's words ask for again: the body, the body visited just before it, and how far the repeat goes.</summary>
+    internal sealed class WordsRepeat
+    {
+        public string Body = "";
+        public string After = "";
+        public ContractReach Reach;
     }
 }
