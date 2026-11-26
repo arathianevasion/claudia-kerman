@@ -41,8 +41,12 @@ The Contracts the player has ticked for one Mission, from which the Contract Rou
 _Avoid_: selected contracts, contract goals, contract tasks
 
 **Contract Route**:
-The mod's ordering of the Chosen Contracts' Contract Requirements against the phases of one Mission, from which Claudia writes the Mission Plan.
+The mod's cheapest grouping of the Chosen Contracts' Contract Requirements into Body Visits, in the order flown, from where the craft is. Claudia's Mission Plan is held to it.
 _Avoid_: contract plan, itinerary
+
+**Body Visit**:
+One stop at a body on the Contract Route, holding every Chosen Requirement served there, whichever Contract it comes from, in the order the Route flies them: arrive, work in orbit, land, work on the ground, leave. A body has one Body Visit per Mission unless the player's words ask for another.
+_Avoid_: stop, phase, destination, leg (a leg is one Maneuver Sequence; a Body Visit can take several)
 
 **Band**:
 The altitude range, and speed range where the Contract gives one, within which a Contract Requirement is met, e.g. a part test at 51–56 km and 100–260 m/s.
