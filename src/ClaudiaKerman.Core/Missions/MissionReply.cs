@@ -265,9 +265,11 @@ namespace ClaudiaKerman.Core.Missions
             + "\"new_goal\":{\"type\":\"string\",\"description\":\"Only when the player asked to change the Mission Goal itself: the new Mission Goal in their words, which replaces the old one if they approve this plan; otherwise empty.\"},"
             + RouteDepartureField + "}}";
 
-        /// <summary>#1380 (ADR 0022): the optional field a plan names its departure from the Contract Route in.</summary>
-        internal const string RouteDepartureField =
-            "\"route_departure\":{\"type\":\"string\",\"description\":\"Only to leave the Contract Route on purpose (another order of bodies, or a body twice): what departs from it and why. Leave it out otherwise.\"}";
+        /// <summary>
+        /// #1380 (ADR 0022): the optional field a plan names its departure from the Contract Route in, and why. It has no description, to keep
+        /// the Mission prefix in its budget: the Contract Route section of the Mission's first request says when and how to use it.
+        /// </summary>
+        internal const string RouteDepartureField = "\"route_departure\":{\"type\":\"string\"}";
 
         private const string SequencePlanSchema =
             "{\"type\":\"object\",\"additionalProperties\":false,"

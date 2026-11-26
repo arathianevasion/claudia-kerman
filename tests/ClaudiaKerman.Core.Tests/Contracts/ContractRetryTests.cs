@@ -94,10 +94,11 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void UnderAutoModeARevisedPlanThatDropsTheContractIsApprovedAtOnceAndAnnounced()
         {
-            // #1380 (ADR 0022, the player's ruling): "same rule for the contract drop". The Sequence Plan after it is left unanswered.
+            // #1380 (ADR 0022, the player's ruling): "same rule for the contract drop".
             var transport = Transport(
                 ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, ContractWatchTests.PlanJson("Return to Kerbin"))),
-                ContractWatchTests.MissionPlanKind());
+                ContractWatchTests.MissionPlanKind(),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
             var mission = Running(transport, out var start);
             mission.Send(new SetAutoMode(true));
 

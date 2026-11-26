@@ -73,10 +73,11 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         [Fact]
         public void UnderAutoModeTheRevisedPlanThatDropsTheContractIsApprovedAtOnceAndAnnounced()
         {
-            // #1380 (ADR 0022): a drop with the mod's reason flies under Auto Mode, noted in the Mission log. The Sequence Plan after it is left unanswered.
+            // #1380 (ADR 0022): a drop with the mod's reason flies under Auto Mode, noted in the Mission log.
             var transport = Transport(
                 ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, ContractWatchTests.PlanJson("Return to Kerbin"))),
-                ContractWatchTests.MissionPlanKind());
+                ContractWatchTests.MissionPlanKind(),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
             var mission = Running(transport, out var start);
             mission.Send(new SetAutoMode(true));
 
