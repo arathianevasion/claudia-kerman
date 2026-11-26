@@ -116,7 +116,7 @@ namespace ClaudiaKerman.Core.Contracts
                     read.Need(named, ContractReach.Flyby, clause);
                     continue;
                 }
-                var reach = landing ? ContractReach.Land : orbit ? ContractReach.Orbit : flyby || Goes.IsMatch(clause) ? ContractReach.Flyby : (ContractReach?)null;
+                var reach = landing ? ContractReach.Land : orbit ? ContractReach.Orbit : flyby || Goes.IsMatch(clause) || Again.IsMatch(clause) ? ContractReach.Flyby : (ContractReach?)null;
                 if (reach == null) continue;
                 // "fly to Minmus and capture into orbit": the clause that names no body is about the one before it.
                 if (named.Count == 0 && !namesHome && lastBody != null && reach != ContractReach.Flyby) named = new List<string> { lastBody };

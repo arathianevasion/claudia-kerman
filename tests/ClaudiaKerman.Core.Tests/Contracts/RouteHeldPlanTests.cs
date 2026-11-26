@@ -158,7 +158,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains("Transfer to the Mun for a flyby on the way home", Offered(mission));
         }
 
-        private const string BackToTheMun = "Orbit the Mun, then orbit Minmus, then orbit the Mun again, and come home.";
+        private const string BackToTheMun = "Orbit the Mun, then orbit Minmus, then back to the Mun, and come home.";
 
         private static readonly string[] MunMinmusMunHome =
         {

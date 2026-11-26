@@ -29,7 +29,8 @@ namespace ClaudiaKerman.Core.Contracts
         public static List<string> Problems(GameSnapshot snapshot, MissionPlan plan, IList<string> route, string home, int from = 0)
         {
             var problems = new List<string>();
-            var visits = Visits(PlanServes.BodiesReached(snapshot, plan, home, from));
+            route = StillToFly(snapshot, plan, route, home, from);
+            var visits =Visits(PlanServes.BodiesReached(snapshot, plan, home, from));
             var firstVisits = new List<Reached>();
             var seen = new Dictionary<string, int>();
             foreach (var visit in visits)
@@ -58,6 +59,16 @@ namespace ClaudiaKerman.Core.Contracts
                 break;
             }
             return problems;
+        }
+
+        /// <summary>#1381: <paramref name="route"/> less the visits of a body it visits more than once that the plan's legs before <paramref name="from"/> have flown.</summary>
+        private static IList<string> StillToFly(GameSnapshot snapshot, MissionPlan plan, IList<string> route, string home, int from)
+        {
+            var left = route.ToList();
+            if (from == 0) return left;
+            foreach (var flown in Visits(PlanServes.BodiesReached(snapshot, plan, home).Where(r => r.Leg < from).ToList()))
+                if (left.Count(b => b == flown.Body) > 1) left.Remove(flown.Body);
+            return left;
         }
 
         /// <summary>
