@@ -49,7 +49,7 @@ namespace ClaudiaKerman.Core.Contracts
         {
             return "Survey waypoints still open at " + body + " (the mod's reading of the game, data): " + Named(open) + ". "
                 + StopWords + ": " + why + ". Propose dropping their Contracts instead, with the reason: a revised Mission Plan with no leg that serves them. "
-                + "It waits for the player's Approval, under Auto Mode too.\n";
+                + "It waits for the player's Approval; under Auto Mode it is approved at once and the drop is posted with its reason.\n";
         }
 
         /// <summary>Why the next window won't fit: the 24 hours or the deadline, whichever is the cap.</summary>

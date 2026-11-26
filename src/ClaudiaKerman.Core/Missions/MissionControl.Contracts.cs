@@ -49,7 +49,12 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>#1025: the plan on offer's drops (GUID, the line with the reason) and the Requirements it adds; applied at its Approval.</summary>
             public Dictionary<string, string> PlanDrops = new Dictionary<string, string>();
             public List<ChosenRequirement> PlanAdded = new List<ChosenRequirement>();
+            /// <summary>#1380: the plan on offer's departure from the Contract Route and why, in Claudia's words; "" when it follows the Route.</summary>
+            public string RouteDeparture = "";
         }
+
+        /// <summary>#1380: how the plan card names a departure from the Contract Route.</summary>
+        private const string LeavesTheRoute = "Leaves the Contract Route: ";
 
         /// <summary>#1025: copies of what the revised plan's Contract check needs, taken on the main thread for the tool's worker.</summary>
         private sealed class ContractInputs
@@ -102,9 +107,20 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (snapshot == null || (inputs.Chosen.Count == 0 && inputs.Asked.Count == 0)) return new string[0];
             var problems = Replan(snapshot, plan, inputs).Problems;
-            if (inputs.RouteBodies.Count > 0) problems.AddRange(RouteHold.Problems(snapshot, plan, inputs.RouteBodies, CraftCheckFlow.HomeBody, inputs.FirstUnflown));
+            var departures = Departures(snapshot, plan, inputs);
+            // #1380 (ADR 0022): a departure Claudia names, with why, is hers to propose; the player (or Auto Mode) approves it.
+            if (departures.Count > 0 && plan.RouteDeparture.Length == 0) problems.AddRange(departures.Concat(new[] { LeaveTheRoute }));
             return problems;
         }
+
+        /// <summary>#1378, #1379: how the plan departs from the Contract Route's Body Visits; empty when it follows them or no Route holds it.</summary>
+        private static List<string> Departures(GameSnapshot snapshot, MissionPlan plan, ContractInputs inputs)
+        {
+            return inputs.RouteBodies.Count == 0 ? new List<string>() : RouteHold.Problems(snapshot, plan, inputs.RouteBodies, CraftCheckFlow.HomeBody, inputs.FirstUnflown);
+        }
+
+        /// <summary>#1380: said after a departure sent back, so Claudia knows how to leave the Route on purpose.</summary>
+        internal const string LeaveTheRoute = "or, if leaving the Contract Route is the better plan, keep it and say in route_departure what departs and why";
 
         /// <summary>#1024: the plan's Serves tags and the Contract Route's record, set on the Mission as the plan is offered.</summary>
         private void ServePlan(Mission mission, MissionPlan plan)
@@ -113,26 +129,32 @@ namespace ClaudiaKerman.Core.Missions
             mission.ServesTags = new List<string[]>();
             mission.PlanDrops = new Dictionary<string, string>();
             mission.PlanAdded = new List<ChosenRequirement>();
+            mission.RouteDeparture = "";
             if (_snapshot == null || (mission.ChosenRequirements.Count == 0 && mission.PlayerAsked.Count == 0) || plan.Sequences.Count == 0) return;
             var served = Replan(_snapshot, plan, ContractInputsOf(mission, _snapshot));
             mission.ServedBy = served.Record;
             mission.ServesTags = served.Legs;
             mission.PlanDrops = served.Drops;
             mission.PlanAdded = served.Added;
+            mission.RouteDeparture = plan.RouteDeparture.Length > 0 && Departures(_snapshot, plan, ContractInputsOf(mission, _snapshot)).Count > 0 ? plan.RouteDeparture : "";
         }
 
         /// <summary>#1025: the plan on offer's Contract drops and additions, for its card; "" with none.</summary>
         private static string ContractPlanLines(Mission mission)
         {
             var text = "";
+            if (mission.RouteDeparture.Length > 0) text += "\n" + LeavesTheRoute + mission.RouteDeparture;
             if (mission.PlanDrops.Count > 0) text += "\nDrops: " + string.Join("; ", mission.PlanDrops.Values.ToArray());
             if (mission.PlanAdded.Count > 0) text += "\nAdds, as you asked: " + string.Join("; ", mission.PlanAdded.Select(r => r.Title).Distinct().ToArray());
             return text;
         }
 
-        /// <summary>#1025: the approved plan's drops and additions become the Mission's chosen Contracts.</summary>
+        /// <summary>#1025: the approved plan's drops and additions become the Mission's chosen Contracts; #1380: its departure from the Route is noted.</summary>
         private void ApplyContractChanges(Mission mission)
         {
+            // #1380 (ADR 0022): a departure from the Route is recorded with her reason, as a drop is, whoever approved it.
+            if (mission.RouteDeparture.Length > 0) Notice("The approved Mission Plan leaves the Contract Route: " + mission.RouteDeparture);
+            mission.RouteDeparture = "";
             if (mission.PlanDrops.Count == 0 && mission.PlanAdded.Count == 0) return;
             mission.ChosenRequirements = mission.ChosenRequirements.Where(r => !mission.PlanDrops.ContainsKey(ContractWatch.GuidOf(r.Key)))
                 .Concat(mission.PlanAdded.Where(a => mission.ChosenRequirements.All(r => r.Key != a.Key))).ToList();

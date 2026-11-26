@@ -49,6 +49,8 @@ namespace ClaudiaKerman.Core.Missions
         public string NewGoal;
         /// <summary>The Mission Goal as short steps, in order, which each Debrief ticks by number (#581); empty in plans from before it.</summary>
         public List<string> GoalSteps = new List<string>();
+        /// <summary>#1380 (ADR 0022): Claudia's departure from the Contract Route and why, in her words; "" when she names none.</summary>
+        public string RouteDeparture = "";
     }
 
     /// <summary>Claudia's proposal for the next Maneuver Sequence, with its Mission Script.</summary>
@@ -260,7 +262,14 @@ namespace ClaudiaKerman.Core.Missions
             + "\"total_delta_v\":{\"type\":\"number\",\"description\":\"m/s\"},"
             + "\"expected_duration\":{\"type\":\"string\"},"
             + "\"mission_time_s\":{\"type\":\"number\",\"description\":\"Expected total Mission time in seconds, waits between sequences included; -1 if you can't say.\"},"
-            + "\"new_goal\":{\"type\":\"string\",\"description\":\"Only when the player asked to change the Mission Goal itself: the new Mission Goal in their words, which replaces the old one if they approve this plan; otherwise empty.\"}}}";
+            + "\"new_goal\":{\"type\":\"string\",\"description\":\"Only when the player asked to change the Mission Goal itself: the new Mission Goal in their words, which replaces the old one if they approve this plan; otherwise empty.\"},"
+            + RouteDepartureField + "}}";
+
+        /// <summary>
+        /// #1380 (ADR 0022): the optional field a plan names its departure from the Contract Route in, and why. It has no description, to keep
+        /// the Mission prefix in its budget: the Contract Route section of the Mission's first request says when and how to use it.
+        /// </summary>
+        internal const string RouteDepartureField = "\"route_departure\":{\"type\":\"string\"}";
 
         private const string SequencePlanSchema =
             "{\"type\":\"object\",\"additionalProperties\":false,"
@@ -350,6 +359,7 @@ namespace ClaudiaKerman.Core.Missions
                     ExpectedDuration = JsonNode.Str(plan["expected_duration"]) ?? "",
                     MissionTimeSeconds = NonNegative(plan["mission_time_s"]),
                     NewGoal = Goal(JsonNode.Str(plan["new_goal"])),
+                    RouteDeparture = Goal(JsonNode.Str(plan["route_departure"])) ?? "",
                     GoalSteps = Strings(plan["goal_steps"]).Select(t => t.Trim()).Where(t => t.Length > 0).ToList(),
                 };
                 var sequences = plan["sequences"];
@@ -544,7 +554,7 @@ namespace ClaudiaKerman.Core.Missions
 
         private static readonly string[] NoGoalWords = { "none", "n/a", "na", "null", "no change", "unchanged", "-" };
 
-        /// <summary>A new_goal as text, or null for none: blank, quote marks only, or a placeholder word such as "none" (#590).</summary>
+        /// <summary>A new_goal (or #1380's route_departure) as text, or null for none: blank, quote marks only, or a placeholder word such as "none" (#590).</summary>
         private static string Goal(string text)
         {
             text = (text ?? "").Trim();

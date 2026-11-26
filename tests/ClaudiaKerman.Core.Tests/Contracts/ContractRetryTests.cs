@@ -92,22 +92,47 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
-        public void UnderAutoModeARevisedPlanThatDropsTheContractWaitsForThePlayer()
+        public void UnderAutoModeARevisedPlanThatDropsTheContractIsApprovedAtOnceAndAnnounced()
+        {
+            // #1380 (ADR 0022, the player's ruling): "same rule for the contract drop".
+            var transport = Transport(
+                ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, ContractWatchTests.PlanJson("Return to Kerbin"))),
+                ContractWatchTests.MissionPlanKind(),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
+            var mission = Running(transport, out var start);
+            mission.Send(new SetAutoMode(true));
+
+            Missed(mission, transport, start, Snapshot(EndedAt, c => c.DeadlineUt = EndedAt + 600));
+            DrainUntil(mission, v => v.Stage != MissionStage.AwaitingPlanApproval && v.Log.Any(e => e.Kind == LogKind.MissionPlan && e.Text.Contains("Drops: PartTest")));
+            mission.Send(new UtAdvanced(EndedAt + 120));
+
+            Assert.NotEqual(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            Assert.Equal("", mission.View.AutoModeStop);
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text == AutoModeApproved);
+            // The drop and the mod's reason, as the plan card gave them, in the Mission log.
+            var drop = mission.View.Log.Last(e => e.Kind == LogKind.MissionPlan).Text.Split('\n').Single(l => l.StartsWith("Drops: ")).Substring("Drops: ".Length);
+            Assert.StartsWith("PartTest: ", drop);
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text == "Contract dropped from the Mission: " + drop + ".");
+        }
+
+        [Fact]
+        public void WithoutAutoModeARevisedPlanThatDropsTheContractWaitsForThePlayer()
         {
             var transport = Transport(
                 ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, ContractWatchTests.PlanJson("Return to Kerbin"))),
                 ContractWatchTests.MissionPlanKind());
             var mission = Running(transport, out var start);
-            mission.Send(new SetAutoMode(true));
 
             Missed(mission, transport, start, Snapshot(EndedAt, c => c.DeadlineUt = EndedAt + 600));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new UtAdvanced(EndedAt + 120));
 
             Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
-            Assert.Equal("Auto Mode is waiting for you: a revised Mission Plan that drops a Contract.", mission.View.AutoModeStop);
             Assert.Contains("Drops: PartTest", mission.View.Log.Last(e => e.Kind == LogKind.MissionPlan).Text);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.StartsWith("Contract dropped from the Mission"));
         }
+
+        private const string AutoModeApproved = "Approved by Auto Mode.";
 
         [Fact]
         public void FromTheSecondMissTheChatNamesTheRequirementAndAutoModeCarriesOn()
@@ -185,7 +210,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains(ContractRetry.StopWords + ": " + why, request.Text);
             Assert.Contains("\"PartTest\"", request.Text.Replace("(PartTest)", "\"PartTest\""));
             Assert.Contains("drop its Contract", request.Notice);
-            Assert.Contains("under Auto Mode too", request.Notice);
+            Assert.Contains("under Auto Mode it is approved at once and the drop is posted with its reason", request.Notice);
         }
 
         /// <summary>Runs <paramref name="act"/> as the <paramref name="index"/>th Mission request (0-based) goes out, then sends it on.</summary>

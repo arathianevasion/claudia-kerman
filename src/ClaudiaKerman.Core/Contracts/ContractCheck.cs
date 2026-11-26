@@ -978,6 +978,9 @@ namespace ClaudiaKerman.Core.Contracts
                     .Append(string.Join("; ", tests.Select(r => r.Words + " in " + (r.Test.Window == TestWindow.Ascent ? "launch" : "reentry")).ToArray()))
                     .Append("); never stage for a test.\n");
             text.Append("Write the Mission Plan as these Body Visits, one per body in the Route's order, each serving its open Requirements there, with the player's words (a body twice only where the player's words ask); never add a Contract the player didn't ask for (one they ask for later is added by naming its title in a revised plan's why).\n");
+            // #1380 (ADR 0022): a departure she names is hers to propose; the player approves it, or Auto Mode flies it and posts her reason.
+            text.Append("To leave the Route on purpose (another order of bodies, or a body twice) because it flies better, say in route_departure what departs and why: "
+                + "the player approves it, or under Auto Mode it flies at once and your reason is posted. A departure with no route_departure is sent back.\n");
             choice.Section = text.ToString();
             return choice;
         }

@@ -71,22 +71,24 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
-        public void UnderAutoModeTheRevisedPlanThatDropsTheContractWaitsForThePlayer()
+        public void UnderAutoModeTheRevisedPlanThatDropsTheContractIsApprovedAtOnceAndAnnounced()
         {
+            // #1380 (ADR 0022): a drop with the mod's reason flies under Auto Mode, noted in the Mission log.
             var transport = Transport(
                 ToolUseStreams.ToolUse("plan", (ProposedPlans.ToolName, ContractWatchTests.PlanJson("Return to Kerbin"))),
-                ContractWatchTests.MissionPlanKind());
+                ContractWatchTests.MissionPlanKind(),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
             var mission = Running(transport, out var start);
             mission.Send(new SetAutoMode(true));
 
             Ended(mission, transport, start, Start + 50000);
-            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
-            Assert.True(mission.View.Stage == MissionStage.AwaitingPlanApproval, mission.View.Stage + ": " + string.Join(" | ", mission.View.Log.Skip(8).Select(e => e.Kind + " " + e.Text)));
+            DrainUntil(mission, v => v.Log.Any(e => e.Text.StartsWith("Contract dropped from the Mission: SurveyContract")));
             mission.Send(new UtAdvanced(Start + 50120));
 
-            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
             Assert.Contains("Drops: SurveyContract", mission.View.Log.Last(e => e.Kind == LogKind.MissionPlan).Text);
-            Assert.Equal("Auto Mode is waiting for you: a revised Mission Plan that drops a Contract.", mission.View.AutoModeStop);
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text == "Approved by Auto Mode.");
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Contract dropped from the Mission: SurveyContract: "));
+            Assert.Equal("", mission.View.AutoModeStop);
         }
 
         private static void AssertStopped(Request request, string why)
@@ -95,7 +97,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             Assert.Contains(SurveyCap.StopWords, request.Text);
             Assert.Contains(why, request.Text);
             Assert.Contains("drop the survey's Contract", request.Notice);
-            Assert.Contains("under Auto Mode too", request.Notice);
+            Assert.Contains("under Auto Mode it is approved at once and the drop is posted with its reason", request.Notice);
         }
 
         // ---- Helpers ----
