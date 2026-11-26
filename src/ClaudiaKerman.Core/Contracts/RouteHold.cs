@@ -24,10 +24,11 @@ namespace ClaudiaKerman.Core.Contracts
 
         /// <summary>What Claudia must fix: each repeated visit, and the first pair of bodies out of the Route's order; empty when the plan follows the Route.</summary>
         /// <param name="route">The Route's bodies away from home, in the order flown.</param>
-        public static List<string> Problems(GameSnapshot snapshot, MissionPlan plan, IList<string> route, string home)
+        /// <param name="from">#1379: the plan's first leg still to fly; the legs before it are flown and not held to the Route.</param>
+        public static List<string> Problems(GameSnapshot snapshot, MissionPlan plan, IList<string> route, string home, int from = 0)
         {
             var problems = new List<string>();
-            var visits = Visits(PlanServes.BodiesReached(snapshot, plan, home));
+            var visits = Visits(PlanServes.BodiesReached(snapshot, plan, home, from));
             var firstVisits = new List<Reached>();
             foreach (var visit in visits)
             {
