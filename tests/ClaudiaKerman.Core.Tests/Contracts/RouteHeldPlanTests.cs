@@ -146,6 +146,19 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         }
 
         [Fact]
+        public void PassingABodyAgainOnAFlybyIsNotASecondVisit()
+        {
+            var mission = Proposing(ContractCheckTests.With(ContractCheckTests.Exploration("c1", 10000, "Mun:FLYBY", "Minmus:ORBIT")),
+                new[] { "Launch to low Kerbin orbit", "Transfer to the Mun for a flyby", "Transfer to Minmus and capture into low orbit", "Transfer to the Mun for a flyby on the way home", "Return to Kerbin" });
+            mission.Send(new StartMission("", 25m, Sonnet));
+            mission.Send(new PlanContracts());
+            DrainUntilOffered(mission);
+
+            Assert.DoesNotContain("a second time", Answers);
+            Assert.Contains("Transfer to the Mun for a flyby on the way home", Offered(mission));
+        }
+
+        [Fact]
         public void AMissionWithNoChosenContractAcceptsAPlanThatRepeatsABody()
         {
             var mission = Proposing(ContractCheckTests.Pad(),

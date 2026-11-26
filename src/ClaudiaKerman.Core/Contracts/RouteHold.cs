@@ -10,7 +10,7 @@ namespace ClaudiaKerman.Core.Contracts
     /// <summary>
     /// #1378 (ADR 0022): a proposed Mission Plan held to the Contract Route's Body Visits. Away from home, each body is visited once, in the
     /// Route's order. The plan's visits are read from its legs as the plan check reads them: legs in a row at one body are one visit (its first leg names it), and
-    /// a flyby of a body the plan visits otherwise is passing it, not a visit. A body the Route doesn't visit isn't ordered here.
+    /// a flyby is passing the body, not a visit, unless the plan never stops there. A body the Route doesn't visit isn't ordered here.
     /// </summary>
     internal static class RouteHold
     {
@@ -28,19 +28,19 @@ namespace ClaudiaKerman.Core.Contracts
         {
             var problems = new List<string>();
             var visits = Visits(PlanServes.BodiesReached(snapshot, plan, home));
-            var first = new Dictionary<string, int>();
+            var firstVisits = new List<Reached>();
             foreach (var visit in visits)
             {
-                int was;
-                if (!first.TryGetValue(visit.Body, out was))
+                var firstVisit = firstVisits.FirstOrDefault(v => v.Body == visit.Body);
+                if (firstVisit == null)
                 {
-                    first[visit.Body] = visit.Leg;
+                    firstVisits.Add(visit);
                     continue;
                 }
                 problems.Add("leg " + (visit.Leg + 1) + " \"" + plan.Sequences[visit.Leg].Name + "\" visits " + ContractKinds.Named(visit.Body) + " a second time: the Contract Route has one Body Visit there, "
-                    + "so serve its Requirements in the visit at leg " + (was + 1) + " and take the second visit out");
+                    + "so serve its Requirements in the visit at leg " + (firstVisit.Leg + 1) + " and take the second visit out");
             }
-            var order = first.Keys.Where(route.Contains).ToList();
+            var order = firstVisits.Select(v => v.Body).Where(route.Contains).ToList();
             for (var i = 0; i + 1 < order.Count; i++)
             {
                 if (route.IndexOf(order[i]) < route.IndexOf(order[i + 1])) continue;
@@ -52,14 +52,15 @@ namespace ClaudiaKerman.Core.Contracts
             return problems;
         }
 
-        /// <summary>The plan's visits away from home, in order: a run of legs at one body is one visit; a flyby of a body visited otherwise is left out.</summary>
+        /// <summary>The plan's visits away from home, in order: a run of legs at one body is one visit; a flyby is left out unless it is the only visit of its body.</summary>
         private static List<Reached> Visits(IList<Reached> reached)
         {
             var stopped = new HashSet<string>(reached.Where(r => r.Reach > ContractReach.Flyby).Select(r => r.Body));
             var visits = new List<Reached>();
             foreach (var one in reached)
             {
-                if (one.Reach <= ContractReach.Flyby && stopped.Contains(one.Body)) continue;
+                // Passing a body is not a visit: a flyby counts only as the first visit of a body the plan never stops at.
+                if (one.Reach <= ContractReach.Flyby && (stopped.Contains(one.Body) || visits.Any(v => v.Body == one.Body))) continue;
                 if (visits.Count > 0 && visits[visits.Count - 1].Body == one.Body) continue;
                 visits.Add(one);
             }
