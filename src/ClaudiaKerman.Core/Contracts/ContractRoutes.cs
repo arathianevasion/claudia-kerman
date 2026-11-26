@@ -49,6 +49,12 @@ namespace ClaudiaKerman.Core.Contracts
         /// <summary>#1033: when the craft is in the Contract's vessel's orbit (UT, s), by its Requirement's key.</summary>
         public readonly Dictionary<string, double> RendezvousUt = new Dictionary<string, double>();
 
+        /// <summary>#1377: the route's bodies as Body Visits holding <paramref name="chosen"/>, each Requirement with its Contract's title.</summary>
+        public List<BodyVisit> Visits(IEnumerable<KeyValuePair<string, ReadRequirement>> chosen, string home)
+        {
+            return BodyVisits.Of(this, chosen, home);
+        }
+
         /// <summary>When the leg serving <paramref name="requirement"/> finishes; null when the route doesn't serve it.</summary>
         public double? DoneUt(ReadRequirement requirement, string home)
         {
