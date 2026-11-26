@@ -53,6 +53,17 @@ namespace ClaudiaKerman.Core.Contracts
             return problems;
         }
 
+        /// <summary>
+        /// #1381 (ADR 0022): the next body the plan goes on to when <paramref name="reached"/>[<paramref name="i"/>] only flies by its body on
+        /// the way there (a later leg reaches another body away from home); null when it stops there, or the plan goes no further away.
+        /// </summary>
+        internal static Reached PassedOnTheWay(IList<Reached> reached, int i)
+        {
+            var one = reached[i];
+            if (one.Reach > ContractReach.Flyby) return null;
+            return reached.Skip(i + 1).FirstOrDefault(r => r.Leg > one.Leg && r.Body != one.Body);
+        }
+
         /// <summary>The plan's visits away from home, in order: a run of legs at one body is one visit; a flyby is left out unless it is the only visit of its body.</summary>
         private static List<Reached> Visits(IList<Reached> reached)
         {
