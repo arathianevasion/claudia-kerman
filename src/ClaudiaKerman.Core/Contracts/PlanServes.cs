@@ -154,6 +154,13 @@ namespace ClaudiaKerman.Core.Contracts
             return result;
         }
 
+        /// <summary>#1378: the bodies the craft itself reaches away from home, leg by leg in the plan's order, for <see cref="RouteHold"/>.</summary>
+        public static List<RouteHold.Reached> BodiesReached(GameSnapshot snapshot, MissionPlan plan, string home)
+        {
+            return Read(snapshot, plan, home).Where(t => !t.Child && !t.Home && t.Body != home)
+                .Select(t => new RouteHold.Reached { Leg = t.Leg, Body = t.Body, Reach = t.Reach }).ToList();
+        }
+
         /// <summary>
         /// #1030: a leg from the one serving it until the craft goes elsewhere says it runs the science block (its words name science, an
         /// experiment, or the experiment itself), so collect science or a survey waypoint is taken where it is met. The first such leg; null when none does.
