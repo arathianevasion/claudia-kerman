@@ -226,7 +226,7 @@ namespace ClaudiaKerman.Core.Missions
             var plannedAscent = mission.PlannedAscent;
             var wantedPercent = _config.CraftCheckMarginPercent;
             Func<MissionPlan, string> legNote = plan => snapshot == null ? "" : PlanLegs.Note(snapshot, PlanLegs.Judge(snapshot, plan.Sequences.Skip(firstUnflown).ToList(), plannedAscent, true), wantedPercent);
-            var contractInputs = ContractInputsOf(mission);
+            var contractInputs = ContractInputsOf(mission, snapshot);
             Func<MissionPlan, IList<string>> contractProblems = plan => ContractProblems(snapshot, plan, contractInputs);
             Func<ToolUseBlock, ToolOutcome> answer = use => use.Name != ProposedPlans.ToolName ? null
                 : plans > 1 ? ProposedPlans.OnePerReply()

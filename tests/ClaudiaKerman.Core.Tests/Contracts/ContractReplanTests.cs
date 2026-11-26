@@ -103,7 +103,7 @@ namespace ClaudiaKerman.Core.Tests.Contracts
         {
             var replan = Check(Plan("Also flying Explore Minmus on the way.", "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit"));
 
-            Assert.Contains("\"Explore Minmus\", a Contract the player didn't choose or ask for", Assert.Single(replan.Problems));
+            Assert.Contains(replan.Problems, p => p.Contains("\"Explore Minmus\", a Contract the player didn't choose or ask for"));
             Assert.Empty(replan.Added);
         }
 
@@ -150,6 +150,43 @@ namespace ClaudiaKerman.Core.Tests.Contracts
             mun.State = "Active";
             mun.Requirements[0].State = state;
             return mun;
+        }
+
+        // ---- #1379: a leg serving nothing still open ----
+
+        [Fact]
+        public void ALegAtABodyWhoseRequirementsAreAllMetServesNothingAndIsSentBack()
+        {
+            var munMet = ContractCheckTests.Exploration("mun", 10000, "Mun:ORBIT");
+            munMet.Requirements[0].State = "Complete";
+            var met = ContractCheckTests.With(munMet, Minmus);
+            var plan = Plan("Again.", "Transfer to the Mun and capture into low orbit", "Capture into low Mun orbit again", "Transfer to Minmus and capture into low orbit", "Return to Kerbin");
+            var chosen = ContractCheck.Work(met, "", false, ContractCheckTests.Margin).Choose(new[] { "mun" }).Requirements.Concat(ContractCheck.Work(met, "", false, ContractCheckTests.Margin).Choose(new[] { "minmus" }).Requirements).ToList();
+
+            var replan = ContractReplan.Check(met, plan, chosen, "", "Kerbin", new Dictionary<string, string>(), new HashSet<string>(), new List<string>(), null, 1);
+
+            Assert.Contains("leg 2 \"Capture into low Mun orbit again\" serves no Requirement still open and none of your words", Assert.Single(replan.Problems));
+        }
+
+        [Fact]
+        public void TheLaunchAndTheReturnHomeAreNeverLegsServingNothing()
+        {
+            var plan = Plan("Whole.", "Launch to low Kerbin orbit", "Transfer to the Mun and capture into low orbit", "Return to Kerbin");
+
+            var replan = Check(plan);
+
+            Assert.Empty(replan.Problems);
+        }
+
+        [Fact]
+        public void ALegServingOnlyThePlayersWordsIsNotSentBack()
+        {
+            var plan = Plan("Whole.", "Transfer to the Mun and capture into low orbit", "Transfer to Minmus and capture into low orbit", "Return to Kerbin");
+            var without = ContractReplan.Check(ContractCheckTests.With(Mun, Minmus), plan, ChosenMun(), "", "Kerbin", new Dictionary<string, string>(), new HashSet<string>(), new List<string>());
+            var with = ContractReplan.Check(ContractCheckTests.With(Mun, Minmus), plan, ChosenMun(), "Fly to Minmus and orbit it.", "Kerbin", new Dictionary<string, string>(), new HashSet<string>(), new List<string>());
+
+            Assert.Contains("leg 2 \"Transfer to Minmus and capture into low orbit\" serves no Requirement still open", Assert.Single(without.Problems));
+            Assert.Empty(with.Problems);
         }
     }
 }

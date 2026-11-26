@@ -154,10 +154,10 @@ namespace ClaudiaKerman.Core.Contracts
             return result;
         }
 
-        /// <summary>#1378: the bodies the craft itself reaches away from home, leg by leg in the plan's order, for <see cref="RouteHold"/>.</summary>
-        public static List<RouteHold.Reached> BodiesReached(GameSnapshot snapshot, MissionPlan plan, string home)
+        /// <summary>#1378: the bodies the craft itself reaches away from home, leg by leg in the plan's order, for <see cref="RouteHold"/>; #1379: from leg <paramref name="from"/> on.</summary>
+        public static List<RouteHold.Reached> BodiesReached(GameSnapshot snapshot, MissionPlan plan, string home, int from = 0)
         {
-            return Read(snapshot, plan, home).Where(t => !t.Child && !t.Home && t.Body != home)
+            return Read(snapshot, plan, home).Where(t => t.Leg >= from && !t.Child && !t.Home && t.Body != home)
                 .Select(t => new RouteHold.Reached { Leg = t.Leg, Body = t.Body, Reach = t.Reach }).ToList();
         }
 
