@@ -3,7 +3,7 @@
 
 A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You give her a goal in plain language, such as "Land on the Mun, run 3 experiments, return to Kerbin". She checks your craft, plans the mission, explains each step, asks your go-ahead, flies it through kOS and reports back.
 
-> **Status: in development, not yet released.** The v1 design ([Spec: Claudia Kerman v1](https://github.com/arathianevasion/claudia-kerman/issues/36)) is built and flown in game on macOS: Missions from the Craft Check to the last Debrief, the Building Blocks below, Auto Mode, Blackouts, Manual Control, Child Vessels and the Missions list. Rendezvous and docking (`rendezvous`, `dock`) are the newest blocks and are still waiting on their in-game checks. There is no packaged release yet; build it yourself (see [Building](#building)).
+> **Status: in development, not yet released.** The v1 design ([Spec: Claudia Kerman v1](https://github.com/watsonsoft/claudia-kerman/issues/36)) is built and flown in game on macOS: Missions from the Craft Check to the last Debrief, the Building Blocks below, Auto Mode, Blackouts, Manual Control, Child Vessels and the Missions list. Rendezvous and docking (`rendezvous`, `dock`) are the newest blocks and are still waiting on their in-game checks. There is no packaged release yet; build it yourself (see [Building](#building)).
 
 ## How a Mission works
 
@@ -166,7 +166,7 @@ Each Mission's records live in `saves/<save>/ClaudiaKerman/missions/<id>/`: the 
 
 - [GLOSSARY.md](GLOSSARY.md): the domain language (Mission, Craft Check, Maneuver Sequence, Debrief and more).
 - [docs/adr/](docs/adr/): architecture decisions.
-- [Map: Claudia Kerman v1](https://github.com/arathianevasion/claudia-kerman/issues/1): the design decisions, each with its own ticket.
+- [Map: Claudia Kerman v1](https://github.com/watsonsoft/claudia-kerman/issues/1): the design decisions, each with its own ticket.
 - [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES): licenses for bundled and ported code.
 
 ## License
